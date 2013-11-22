@@ -1,0 +1,30 @@
+Name:          flexdis86
+Version:       0.1
+Author:        Galois Inc.
+Maintainer:    jhendrix@galois.com
+Build-type:    Simple
+Cabal-version: >= 1.9
+Synopsis: A flexible disassembler or x86
+
+library
+  build-depends:
+    base >= 4,
+    bytestring,
+    containers,
+    lens,
+    mtl,
+    template-haskell,
+    vector,
+    xml
+
+  hs-source-dirs: src
+
+  exposed-modules:
+    Flexdis86
+    Flexdis86.ByteReader
+    Flexdis86.DefaultParser
+    Flexdis86.Disassembler
+    Flexdis86.InstructionSet
+    Flexdis86.OpTable
+
+  GHC-options: -Wall -fno-ignore-asserts
