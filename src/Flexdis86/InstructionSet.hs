@@ -9,9 +9,9 @@ This declares the main datatypes for the instruction set.
 module Flexdis86.InstructionSet
   ( InstructionInstance(..)
   , Value(..)
-  , ControlReg, controlReg
-  , DebugReg, debugReg
-  , MMXReg, mmx_reg
+  , ControlReg, controlReg, controlRegNo
+  , DebugReg, debugReg, debugRegNo
+  , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo
   , LockPrefix(..)
   , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex
   , AddrRef(..)
@@ -33,27 +33,42 @@ import qualified Data.Vector as V
 
 -- | There are 16 control registers CR0 through CR15.  
 newtype ControlReg = CR Word8
-
+                     deriving Eq
+                     
 instance Show ControlReg where
   show (CR w) = "CR" ++ show w
 
 controlReg :: Word8 -> ControlReg
 controlReg w = assert (w < 16) $ CR w
 
+controlRegNo :: ControlReg -> Word8
+controlRegNo (CR w) = w
+
 -- | There are 8 32-bit debug registers in ia32, and 16 64-bit
 -- debug registers in ia64.
 newtype DebugReg   = DR Word8
-  deriving (Show)
+  deriving (Show, Eq)
 
 debugReg :: Word8 -> DebugReg
 debugReg w = assert (w < 16) $ DR w
 
+debugRegNo :: DebugReg -> Word8 
+debugRegNo (DR w) = w
+
 -- | There are 8 64-bit MMX registers
 newtype MMXReg = MMXR Word8
-  deriving (Show)
+  deriving (Show, Eq)
 
+{-# DEPRECATED mmx_reg "Use mmxReg instead!" #-}
 mmx_reg :: Word8 -> MMXReg
 mmx_reg w = assert (w < 8) $ MMXR w
+
+mmxReg :: Word8 -> MMXReg
+mmxReg w = assert (w < 8) $ MMXR w
+
+mmxRegNo :: MMXReg -> Word8
+mmxRegNo (MMXR w) = w
+
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -286,7 +301,7 @@ data AddrRef
   | Offset_64    Segment Word64
   | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Int32
   | IP_Offset_64 Segment Int32
-  deriving (Show)
+  deriving (Show, Eq)
 
 ------------------------------------------------------------------------
 -- Value
@@ -312,7 +327,7 @@ data Value
   | DWordReg Reg32
   | QWordReg Reg64
   | JumpOffset Int64
-  deriving (Show)
+  deriving (Show, Eq)
 
 ------------------------------------------------------------------------
 -- InstructionInstance
@@ -320,7 +335,7 @@ data Value
 data LockPrefix
    = NoLockPrefix
    | RepPrefix
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | Instruction instance with name and operands.
 data InstructionInstance 
@@ -328,4 +343,4 @@ data InstructionInstance
         , iiOp :: String
         , iiArgs :: [Value]
         }
-  deriving (Show)
+  deriving (Show, Eq)

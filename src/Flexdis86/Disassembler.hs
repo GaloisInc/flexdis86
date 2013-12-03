@@ -959,8 +959,10 @@ parseValue :: ByteReader m
 parseValue aso osz p mmrm tp = do 
   let sp  = prSP p
       rex = prREX p
-  let modRM = fromMaybe (error msg) mmrm
-        where msg = "internal: parseValue missing modRM with operand type: " ++ show tp
+      msg = "internal: parseValue missing modRM with operand type: " ++ show tp
+      
+  modRM <- maybe (fail msg) return mmrm
+
   let reg = modRM_reg modRM
   let reg_with_rex :: Word8
       reg_with_rex = rex_r rex .|. reg
@@ -969,8 +971,7 @@ parseValue aso osz p mmrm tp = do
                0 -> readNoOffset aso p modRM
                1 -> readWithOffset read_disp8  aso p modRM
                2 -> readWithOffset read_disp32 aso p modRM 
-               _ -> error $ "internal: parseValue given modRM to register with operand type: "
-                               ++ show tp
+               _ -> fail $ "internal: parseValue given modRM to register with operand type: " ++ show tp
       rm_reg :: Word8
       rm_reg = rex_b rex .|. modRM_rm modRM
 
