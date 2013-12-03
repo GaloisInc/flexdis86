@@ -707,7 +707,7 @@ mkOpcodeTable lockPrefix aso osz f defs = go [] [ (d^.defOpcodes, d) | d <- defs
                 [([],d)] -> assert (not (expectsModRM d)) $
                     return $ SkipModRM lockPrefix aso (defSize d osz) (d^.defMnemonic) tps
                   where tps = lookupOperandType "" <$> view defOperands d
-                _ -> fail "mkOpcodeTable: ambiguous operators."
+                _ -> error "mkOpcodeTable: ambiguous operators."
             -- If we still have opcodes to parse, check that all definitions
             -- expect at least one more opcode, and generate table for next
             -- opcode match.
@@ -960,8 +960,7 @@ parseValue aso osz p mmrm tp = do
   let sp  = prSP p
       rex = prREX p
       msg = "internal: parseValue missing modRM with operand type: " ++ show tp
-      
-  modRM <- maybe (fail msg) return mmrm
+      modRM = fromMaybe (error msg) mmrm -- laziness is used here and below, this is not used for e.g. ImmediateSource
 
   let reg = modRM_reg modRM
   let reg_with_rex :: Word8
