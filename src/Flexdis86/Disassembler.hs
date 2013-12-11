@@ -436,17 +436,19 @@ preSegmentOverrideVec
        -- ^ Lookup table for next byte if address-size override is parsed.
     -> Maybe (TableRef InstructionInstance)
        -- ^ Lookup table for next byte if REP prefix is parsed.
+    -> Maybe (TableRef InstructionInstance)
+       -- ^ Lookup table for next byte if REPZ prefix is parsed.
     -> TableRef (Segment -> InstructionInstance)
        -- ^ Table if segment override seen.
     -> V.Vector RexEntry
        -- ^ Table for opcodes.
     -> V.Vector (IParser InstructionInstance)
-preSegmentOverrideVec mosoV masoV mrepTable segV opcodeV = vec256 eltFn
+preSegmentOverrideVec mosoV masoV mrepTable mrepzTable segV opcodeV = vec256 eltFn
   where aso = isNothing masoV 
         pr = SegmentPrefix
         eltFn 0xf0 = PrefixUnsupported "LOCK"
-        eltFn 0xf2 = PrefixUnsupported "REPNE"
-        eltFn 0xf3 | Just repTable <- mrepTable = Next repTable -- REP prefix
+        eltFn 0xf2 | Just repzTable <- mrepzTable = Next repzTable -- REPZ prefix
+        eltFn 0xf3 | Just repTable  <- mrepTable  = Next repTable -- REP prefix
         eltFn w@0x26 = SetSegment aso (pr w) segV -- ES segment override
         eltFn w@0x2e = SetSegment aso (pr w) segV -- CS segment override or branch not taken.
         eltFn w@0x36 = SetSegment aso (pr w) segV -- SS segment override
@@ -464,13 +466,15 @@ postSegmentOverrideVec
        -- ^ Lookup table for next byte if address-size override is parsed.
     -> Maybe (TableRef (Segment -> InstructionInstance))
        -- ^ Lookup table for next byte if REP prefix is parsed.
+    -> Maybe (TableRef (Segment -> InstructionInstance))
+       -- ^ Lookup table for next byte if REPZ prefix is parsed.
     -> V.Vector (IParser (Segment -> InstructionInstance))
        -- ^ Optable for non-prefixes.
     -> V.Vector (IParser (Segment -> InstructionInstance))
-postSegmentOverrideVec mosoV masoV mrepTable opcodeV = vec256 eltFn
+postSegmentOverrideVec mosoV masoV mrepTable mrepzTable opcodeV = vec256 eltFn
   where eltFn 0xf0 = PrefixUnsupportedSeg "LOCK"
-        eltFn 0xf2 = PrefixUnsupportedSeg "REPNE"
-        eltFn 0xf3 | Just repTable <- mrepTable = NextSeg repTable
+        eltFn 0xf2 | Just repzTable <- mrepzTable = NextSeg repzTable
+        eltFn 0xf3 | Just repTable  <- mrepTable  = NextSeg repTable
         eltFn 0x66 | Just osoV <- mosoV = NextSeg osoV -- Operand-size override prefix.
         eltFn 0x67 | Just asoV <- masoV = NextSeg asoV -- Address-size override prefix.
         eltFn i = opcodeV `regIdx` i
@@ -490,14 +494,16 @@ segmentPair :: Maybe SegmentPair
                -- ^ Pair of lookup tables if next byte is an address-size override.
             -> Maybe SegmentPair
                -- ^ Pair of lookup tables if next byte is REP prefix.
+            -> Maybe SegmentPair
+               -- ^ Pair of lookup tables if next byte is REPZ prefix.
             -> V.Vector RexEntry
                -- ^ Opcodes to use next.
             -> ParserGen SegmentPair
-segmentPair moso maso mrep a = do
+segmentPair moso maso mrep mrepz a = do
   seg  <- segTableRef $
-    postSegmentOverrideVec (fst <$> moso) (fst <$> maso) (fst <$> mrep) a
+    postSegmentOverrideVec (fst <$> moso) (fst <$> maso) (fst <$> mrep) (fst <$> mrepz) a
   base <- startTableRef $
-    preSegmentOverrideVec (snd <$> moso) (snd <$> maso) (snd <$> mrep) seg a
+    preSegmentOverrideVec (snd <$> moso) (snd <$> maso) (snd <$> mrep) (snd <$> mrep) seg a
   return (seg, base)
 
 -- | Contains pair of segment pairs for generating table.
@@ -508,11 +514,13 @@ type OpOverridePair = (SegmentPair, SegmentPair)
 osoPair :: Maybe OpOverridePair
         -> Maybe OpOverridePair
            -- ^ OpOverridePair for when REP prefix is read.
+        -> Maybe OpOverridePair
+           -- ^ OpOverridePair for when REPZ prefix is read.
         -> OSOTable
         -> ParserGen OpOverridePair
-osoPair maso mrep (BoolTable a_o16 a_o32) = do
-  oso  <- segmentPair Nothing    (fst <$> maso) (fst <$> mrep) a_o16
-  base <- segmentPair (Just oso) (snd <$> maso) (snd <$> mrep) a_o32
+osoPair maso mrep mrepz (BoolTable a_o16 a_o32) = do
+  oso  <- segmentPair Nothing    (fst <$> maso) (fst <$> mrep) (fst <$> mrepz) a_o16
+  base <- segmentPair (Just oso) (snd <$> maso) (snd <$> mrep) (snd <$> mrepz) a_o32
 
   return (oso, base)
 
@@ -524,13 +532,15 @@ type AddrOverridePair = (OpOverridePair, OpOverridePair)
 type OSOTable = BoolTable (V.Vector RexEntry)
 type ASOTable = BoolTable OSOTable
 
-addrPair :: Maybe AddrOverridePair            
+addrPair :: Maybe AddrOverridePair
+            -- ^ AddrOverridePair for when REP prefix is read.
+         -> Maybe AddrOverridePair
             -- ^ AddrOverridePair for when REP prefix is read.
          -> ASOTable
          -> ParserGen AddrOverridePair
-addrPair mrep (BoolTable a32 a64) = do
-  aso  <- osoPair (fst <$> mrep) Nothing    a32
-  base <- osoPair (snd <$> mrep) (Just aso) a64
+addrPair mrep mrepz (BoolTable a32 a64) = do
+  aso  <- osoPair (fst <$> mrep) (fst <$> mrepz) Nothing    a32
+  base <- osoPair (snd <$> mrep) (snd <$> mrepz) (Just aso) a64
   return (aso, base)
 
 -- | Create a vector of entries by matching an opcode table.
@@ -544,13 +554,15 @@ type InstructionParser = TableRef InstructionInstance
 mkParseTable :: (LockPrefix -> TableFn ASOTable)
              -> TableFn InstructionParser
 mkParseTable f defs = do
-  repPair <- do
-    repPrefix <- f RepPrefix $ filter (\d -> elem "rep" (d^.defPrefix)) defs
-    addrPair Nothing repPrefix
+  repPair  <- mkPrefix RepPrefix "rep"
+  repzPair <- mkPrefix RepZPrefix "repz"
   noPrefix  <- f NoLockPrefix defs
-  (_, (_, (_,v))) <- addrPair (Just repPair) noPrefix
+  (_, (_, (_,v))) <- addrPair (Just repPair) (Just repzPair) noPrefix
   return v
-  
+  where 
+    mkPrefix pfx strPfx = do
+      repPrefix <- f pfx $ filter (\d -> elem strPfx (d^.defPrefix)) defs
+      addrPair Nothing Nothing repPrefix
 
 data IParser a where
 

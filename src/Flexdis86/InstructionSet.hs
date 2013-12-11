@@ -335,6 +335,7 @@ data Value
 data LockPrefix
    = NoLockPrefix
    | RepPrefix
+   | RepZPrefix
   deriving (Show, Eq)
 
 -- | Instruction instance with name and operands.
