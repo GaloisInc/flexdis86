@@ -503,7 +503,7 @@ segmentPair moso maso mrep mrepz a = do
   seg  <- segTableRef $
     postSegmentOverrideVec (fst <$> moso) (fst <$> maso) (fst <$> mrep) (fst <$> mrepz) a
   base <- startTableRef $
-    preSegmentOverrideVec (snd <$> moso) (snd <$> maso) (snd <$> mrep) (snd <$> mrep) seg a
+    preSegmentOverrideVec (snd <$> moso) (snd <$> maso) (snd <$> mrep) (snd <$> mrepz) seg a
   return (seg, base)
 
 -- | Contains pair of segment pairs for generating table.
@@ -539,8 +539,8 @@ addrPair :: Maybe AddrOverridePair
          -> ASOTable
          -> ParserGen AddrOverridePair
 addrPair mrep mrepz (BoolTable a32 a64) = do
-  aso  <- osoPair (fst <$> mrep) (fst <$> mrepz) Nothing    a32
-  base <- osoPair (snd <$> mrep) (snd <$> mrepz) (Just aso) a64
+  aso  <- osoPair Nothing    (fst <$> mrep) (fst <$> mrepz) a32
+  base <- osoPair (Just aso) (snd <$> mrep) (snd <$> mrepz) a64
   return (aso, base)
 
 -- | Create a vector of entries by matching an opcode table.

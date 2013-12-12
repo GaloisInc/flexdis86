@@ -7052,10 +7052,8 @@
             <opr>Iw</opr>
         </def>
         <def>
+            <pfx>rep</pfx>
             <opc>c3</opc>
-        </def>
-        <def>
-            <opc>f3 c3</opc>
         </def>
     </instruction>
 
