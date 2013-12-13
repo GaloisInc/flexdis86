@@ -12,6 +12,7 @@ module Flexdis86.InstructionSet
   , ControlReg, controlReg, controlRegNo
   , DebugReg, debugReg, debugRegNo
   , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo
+  , XMMReg, xmmReg, xmmRegNo
   , LockPrefix(..)
   , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex
   , AddrRef(..)
@@ -69,6 +70,15 @@ mmxReg w = assert (w < 8) $ MMXR w
 mmxRegNo :: MMXReg -> Word8
 mmxRegNo (MMXR w) = w
 
+-- | There are 16 128-bit XMM registers
+newtype XMMReg = XMMR Word8
+  deriving (Show, Eq)
+
+xmmReg :: Word8 -> XMMReg
+xmmReg w = assert (w < 16) $ XMMR w
+
+xmmRegNo :: XMMReg -> Word8
+xmmRegNo (XMMR w) = w
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -311,6 +321,7 @@ data Value
   = ControlReg ControlReg
   | DebugReg DebugReg
   | MMXReg MMXReg
+  | XMMReg XMMReg  
   | SegmentValue Segment
   | FarPointer AddrRef
   | VoidMem AddrRef

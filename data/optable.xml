@@ -5198,7 +5198,7 @@
             <opr>M</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>oso aso rexr rexx rexb</pfx>
             <opc>0f 1f</opc>
             <opr>M</opr>
         </def>
@@ -5795,6 +5795,7 @@
         </def>
     </instruction>
 
+<!--
     <instruction>
         <mnemonic>pmovmskb</mnemonic>
         <class>sse</class>
@@ -5805,6 +5806,22 @@
         </def>
         <def>
             <pfx>oso rexr rexb</pfx>
+            <opc>0f d7</opc>
+            <opr>Gd N</opr>
+        </def>
+    </instruction>
+-->
+
+    <instruction>
+        <mnemonic>pmovmskb</mnemonic>
+        <class>sse</class>
+        <def>
+            <pfx>rexr rexb</pfx>
+            <opc>/sse=66 0f d7</opc>
+            <opr>Gd U</opr>
+        </def>
+        <def>
+            <pfx>rexr rexb</pfx>
             <opc>0f d7</opc>
             <opr>Gd N</opr>
         </def>

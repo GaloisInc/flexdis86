@@ -14,6 +14,8 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-} -- for lenses
+
 module Flexdis86.Disassembler
   ( InstructionParser
   , mkX64Parser
@@ -21,32 +23,51 @@ module Flexdis86.Disassembler
   , parseInstruction
   ) where
 
-import Control.Applicative
-import Control.Exception
-import Control.Lens
-import Control.Monad.Error
-import Control.Monad.State
-import Data.Bits
+import           Control.Applicative
+import           Control.Exception
+import           Control.Lens
+import           Control.Monad.Error
+import           Control.Monad.State
+import           Data.Bits
 import qualified Data.ByteString as BS
-import Data.Int
+import           Data.Int
+import           Data.List (subsequences, permutations)
 import qualified Data.Map as Map
-import Data.Maybe
+import           Data.Maybe
 import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
-import Data.Word
-import Numeric (showHex)
+import           Data.Word
+import           Numeric (showHex)
 
-import Flexdis86.ByteReader
-import Flexdis86.InstructionSet
-import Flexdis86.OpTable
+import           Flexdis86.ByteReader
+import           Flexdis86.InstructionSet
+import           Flexdis86.OpTable
 
-------------------------------------------------------------------------
--- SegmentPrefix
+-- | Prefixes for an instruction.
+data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
+                         , _prSP  :: SegmentPrefix
+                         , _prREX :: REX
+                         , _prASO :: Bool
+                         , _prOSO :: Bool
+                         }
+                deriving (Show)
+                
+-- | REX value for 64-bit mode.
+newtype REX = REX { unREX :: Word8 }
+  deriving (Eq)
+
+instance Show REX where
+  showsPrec _ (REX rex) = showHex rex
 
 -- | Includes segment prefix and branch override hints.
 newtype SegmentPrefix = SegmentPrefix Word8
   deriving (Show)
+
+$(makeLenses ''Prefixes)
+
+------------------------------------------------------------------------
+-- SegmentPrefix
 
 no_seg_prefix :: SegmentPrefix
 no_seg_prefix = SegmentPrefix 0
@@ -109,6 +130,12 @@ data OperandType
    | RG_S
      -- | An MMX register from ModRM.reg
    | RG_MMX_reg
+     -- | A SSE XMM register from ModRM.reg
+   | RG_XMM_reg
+     -- | A SSE XMM register from ModRM.rm
+   | RG_XMM_rm   
+     -- | A SSE XMM register or 64 bit address from ModRM.rm
+   | RM_XMM
      -- | A specific segment
    | SEG Segment 
 
@@ -124,9 +151,9 @@ data OperandType
      -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
    | M_Q
      -- | A register or memory location.
-     -- As a register has size VSize, and as memory has size WSize.
+     -- As a register has size X-Size, and as memory has size X-Size.
      -- Stored in ModRM.rm
-   | MwRv
+   | MXRX OperandSize OperandSize
 
      -- | An MMX register or 64bit memory operand.
      -- Stored in ModRM.rm.
@@ -185,6 +212,7 @@ operandHandlerMap = Map.fromList
 
     -- Register values stored in ModRM.reg.
   , (,) "Gb"  $ OpType ModRM_reg BSize
+  , (,) "Gd"  $ OpType ModRM_reg DSize  
   , (,) "Gq"  $ OpType ModRM_reg QSize
   , (,) "Gv"  $ OpType ModRM_reg VSize
   , (,) "Gy"  $ OpType ModRM_reg YSize
@@ -213,8 +241,11 @@ operandHandlerMap = Map.fromList
 
     -- Memory or register value stored in ModRM.rm
     -- As a  register has size VSize, and as memory has size WSize.
-  , (,) "MwRv" $ MwRv
-
+  , (,) "MwRv" $ MXRX VSize WSize
+    -- As a  register has size DSize, and as memory has size BSize.  
+  , (,) "MbRd" $ MXRX BSize DSize
+  , (,) "MwRy" $ MXRX WSize YSize
+  
     -- Far Pointer (which is an address) stored in ModRM.rm
     -- (ModRM.mod must not equal 3)
   , (,) "Fv"   $ M_FP
@@ -252,6 +283,11 @@ operandHandlerMap = Map.fromList
     -- An immediate ZSize value that is sign extended to the operator
     -- size.
   , (,) "sIz" $ IM_SZ
+    
+    -- XMM
+  , (,) "U"   $ RG_XMM_rm
+  , (,) "V"   $ RG_XMM_reg
+  , (,) "W"   $ RM_XMM
   ]
 
 lookupOperandType :: String -> String -> OperandType
@@ -266,19 +302,21 @@ mkX64Parser :: BS.ByteString -> Either String InstructionParser
 mkX64Parser bs = mkParser . filter ifilter <$> parseOpTable bs
   where -- Filter out unsupported operations
         ifilter d = d^.reqAddrSize /= Just Size16
-                 && d^.defCPUReq == Base
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2])
                  && x64Compatible d
         mkParser defs = fst $ runParserGen $ parseTable defs
 
 ------------------------------------------------------------------------
 -- REX
 
--- | REX value for 64-bit mode.
-newtype REX = REX { unREX :: Word8 }
-  deriving (Eq)
+rex_instr_pfx :: Word8
+rex_instr_pfx = 0x40
 
-instance Show REX where
-  showsPrec _ (REX rex) = showHex rex
+rex_w_bit, rex_r_bit, rex_x_bit, rex_b_bit :: Word8
+rex_w_bit = 0x08
+rex_r_bit = 0x04
+rex_x_bit = 0x02
+rex_b_bit = 0x01
 
 no_rex :: REX
 no_rex = REX 0
@@ -375,29 +413,17 @@ trVal tr i = trVec tr `regIdx` i
 type TableRefSeq a = Seq.Seq (TableRef a)
 
 data ParserState 
-   = ParserState { _startTables :: TableRefSeq (InstructionInstance)
-                 , _segTables   :: TableRefSeq (Segment -> InstructionInstance)
-                 , _rexTables   :: TableRefSeq (Segment -> REX -> InstructionInstance)
-                 }
+   = ParserState { _startTables :: TableRefSeq (InstructionInstance) }
   deriving (Show)
 
 startTables :: Simple Lens ParserState (TableRefSeq InstructionInstance)
 startTables = lens _startTables (\s v -> s { _startTables = v})
 
-segTables :: Simple Lens ParserState (TableRefSeq (Segment -> InstructionInstance))
-segTables = lens _segTables (\s v -> s { _segTables = v})
-
-rexTables :: Simple Lens ParserState (TableRefSeq (Segment -> REX -> InstructionInstance))
-rexTables = lens _rexTables (\s v -> s { _rexTables = v})
-
 type ParserGen = State ParserState 
 
 runParserGen :: ParserGen a -> (a,ParserState)
 runParserGen p = do
-  let s0 = ParserState { _startTables = Seq.empty
-                       , _segTables   = Seq.empty
-                       , _rexTables   = Seq.empty
-                       }
+  let s0 = ParserState { _startTables = Seq.empty }
    in runState p s0
 
 mkTableRef :: String
@@ -415,206 +441,25 @@ startTableRef :: V.Vector (IParser InstructionInstance)
             -> ParserGen  (TableRef InstructionInstance)
 startTableRef = mkTableRef "startTable" startTables
 
-segTableRef :: V.Vector (IParser (Segment -> InstructionInstance))
-            -> ParserGen  (TableRef (Segment -> InstructionInstance))
-segTableRef = mkTableRef "segTable" segTables
-
-rexTableRef :: V.Vector (IParser (Segment -> REX -> InstructionInstance))
-            -> ParserGen  (TableRef (Segment -> REX -> InstructionInstance))
-rexTableRef = mkTableRef "rexTable" rexTables
-
-type TableFn t = [Def] -> ParserGen t
-
--- | Contains a pair of entries.
-data BoolTable t = BoolTable t t
-  deriving (Show)
-
-preSegmentOverrideVec 
-    :: Maybe (TableRef InstructionInstance)
-       -- ^ Lookup table for next byte if operand-size override is parsed.
-    -> Maybe (TableRef InstructionInstance)
-       -- ^ Lookup table for next byte if address-size override is parsed.
-    -> Maybe (TableRef InstructionInstance)
-       -- ^ Lookup table for next byte if REP prefix is parsed.
-    -> Maybe (TableRef InstructionInstance)
-       -- ^ Lookup table for next byte if REPZ prefix is parsed.
-    -> TableRef (Segment -> InstructionInstance)
-       -- ^ Table if segment override seen.
-    -> V.Vector RexEntry
-       -- ^ Table for opcodes.
-    -> V.Vector (IParser InstructionInstance)
-preSegmentOverrideVec mosoV masoV mrepTable mrepzTable segV opcodeV = vec256 eltFn
-  where aso = isNothing masoV 
-        pr = SegmentPrefix
-        eltFn 0xf0 = PrefixUnsupported "LOCK"
-        eltFn 0xf2 | Just repzTable <- mrepzTable = Next repzTable -- REPZ prefix
-        eltFn 0xf3 | Just repTable  <- mrepTable  = Next repTable -- REP prefix
-        eltFn w@0x26 = SetSegment aso (pr w) segV -- ES segment override
-        eltFn w@0x2e = SetSegment aso (pr w) segV -- CS segment override or branch not taken.
-        eltFn w@0x36 = SetSegment aso (pr w) segV -- SS segment override
-        eltFn w@0x3e = SetSegment aso (pr w) segV -- DS segment override or branch taken.
-        eltFn w@0x64 = SetSegment aso (pr w) segV -- FS segment override
-        eltFn w@0x65 = SetSegment aso (pr w) segV -- GS segment override
-        eltFn 0x66 | Just osoV <- mosoV = Next osoV -- Operand-size override prefix.
-        eltFn 0x67 | Just asoV <- masoV = Next asoV -- Address-size override prefix.
-        eltFn i = DefaultSegment aso (opcodeV `regIdx` i)
-
-postSegmentOverrideVec
-    :: Maybe (TableRef (Segment -> InstructionInstance))
-       -- ^ Lookup table for next byte if operand-size override is parsed.
-    -> Maybe (TableRef (Segment -> InstructionInstance))
-       -- ^ Lookup table for next byte if address-size override is parsed.
-    -> Maybe (TableRef (Segment -> InstructionInstance))
-       -- ^ Lookup table for next byte if REP prefix is parsed.
-    -> Maybe (TableRef (Segment -> InstructionInstance))
-       -- ^ Lookup table for next byte if REPZ prefix is parsed.
-    -> V.Vector (IParser (Segment -> InstructionInstance))
-       -- ^ Optable for non-prefixes.
-    -> V.Vector (IParser (Segment -> InstructionInstance))
-postSegmentOverrideVec mosoV masoV mrepTable mrepzTable opcodeV = vec256 eltFn
-  where eltFn 0xf0 = PrefixUnsupportedSeg "LOCK"
-        eltFn 0xf2 | Just repzTable <- mrepzTable = NextSeg repzTable
-        eltFn 0xf3 | Just repTable  <- mrepTable  = NextSeg repTable
-        eltFn 0x66 | Just osoV <- mosoV = NextSeg osoV -- Operand-size override prefix.
-        eltFn 0x67 | Just asoV <- masoV = NextSeg asoV -- Address-size override prefix.
-        eltFn i = opcodeV `regIdx` i
-
-
--- | Contains pair of tables when generating  generting tables.
--- The first table is used before a segment prefix has been read, the second
--- is used after a segment prefix has been read.
-type SegmentPair = ( TableRef (Segment -> InstructionInstance)
-                   , TableRef InstructionInstance
-                   )
-
--- | Generates a pair of tables, the first is 
-segmentPair :: Maybe SegmentPair
-               -- ^ Pair of lookup tables if next byte is an operand-size override.
-            -> Maybe SegmentPair
-               -- ^ Pair of lookup tables if next byte is an address-size override.
-            -> Maybe SegmentPair
-               -- ^ Pair of lookup tables if next byte is REP prefix.
-            -> Maybe SegmentPair
-               -- ^ Pair of lookup tables if next byte is REPZ prefix.
-            -> V.Vector RexEntry
-               -- ^ Opcodes to use next.
-            -> ParserGen SegmentPair
-segmentPair moso maso mrep mrepz a = do
-  seg  <- segTableRef $
-    postSegmentOverrideVec (fst <$> moso) (fst <$> maso) (fst <$> mrep) (fst <$> mrepz) a
-  base <- startTableRef $
-    preSegmentOverrideVec (snd <$> moso) (snd <$> maso) (snd <$> mrep) (snd <$> mrepz) seg a
-  return (seg, base)
-
--- | Contains pair of segment pairs for generating table.
--- The first table is used before an operand size override has been read, the second
--- is used after an operand size override has been read.
-type OpOverridePair = (SegmentPair, SegmentPair)
-
-osoPair :: Maybe OpOverridePair
-        -> Maybe OpOverridePair
-           -- ^ OpOverridePair for when REP prefix is read.
-        -> Maybe OpOverridePair
-           -- ^ OpOverridePair for when REPZ prefix is read.
-        -> OSOTable
-        -> ParserGen OpOverridePair
-osoPair maso mrep mrepz (BoolTable a_o16 a_o32) = do
-  oso  <- segmentPair Nothing    (fst <$> maso) (fst <$> mrep) (fst <$> mrepz) a_o16
-  base <- segmentPair (Just oso) (snd <$> maso) (snd <$> mrep) (snd <$> mrepz) a_o32
-
-  return (oso, base)
-
--- | Contains pair of address override pairs for generating table.
--- The first table is used before an operand size override has been read, the second
--- is used after an operand size override has been read.
-type AddrOverridePair = (OpOverridePair, OpOverridePair)
-
-type OSOTable = BoolTable (V.Vector RexEntry)
-type ASOTable = BoolTable OSOTable
-
-addrPair :: Maybe AddrOverridePair
-            -- ^ AddrOverridePair for when REP prefix is read.
-         -> Maybe AddrOverridePair
-            -- ^ AddrOverridePair for when REP prefix is read.
-         -> ASOTable
-         -> ParserGen AddrOverridePair
-addrPair mrep mrepz (BoolTable a32 a64) = do
-  aso  <- osoPair Nothing    (fst <$> mrep) (fst <$> mrepz) a32
-  base <- osoPair (Just aso) (snd <$> mrep) (snd <$> mrepz) a64
-  return (aso, base)
-
--- | Create a vector of entries by matching an opcode table.
-asOpcodeTable :: IParser  (Segment -> REX -> InstructionInstance)
-              -> TableRef (Segment -> REX -> InstructionInstance)
-asOpcodeTable (OpcodeTable v) = v
-asOpcodeTable _ = error "asOpcodeTable expected OpcodeTable"
+type TableFn t    = [Def]             -> ParserGen t
+type PfxTableFn t = [(Prefixes, Def)] -> ParserGen t
 
 type InstructionParser = TableRef InstructionInstance
 
-mkParseTable :: (LockPrefix -> TableFn ASOTable)
-             -> TableFn InstructionParser
-mkParseTable f defs = do
-  repPair  <- mkPrefix RepPrefix "rep"
-  repzPair <- mkPrefix RepZPrefix "repz"
-  noPrefix  <- f NoLockPrefix defs
-  (_, (_, (_,v))) <- addrPair (Just repPair) (Just repzPair) noPrefix
-  return v
-  where 
-    mkPrefix pfx strPfx = do
-      repPrefix <- f pfx $ filter (\d -> elem strPfx (d^.defPrefix)) defs
-      addrPair Nothing Nothing repPrefix
-
 data IParser a where
-
-  -- Initial ctors
-
-  PrefixUnsupported :: String -> IParser InstructionInstance
-  -- When 
-  Next :: TableRef InstructionInstance
-       -> IParser InstructionInstance
-  -- Set segment with given address size override and prefix.
-  SetSegment :: Bool
-             -> SegmentPrefix
-             -> TableRef (Segment -> InstructionInstance)
-             -> IParser InstructionInstance  
-  -- Use default segment with givne address size override.
-  DefaultSegment :: Bool
-                 -> IParser (Segment -> InstructionInstance)
-                 -> IParser InstructionInstance
-
-  -- Operates when segment has been set.
- 
-  -- Called when a prefix is not supported.
-  PrefixUnsupportedSeg
-           :: String
-           -> IParser (Segment -> InstructionInstance)
-  NextSeg  :: TableRef (Segment -> InstructionInstance)
-           -> IParser  (Segment -> InstructionInstance)
-  UseRex   :: REX
-           -> TableRef (Segment -> REX -> InstructionInstance)
-           -> IParser  (Segment -> InstructionInstance)
-  UseNoRex :: IParser  (Segment -> REX -> InstructionInstance)
-           -> IParser  (Segment -> InstructionInstance)
-
-  OpcodeTable :: TableRef (Segment -> REX -> InstructionInstance)
-              -> IParser  (Segment -> REX -> InstructionInstance)
-  SkipModRM :: LockPrefix
-            -> Bool -- Indicates if address size override seen.
+  OpcodeTable :: TableRef (InstructionInstance)
+              -> IParser  (InstructionInstance)
+  SkipModRM :: Prefixes
             -> SizeConstraint
             -> String
             -> [OperandType]
-            -> IParser (Segment -> REX -> InstructionInstance)
+            -> IParser (InstructionInstance)
   ReadModRM :: RegTable (ModTable RMTable)
-            -> IParser (Segment -> REX -> InstructionInstance)
+            -> IParser (InstructionInstance)
 
 deriving instance Show (IParser a)
 
-type RexEntry = IParser (Segment -> InstructionInstance)
-
-type OpcodeTable = IParser (Segment -> REX -> InstructionInstance)
-
-vec256 :: (Word8 -> a) -> V.Vector a
-vec256 f = V.generate 256 (f.fromIntegral)
+type OpcodeTable = IParser (InstructionInstance)
 
 regIdx :: V.Vector a -> Word8 -> a
 regIdx v i = v V.! fromIntegral i
@@ -623,34 +468,12 @@ regIdx v i = v V.! fromIntegral i
 matchRequiredOpSize :: SizeConstraint -> Def -> Bool
 matchRequiredOpSize sc d = maybe True (==sc) (d^.reqOpSize)
 
--- | Create the table for address size overrides.
-mkAddrSizeTable :: (Bool -> TableFn OSOTable)
-                -> TableFn ASOTable
-mkAddrSizeTable f defs = do
-  let matchReqAddr sz = maybe True (==sz).view reqAddrSize
-  BoolTable <$> f True  (filter (matchReqAddr Size32) defs)
-            <*> f False (filter (matchReqAddr Size64) defs)
-
-mkOperandSizeTable :: (SizeConstraint -> TableFn OpcodeTable)
-                   -> TableFn OSOTable
-mkOperandSizeTable f defs = do
-  let mkVec sc = f sc $ filter (matchRequiredOpSize sc) defs
-  OpcodeTable v64 <- mkVec Size64
-  -- Check for REX in entries before using standard opcode table.
-  let entryFn v i
-        | (i .&. 0xf0) == 0x40
-        = let rex = REX i
-           in UseRex rex $ if rex_w rex then v64 else v
-        | otherwise = UseNoRex $ trVec v `regIdx` i
-  let go sc = fmap (\v -> vec256 (entryFn (asOpcodeTable v))) $ mkVec sc
-  BoolTable <$> go Size16 <*> go Size32
-
 -- | Returns true if this instruction depends on modrm byte.
 expectsModRM :: Def -> Bool
 expectsModRM d
   =  isJust (d^.requiredMod)
   || isJust (d^.requiredReg)
-  || isJust (d^.requiredReg)
+  || isJust (d^.requiredRM)
   || any modRMOperand (d^.defOperands)
 
 -- | Returns true if operand has a modRMOperand.
@@ -671,53 +494,143 @@ modRMOperand nm =
     RG_dbg -> True
     RG_S   -> True
     RG_MMX_reg -> True
+    RG_XMM_reg -> True
+    RG_XMM_rm -> True    
+    RM_XMM -> True
     SEG _ -> False
     M_FP  -> True
     M     -> True
     M_Q   -> True
-    MwRv  -> True
+    MXRX _ _ -> True
     RM_MMX    -> True
     RG_MMX_rm -> True
     IM_1  -> False
     IM_SB -> False
     IM_SZ -> False
 
-partitionBy :: [([Word8],d)] -> V.Vector [([Word8],d)]
+partitionBy :: Show d => [([Word8],d)] -> V.Vector [([Word8],d)]
 partitionBy l = V.create $ do
   mv <- VM.replicate 256 []
-  forM_ l $ \(w:wl,d) -> do
-    el <- VM.read mv (fromIntegral w)
-    VM.write mv (fromIntegral w) ((wl,d):el)
+  forM_ l (go mv) 
   return mv
+  where
+    go _ ([], d) = error $ "internal: empty bytes in partitionBy at def " ++ show d
+    go mv (w:wl,d) = do el <- VM.read mv (fromIntegral w)
+                        VM.write mv (fromIntegral w) ((wl,d):el)    
 
--- | Return size constraint associated with specific size constraint.
-defSize :: Def -> SizeConstraint -> SizeConstraint
-defSize d Size32 | Just Default64 <- d^.defMode = Size64
-defSize _ sc = sc
 
-mkOpcodeTable :: LockPrefix
-              -> Bool
-              -> SizeConstraint
-              -> ([Word8] -> TableFn (RegTable (ModTable RMTable)))
+-- | The rules for this are a little convoluted ...
+prefixOperandSizeConstraint :: Prefixes -> Def -> SizeConstraint
+prefixOperandSizeConstraint pfx d
+  -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
+  | Just Default64 <- d^.defMode,
+    pfx^.prOSO == False = Size64
+  | rex_w (pfx^.prREX)  = Size64
+  | pfx^.prOSO          = Size16
+  | otherwise           = Size32
+
+-- | Some instructions have multiple interpretations depending on the
+-- size of the operands.  This is represented by multiple instructions
+-- with the same opcode distinguished by the /o= and /a= annotations.
+-- This function removes those definitions which don't match the given
+-- prefix.
+validPrefix :: Prefixes -> Def -> Bool
+validPrefix pfx d = matchRequiredOpSize (prefixOperandSizeConstraint pfx d) d
+                    && matchReqAddr (if pfx^.prASO then Size32 else Size64) d
+  where
+    matchReqAddr sz = maybe True (==sz) . view reqAddrSize
+
+-- | This function calculates all possible byte sequences allowed for
+-- a particular instruction, along with the resulting Prefixes structure
+--
+-- There are 4 classes of prefixes, which can occur in any order,
+-- although not all instructions support all prefixes.  There is
+-- also the REX prefix which extends the register ids.
+--
+-- LOCK group has rep, repz
+-- SEG group has overrides for all 6 segments 
+-- ASO has a single member
+-- OSO has a single member
+-- REX has up to 4 bits, dep. on the instruction.
+-- 
+-- Each prefix is optional.
+--
+
+-- FIXME: we could probably share more here, rather than recalculating for each instr.
+allPrefixedOpcodes :: Def -> [([Word8], (Prefixes, Def))]
+allPrefixedOpcodes def = filter (uncurry validPrefix . snd) $ map (mkBytes . unzip) rexs
+  where
+    mkBytes (bytes, funs) = (bytes ++ def^.defOpcodes, (appList funs defaultPrefix, def))
+    appList :: [a -> a] -> a -> a
+    appList = foldl (.) id
+    -- all allowed prefixes from REP, REPZ, ASO, OSO
+    simplePfxs :: [ [(Word8, Prefixes -> Prefixes)] ]
+    simplePfxs = subsequences (simplePrefixes allowed) 
+    -- all possible permutations of the allowed prefixes
+    segs   :: [ [(Word8, Prefixes -> Prefixes)] ]
+    segs   = concat 
+             $ map permutations 
+             $ simplePfxs ++ [ v : vs | v <- segPrefixes allowed, vs <- simplePfxs ]
+    -- above with REX
+    rexs   :: [ [(Word8, Prefixes -> Prefixes)] ]
+    rexs   = segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
+
+    allowed = def^.defPrefix    
+    defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
+                             , _prSP  = no_seg_prefix
+                             , _prREX = no_rex
+                             , _prASO = False
+                             , _prOSO = False }
+
+simplePrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
+simplePrefixes allowed = [ v | (name, v) <- pfxs, name `elem` allowed ]
+  where
+    pfxs =  [ ("repz", (0xf2, set prLockPrefix RepZPrefix))
+            , ("rep",  (0xf3, set prLockPrefix RepPrefix))
+            , ("oso",  (0x66, set prOSO True))
+            , ("aso",  (0x67, set prASO True)) ]
+
+segPrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
+segPrefixes allowed
+  | "seg" `elem` allowed = [ (x, set prSP (SegmentPrefix x)) | x <- [ 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 ] ]
+  | otherwise            = []
+
+-- FIXME: we could also decode the REX
+rexPrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
+rexPrefixes allowed
+  | null possibleBits = []
+  | otherwise         = [ (x, set prREX (REX x))
+                        | xs <- subsequences possibleBits
+                        , let x = foldl (.|.) rex_instr_pfx xs ]
+  where 
+    possibleBits  = [ b | (name, b) <- rexPrefixBits, name `elem` allowed ]
+    rexPrefixBits = [ ("rexw", rex_w_bit)
+                    , ("rexr", rex_r_bit)
+                    , ("rexx", rex_x_bit)
+                    , ("rexb", rex_b_bit) ]
+
+-- We calculate all allowed prefixes for the instruction in the first 
+-- argument.  This simplifies parsing at the cost of extra space.
+mkOpcodeTable :: PfxTableFn (RegTable (ModTable RMTable))
               -> TableFn OpcodeTable
-mkOpcodeTable lockPrefix aso osz f defs = go [] [ (d^.defOpcodes, d) | d <- defs ]
+mkOpcodeTable f defs = go [] (concat (map allPrefixedOpcodes defs))
   where -- Recursive function that generates opcode table by parsing
         -- opcodes in first element of list.
         go :: -- Opcode bytes parsed so far.
               [Word8] 
               -- Potential opcode definitions with the remaining opcode
               -- bytes each potential definition expects.
-           -> [([Word8],Def)]
+           -> [([Word8], (Prefixes, Def))]
            -> ParserGen OpcodeTable
         go seen l
            -- If we have parsed all the opcodes expected by the remaining
            -- definitions.
           | all opcodeDone l = do
               case l of
-                _ | all (expectsModRM.snd) l ->
-                     ReadModRM <$> f (reverse seen) (snd <$> l) 
-                [([],d)] -> assert (not (expectsModRM d)) $
-                    return $ SkipModRM lockPrefix aso (defSize d osz) (d^.defMnemonic) tps
+                _ | all (expectsModRM.snd.snd) l ->
+                     ReadModRM <$> f (snd <$> l) 
+                [([],(pfx, d))] -> assert (not (expectsModRM d)) $
+                    return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps
                   where tps = lookupOperandType "" <$> view defOperands d
                 _ -> error "mkOpcodeTable: ambiguous operators."
             -- If we still have opcodes to parse, check that all definitions
@@ -725,12 +638,11 @@ mkOpcodeTable lockPrefix aso osz f defs = go [] [ (d^.defOpcodes, d) | d <- defs
             -- opcode match.
           | otherwise = assert (all (not.opcodeDone) l) $ do
             let v = partitionBy l
-                g i = go (fromIntegral i:seen) (v V.! i) 
-            fmap OpcodeTable $ rexTableRef =<< V.generateM 256 g
+                g i = go (fromIntegral i:seen) (v V.! i)
+            fmap OpcodeTable $ startTableRef =<< V.generateM 256 g
         -- Return whether opcode parsing is done.
-        opcodeDone :: ([Word8], Def) -> Bool
+        opcodeDone :: ([Word8], a) -> Bool
         opcodeDone (remaining,_) = null remaining
-
 
 data ModTable a
      -- | @ModTable memTable regTable@
@@ -741,9 +653,9 @@ data ModTable a
 requireModCheck :: Def -> Bool
 requireModCheck d = isJust (d^.requiredMod)
 
-mkModTable :: (Maybe ModConstraint -> TableFn a) -> TableFn (ModTable a)
-mkModTable f defs
-  | any requireModCheck defs = do
+mkModTable :: PfxTableFn a -> PfxTableFn (ModTable a)
+mkModTable f pfxdefs
+  | any (requireModCheck . snd) pfxdefs = do
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
@@ -757,7 +669,7 @@ mkModTable f defs
             M_FP    -> True
             M       -> True
             M_Q     -> True
-            MwRv    -> True
+            MXRX _ _ -> True
             RM_MMX  -> True
             _       -> False
     let regDef d =
@@ -771,13 +683,16 @@ mkModTable f defs
                 ModRM_rm -> True
                 ModRM_rm_mod3 -> True
                 _ -> False
-            MwRv      -> True
+            MXRX _ _  -> True            
             RM_MMX    -> True
-            RG_MMX_rm -> True
+            RG_MMX_rm -> True -- FIXME: no MMX_reg?
+            RG_XMM_reg -> True 
+            RG_XMM_rm -> True             
+            RM_XMM    -> True             
             _         -> False
-    ModTable <$> f (Just OnlyMem) (filter memDef defs)
-             <*> f (Just OnlyReg) (filter regDef defs)
-  | otherwise = ModUnchecked <$> f Nothing defs
+    ModTable <$> f (filter (memDef . snd) pfxdefs)
+             <*> f (filter (regDef . snd) pfxdefs)
+  | otherwise = ModUnchecked <$> f pfxdefs
 
 data RegTable a
    = RegTable (V.Vector a)
@@ -785,41 +700,45 @@ data RegTable a
   deriving (Show)
 
 mkRegTable :: (Def -> Maybe Fin8)
-           -> (Maybe Word8 -> TableFn a)
-           -> TableFn (RegTable a)
-mkRegTable rfn f defs
-  | any (isJust . rfn) defs
+           -> PfxTableFn a
+           -> PfxTableFn (RegTable a)
+mkRegTable rfn f pfxdefs
+  | any (isJust . rfn . snd) pfxdefs
   = let p i = maybe True (\r -> unFin8 r == i)
-        eltFn i = f (Just i) $ filter (p i.rfn) defs
+        eltFn i = f $ filter (p i . rfn . snd) pfxdefs
      in RegTable <$> V.generateM 8 (eltFn.fromIntegral)
-  | otherwise = RegUnchecked <$> f Nothing defs
+  | otherwise = RegUnchecked <$> f pfxdefs
 
 type RMTable = RegTable ReadTable
 
 -- | Return parsed instruction.
 data ReadTable
-   = ReadTable LockPrefix Bool SizeConstraint String [OperandType]
+   = ReadTable Prefixes SizeConstraint String [OperandType]
    | NoParse
   deriving (Show)
 
-parseTable :: [Def] -> ParserGen InstructionParser
-parseTable =
-  --TODO: Handle rep and repz prefix filters.
-  mkParseTable $ \lockPrefix ->
-  mkAddrSizeTable $ \aso ->
-  mkOperandSizeTable $ \osz ->
-  mkOpcodeTable lockPrefix aso osz $ \_opl ->
-  mkRegTable (view requiredReg) $ \_mreg ->
-  mkModTable $ \_mmc ->
-  -- Perform table lookup if instructions require a particular modrm byte.
-  mkRegTable (view requiredRM) $ \_mrm defs ->
-    case defs of
-      [] -> return NoParse
-      [d] -> return $ ReadTable lockPrefix aso (defSize d osz) nm tps
-        where nm = d^.defMnemonic
-              tps = lookupOperandType "" <$> view defOperands d
-      _ -> fail $ "parseTable ambiguous" ++ show defs
+-- | Create a vector of entries by matching an opcode table.
+asOpcodeTable :: IParser  (InstructionInstance)
+              -> InstructionParser
+asOpcodeTable (OpcodeTable v) = v
+asOpcodeTable _ = error "asOpcodeTable expected OpcodeTable"
 
+parseTable :: [Def] -> ParserGen InstructionParser
+parseTable = fmap asOpcodeTable . makeTables finished
+  --TODO: Handle rep and repz prefix filters.
+    where
+      makeTables = mkOpcodeTable 
+                   . mkRegTable (view requiredReg) 
+                   . mkModTable 
+                   . mkRegTable (view requiredRM) 
+
+      finished []         = return NoParse
+      finished [(pfx, d)] = let nm = d^.defMnemonic
+                                tps = lookupOperandType "" <$> view defOperands d
+                            in
+                             return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps
+      finished pfxdefs = fail $ "parseTable ambiguous" ++ show (map snd pfxdefs)
+    
 ------------------------------------------------------------------------
 -- Parsing
 
@@ -839,6 +758,7 @@ read_disp32 = readSDWord
 read_disp8 :: ByteReader m => m Int32
 read_disp8 = fromIntegral <$> readSByte
 
+-- | Parse 
 -- | Parse instruction using byte reader.
 parseInstruction :: ByteReader m
                  => InstructionParser
@@ -846,45 +766,11 @@ parseInstruction :: ByteReader m
 parseInstruction tr0 = do 
   b <- readByte
   case tr0 `trVal` b of
-    PrefixUnsupported nm  -> fail $ "Unknown prefix: " ++ nm
-    Next tr               -> parseInstruction tr
-    SetSegment aso s tr   -> parseSegOpcode aso s . trVal tr =<< readByte
-    DefaultSegment aso ip -> parseSegOpcode aso no_seg_prefix ip
-
--- | Parse 
-parseSegOpcode :: ByteReader m
-               => Bool -- ^ Address size override.
-               -> SegmentPrefix
-               -> IParser (Segment -> InstructionInstance)
-               -> m InstructionInstance
-parseSegOpcode aso sp next =
-  case next of
-    PrefixUnsupportedSeg nm -> fail $ "Unknown prefix: " ++ nm
-    NextSeg tr  -> parseSegOpcode aso sp . trVal tr =<< readByte
-    UseRex r tr -> do
-        b <- readByte
-        let p = Prefixes { prSP  = sp
-                         , prREX = r
-                         }
-        parseOpcode p (trVal tr b)
-    UseNoRex ip -> parseOpcode p ip
-      where p = Prefixes { prSP  = sp
-                         , prREX = no_rex
-                         }
-
-parseOpcode :: ByteReader m
-            => Prefixes
-            -> IParser (Segment -> REX -> InstructionInstance)
-            -> m InstructionInstance
-parseOpcode p next =
-  case next of
-    OpcodeTable tr -> do
-      b <- readByte
-      parseOpcode p (trVal tr b)
-    SkipModRM lockPrefix aso osz nm tps ->
-      II lockPrefix nm <$> traverse (parseValue aso osz p Nothing) tps
-    ReadModRM t -> flip (parseRegTable p) t =<< readModRM
-
+    OpcodeTable tr -> parseInstruction tr
+    SkipModRM pfx osz nm tps ->
+      II (pfx^.prLockPrefix) nm <$> traverse (parseValue pfx osz Nothing) tps
+    ReadModRM t -> flip parseRegTable t =<< readModRM
+    
 parseGenRegTable :: ByteReader m
               => (ModRM -> a -> m InstructionInstance)
               -> ModRM
@@ -895,42 +781,34 @@ parseGenRegTable f modRM (RegTable v) = f modRM mtable
 parseGenRegTable f modRM (RegUnchecked m) = f modRM m
 
 parseRegTable :: ByteReader m
-              => Prefixes
-              -> ModRM
+              => ModRM
               -> RegTable (ModTable RMTable)
               -> m InstructionInstance
-parseRegTable p = parseGenRegTable (parseModTable p)
+parseRegTable = parseGenRegTable parseModTable
 
 parseModTable :: ByteReader m
-              => Prefixes
-              -> ModRM
+              => ModRM
               -> ModTable RMTable
               -> m InstructionInstance
-parseModTable p modRM (ModTable x y) = parseRMTable p modRM z
+parseModTable modRM (ModTable x y) = parseRMTable modRM z
   where z | modRM_mod modRM == 3 = y
           | otherwise = x
-parseModTable p modRM (ModUnchecked x) = parseRMTable p modRM x
+parseModTable modRM (ModUnchecked x) = parseRMTable modRM x
 
--- | Prefixes for an instruction.
-data Prefixes = Prefixes { prSP :: SegmentPrefix
-                         , prREX :: REX
-                         }
 
 parseRMTable :: ByteReader m
-             => Prefixes
-             -> ModRM
+             => ModRM
              -> RMTable
              -> m InstructionInstance
-parseRMTable = parseGenRegTable . parseReadTable
+parseRMTable = parseGenRegTable parseReadTable
 
 parseReadTable :: ByteReader m
-               => Prefixes
-               -> ModRM
+               => ModRM
                -> ReadTable
                -> m InstructionInstance
-parseReadTable _ _ NoParse = fail "Invalid instruction."
-parseReadTable p modRM (ReadTable lockPrefix aso osz nm tps) =
-  II lockPrefix nm <$> traverse (parseValue aso osz p (Just modRM)) tps
+parseReadTable _ NoParse = fail "Invalid instruction."
+parseReadTable modRM (ReadTable pfx osz nm tps) =
+  II (pfx^.prLockPrefix) nm <$> traverse (parseValue pfx osz (Just modRM)) tps
 
 -- | Returns the size of a function.
 sizeFn :: SizeConstraint -> OperandSize -> SizeConstraint
@@ -962,15 +840,15 @@ memSizeFn osz sz =
     Size64 -> Mem64
 
 parseValue :: ByteReader m
-           => Bool -- ^ Address size override.
+           => Prefixes
            -> SizeConstraint -- ^ Operand size
-           -> Prefixes
            -> Maybe ModRM
            -> OperandType
            -> m Value
-parseValue aso osz p mmrm tp = do 
-  let sp  = prSP p
-      rex = prREX p
+parseValue p osz mmrm tp = do 
+  let sp  = p^.prSP
+      rex = p^.prREX
+      aso = p^.prASO
       msg = "internal: parseValue missing modRM with operand type: " ++ show tp
       modRM = fromMaybe (error msg) mmrm -- laziness is used here and below, this is not used for e.g. ImmediateSource
 
@@ -1021,24 +899,30 @@ parseValue aso osz p mmrm tp = do
     RG_C   -> return $ ControlReg (controlReg reg_with_rex)
     RG_dbg -> return $ DebugReg   (debugReg   reg_with_rex)
     RG_S   -> SegmentValue <$> segmentRegisterByIndex reg
-    RG_MMX_reg -> return $ MMXReg (mmx_reg reg)
+    RG_MMX_reg -> return $ MMXReg (mmxReg reg)
+    RG_XMM_reg -> return $ XMMReg (xmmReg reg)
+    RG_XMM_rm  -> return $ XMMReg (xmmReg rm_reg)    
+    RM_XMM
+      | modRM_mod modRM == 3 ->
+        pure $ XMMReg $ xmmReg $ modRM_rm modRM
+      | otherwise -> Mem64 <$> addr
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
     M    ->    VoidMem <$> addr
     M_Q  ->      Mem64 <$> addr
-    MwRv
+    MXRX msz rsz
       | modRM_mod modRM == 3 -> 
         case osz of
           Size16 -> pure $  WordReg $ reg16 rm_reg 
           Size32 -> pure $ DWordReg $ reg32 rm_reg 
           Size64 -> pure $ QWordReg $ reg64 rm_reg 
-      | otherwise -> Mem16 <$> addr
+      | otherwise -> memSizeFn osz msz <$> addr -- FIXME!!
     RM_MMX
       | modRM_mod modRM == 3 ->
-        pure $ MMXReg $ mmx_reg $ modRM_rm modRM
+        pure $ MMXReg $ mmxReg $ modRM_rm modRM
       | otherwise -> Mem64 <$> addr
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
-      pure $ MMXReg $ mmx_reg $ modRM_rm modRM
+      pure $ MMXReg $ mmxReg $ modRM_rm modRM
     IM_1 -> pure $ ByteImm 1
     IM_SB -> do
       b <- readSByte
@@ -1052,6 +936,7 @@ parseValue aso osz p mmrm tp = do
         Size32 -> DWordImm . fromIntegral <$> readDWord
         Size64 -> QWordImm . fromIntegral <$> readDWord
 
+-- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m
              => Bool -- ^ Address size override
              -> Prefixes
@@ -1061,8 +946,8 @@ readNoOffset aso p modRM = do
   let memRef | aso = memRef_32
              | otherwise = memRef_64
   let rm = modRM_rm modRM
-  let rex = prREX p
-      sp = prSP p
+  let rex = p^.prREX
+      sp = p^.prSP
   let base_reg  = (rex_b rex .|.)
       index_reg = (rex_x rex .|.)
   if rm == rsp_idx then do
@@ -1091,10 +976,10 @@ readWithOffset :: ByteReader m
                -> ModRM
                -> m AddrRef
 readWithOffset readDisp aso p modRM = do
-  let sp = prSP p
+  let sp = p^.prSP
   let memRef | aso = memRef_32
              | otherwise = memRef_64
-  let rex = prREX p
+  let rex = p^.prREX
   let rm = modRM_rm modRM
   let base_reg  = (rex_b rex .|.)
       index_reg = (rex_x rex .|.)
