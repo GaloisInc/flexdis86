@@ -7700,6 +7700,7 @@
         </def>
     </instruction>
 
+<!--
     <instruction>
         <mnemonic>stosbrep</mnemonic>
         <def>
@@ -7707,6 +7708,7 @@
             <opc>f3 aa</opc>
         </def>
     </instruction>
+-->
 
     <instruction>
         <mnemonic>stosw</mnemonic>

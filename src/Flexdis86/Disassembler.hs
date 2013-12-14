@@ -149,11 +149,11 @@ data OperandType
    | M
      -- | A 64-bit integer memory location.
      -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
-   | M_Q
+   | M_X SizeConstraint
      -- | A register or memory location.
      -- As a register has size X-Size, and as memory has size X-Size.
      -- Stored in ModRM.rm
-   | MXRX OperandSize OperandSize
+   | MXRX OperandSize OperandSize -- FIXME, should prob. be SizeConstraint
 
      -- | An MMX register or 64bit memory operand.
      -- Stored in ModRM.rm.
@@ -254,7 +254,8 @@ operandHandlerMap = Map.fromList
   , (,) "M"    $ M
     -- Memory value pointing to 64-bit integer stored in ModRM.rm
     -- (ModRM.mod must not equal 3).
-  , (,) "Mq"  $ M_Q
+  , (,) "Mq"  $ M_X Size64
+  , (,) "Md"  $ M_X Size32 
   , (,) "S"    $ RG_S
 
   , (,) "Q"    $ RM_MMX
@@ -500,7 +501,7 @@ modRMOperand nm =
     SEG _ -> False
     M_FP  -> True
     M     -> True
-    M_Q   -> True
+    M_X _ -> True
     MXRX _ _ -> True
     RM_MMX    -> True
     RG_MMX_rm -> True
@@ -632,7 +633,7 @@ mkOpcodeTable f defs = go [] (concat (map allPrefixedOpcodes defs))
                 [([],(pfx, d))] -> assert (not (expectsModRM d)) $
                     return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps
                   where tps = lookupOperandType "" <$> view defOperands d
-                _ -> error "mkOpcodeTable: ambiguous operators."
+                _ -> error $ "mkOpcodeTable: ambiguous operators " ++ show (map snd l)
             -- If we still have opcodes to parse, check that all definitions
             -- expect at least one more opcode, and generate table for next
             -- opcode match.
@@ -668,7 +669,7 @@ mkModTable f pfxdefs
                 _ -> False
             M_FP    -> True
             M       -> True
-            M_Q     -> True
+            M_X _   -> True
             MXRX _ _ -> True
             RM_MMX  -> True
             _       -> False
@@ -909,7 +910,10 @@ parseValue p osz mmrm tp = do
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
     M    ->    VoidMem <$> addr
-    M_Q  ->      Mem64 <$> addr
+    M_X sz -> case sz of
+                Size16 -> Mem16 <$> addr 
+                Size32 -> Mem32 <$> addr 
+                Size64 -> Mem64 <$> addr 
     MXRX msz rsz
       | modRM_mod modRM == 3 -> 
         case osz of
