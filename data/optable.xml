@@ -5168,37 +5168,37 @@
         </def>
 --> 
        <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 19</opc>
             <opr>M</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 1a</opc>
             <opr>M</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 1b</opc>
             <opr>M</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 1c</opc>
             <opr>M</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 1d</opc>
             <opr>M</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 1e</opc>
             <opr>M</opr>
         </def>
         <def>
-            <pfx>oso aso rexr rexx rexb</pfx>
+            <pfx>oso aso seg rexr rexx rexb</pfx>
             <opc>0f 1f</opc>
             <opr>M</opr>
         </def>
