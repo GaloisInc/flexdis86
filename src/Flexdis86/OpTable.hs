@@ -33,6 +33,7 @@ module Flexdis86.OpTable
   , reqAddrSize
   , reqOpSize
   , defPrefix
+  , requiredPrefix
   , defOpcodes
   , requiredMod
   , requiredReg
@@ -308,6 +309,7 @@ data Def = Def  { _defMnemonic :: String
                 , _reqAddrSize :: Maybe SizeConstraint
                 , _reqOpSize :: Maybe SizeConstraint
                 , _defPrefix :: [String]
+                , _requiredPrefix :: Maybe Word8
                 , _defOpcodes :: [Word8]
                 , _requiredMod :: Maybe ModConstraint
                 , _requiredReg :: Maybe Fin8
@@ -352,6 +354,10 @@ reqOpSize = lens _reqOpSize (\s v -> s { _reqOpSize = v })
 -- | Prefixes allowed on instruction.
 defPrefix :: Simple Lens Def [String]
 defPrefix = lens _defPrefix (\s v -> s { _defPrefix = v })
+
+-- | Prefixe required by an instruction, if any.
+requiredPrefix :: Simple Lens Def (Maybe Word8)
+requiredPrefix = lens _requiredPrefix (\s v -> s { _requiredPrefix = v })
 
 -- | Opcodes on instruction.
 defOpcodes :: Simple Lens Def [Word8]
@@ -407,6 +413,7 @@ parse_def nm creq v = do
                , _reqAddrSize = Nothing
                , _reqOpSize = Nothing
                , _defPrefix = prefix
+               , _requiredPrefix = Nothing
                , _defOpcodes = []
                , _requiredMod = Nothing
                , _requiredReg = Nothing
@@ -467,11 +474,11 @@ parse_opcode nm = do
     _ | Just r <- stripPrefix "/3dnow=" nm
       , [(b,"")] <- readHex r 
       -> do setDefCPUReq AMD_3DNOW
-            addOpcode b
+            addOpcode b -- We don't use requiredPrefix here because it is a suffix
     _ | Just r <- stripPrefix "/sse=" nm
       , [(b,"")] <- readHex r 
       -> do setDefCPUReq SSE
-            addOpcode b
+            requiredPrefix ?= b
     _ | Just r <- stripPrefix "/x87=" nm
       , [(b,"")] <- readHex r 
       , 0 <= b && b < 64

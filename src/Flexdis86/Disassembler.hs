@@ -535,9 +535,9 @@ prefixOperandSizeConstraint pfx d
 -- with the same opcode distinguished by the /o= and /a= annotations.
 -- This function removes those definitions which don't match the given
 -- prefix.
-validPrefix :: Prefixes -> Def -> Bool
-validPrefix pfx d = matchRequiredOpSize (prefixOperandSizeConstraint pfx d) d
-                    && matchReqAddr (if pfx^.prASO then Size32 else Size64) d
+validPrefix :: (Prefixes, Def) -> Bool
+validPrefix (pfx, d) = matchRequiredOpSize (prefixOperandSizeConstraint pfx d) d
+                       && matchReqAddr (if pfx^.prASO then Size32 else Size64) d
   where
     matchReqAddr sz = maybe True (==sz) . view reqAddrSize
 
@@ -554,12 +554,13 @@ validPrefix pfx d = matchRequiredOpSize (prefixOperandSizeConstraint pfx d) d
 -- OSO has a single member
 -- REX has up to 4 bits, dep. on the instruction.
 -- 
--- Each prefix is optional.
+-- Each prefix is optional.  Some SSE instructions require a certain prefix, but
+-- seem to allow other prefixes sometimes, along with REX.
 --
 
 -- FIXME: we could probably share more here, rather than recalculating for each instr.
 allPrefixedOpcodes :: Def -> [([Word8], (Prefixes, Def))]
-allPrefixedOpcodes def = filter (uncurry validPrefix . snd) $ map (mkBytes . unzip) rexs
+allPrefixedOpcodes def = filter (validPrefix . snd) $ map (mkBytes . unzip) rexs
   where
     mkBytes (bytes, funs) = (bytes ++ def^.defOpcodes, (appList funs defaultPrefix, def))
     appList :: [a -> a] -> a -> a
@@ -568,15 +569,20 @@ allPrefixedOpcodes def = filter (uncurry validPrefix . snd) $ map (mkBytes . unz
     simplePfxs :: [ [(Word8, Prefixes -> Prefixes)] ]
     simplePfxs = subsequences (simplePrefixes allowed) 
     -- all possible permutations of the allowed prefixes
+    -- FIXME: check that the required prefix doesn't occur in the allowed prefixes
     segs   :: [ [(Word8, Prefixes -> Prefixes)] ]
     segs   = concat 
-             $ map permutations 
+             $ map permutations -- get all permutations
+             $ map (reqPfx ++) -- add required prefix to every allowed prefix
              $ simplePfxs ++ [ v : vs | v <- segPrefixes allowed, vs <- simplePfxs ]
     -- above with REX
     rexs   :: [ [(Word8, Prefixes -> Prefixes)] ]
     rexs   = segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
 
-    allowed = def^.defPrefix    
+    allowed = def^.defPrefix
+    reqPfx = case def^.requiredPrefix of
+               Nothing -> []
+               Just b  -> [(b, id)] -- don't do anything, but byte must occur.
     defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
                              , _prSP  = no_seg_prefix
                              , _prREX = no_rex
