@@ -37,4 +37,6 @@ optableData =
 
 defaultX64Parser :: InstructionParser
 defaultX64Parser = p
-  where Right p = mkX64Parser optableData
+  where p = case mkX64Parser optableData of
+              Right v -> v
+              Left  s -> error ("defaultX64Parser: " ++ s)

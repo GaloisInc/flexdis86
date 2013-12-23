@@ -16,7 +16,6 @@ module Flexdis86.OpTable
     CPURequirement(..)
   , Vendor(..)
   , ModeLimit(..)
-  , AllowedRepeatPrefix
   , ModConstraint(..)
   , SizeConstraint(..)
   , Fin8, unFin8
@@ -29,7 +28,6 @@ module Flexdis86.OpTable
   , modeLimit
   , Mode(..)
   , defMode
-  , allowedRepeatPrefix
   , reqAddrSize
   , reqOpSize
   , defPrefix
@@ -292,9 +290,6 @@ data ModConstraint = OnlyMem
 ------------------------------------------------------------------------
 -- Instruction
 
-data AllowedRepeatPrefix = REP | REPZ
-  deriving (Eq, Show)
-
 -- | Describes whether a value is 16, 32 or 64-bits.
 data SizeConstraint = Size16 | Size32 | Size64
   deriving (Eq, Show)
@@ -305,7 +300,6 @@ data Def = Def  { _defMnemonic :: String
                 , _defVendor :: Maybe Vendor
                 , _modeLimit :: ModeLimit
                 , _defMode   :: Maybe Mode
-                , _allowedRepeatPrefix :: Maybe AllowedRepeatPrefix 
                 , _reqAddrSize :: Maybe SizeConstraint
                 , _reqOpSize :: Maybe SizeConstraint
                 , _defPrefix :: [String]
@@ -337,11 +331,6 @@ modeLimit = lens _modeLimit (\s v -> s { _modeLimit = v })
 -- | Modifications to x64 mode.
 defMode :: Simple Lens Def (Maybe Mode)
 defMode = lens _defMode (\s v -> s { _defMode = v })
-
--- | Which repeat prefixes are allowed if any.
-allowedRepeatPrefix :: Simple Lens Def (Maybe AllowedRepeatPrefix)
-allowedRepeatPrefix =
-  lens _allowedRepeatPrefix (\s v -> s { _allowedRepeatPrefix = v })
 
 -- | Expected address size for instruction.
 reqAddrSize :: Simple Lens Def (Maybe SizeConstraint)
@@ -392,12 +381,6 @@ parse_def nm creq v = do
   checkTag "def"
   let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText
   prefix <- parse_prefix
-  allowedRepeat <-
-    case (elem "rep" prefix, elem "repz" prefix) of
-      (True,  True) -> fail "Both repeats not allowed."
-      (True, False) -> return $ Just REP
-      (False, True) -> return $ Just REPZ
-      (False,False) -> return $ Nothing
   opc_text <- required_text "opc"
   oprnds <- fromMaybe [] . fmap words <$> opt "opr" asText
   mode <- parse_mode
@@ -409,7 +392,6 @@ parse_def nm creq v = do
                , _defVendor = v'
                , _modeLimit = AnyMode
                , _defMode = mode
-               , _allowedRepeatPrefix = allowedRepeat
                , _reqAddrSize = Nothing
                , _reqOpSize = Nothing
                , _defPrefix = prefix

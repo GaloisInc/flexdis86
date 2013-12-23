@@ -784,7 +784,7 @@
     <instruction>
         <mnemonic>cmpsb</mnemonic>
         <def>
-            <pfx>repz seg</pfx>
+            <pfx>rep repz seg</pfx>
             <opc>a6</opc>
         </def>
     </instruction>
@@ -792,7 +792,7 @@
     <instruction>
         <mnemonic>cmpsw</mnemonic>
         <def>
-            <pfx>repz oso rexw seg</pfx>
+            <pfx>rep repz oso rexw seg</pfx>
             <opc>a7 /o=16</opc>
         </def>
     </instruction>
@@ -800,7 +800,7 @@
     <instruction>
         <mnemonic>cmpsd</mnemonic>
         <def>
-            <pfx>repz oso rexw seg</pfx>
+            <pfx>rep repz oso rexw seg</pfx>
             <opc>a7 /o=32</opc>
         </def>
         <def>
