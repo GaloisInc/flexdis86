@@ -10,10 +10,11 @@ module Flexdis86.InstructionSet
   ( InstructionInstance(..)
   , ppInstruction
   , Value(..)
-  , ControlReg, controlReg
-  , DebugReg, debugReg
-  , MMXReg, mmx_reg
-  , LockPrefix(..)
+  , ControlReg, controlReg, controlRegNo
+  , DebugReg, debugReg, debugRegNo
+  , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo
+  , XMMReg, xmmReg, xmmRegNo
+  , LockPrefix(..), ppLockPrefix
   , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex
   , AddrRef(..)
   , Word8
@@ -41,29 +42,54 @@ showReg p v = "%" ++ p ++ show v
 
 -- | There are 16 control registers CR0 through CR15.  
 newtype ControlReg = CR Word8
-
+                     deriving Eq
+                     
 instance Show ControlReg where
   show (CR w) = "CR" ++ show w
 
 controlReg :: Word8 -> ControlReg
 controlReg w = assert (w < 16) $ CR w
 
+controlRegNo :: ControlReg -> Word8
+controlRegNo (CR w) = w
+
 -- | There are 8 32-bit debug registers in ia32, and 16 64-bit
 -- debug registers in ia64.
 newtype DebugReg   = DR Word8
-  deriving (Show)
+  deriving (Show, Eq)
 
 debugReg :: Word8 -> DebugReg
 debugReg w = assert (w < 16) $ DR w
 
+debugRegNo :: DebugReg -> Word8 
+debugRegNo (DR w) = w
+
 -- | There are 8 64-bit MMX registers
 newtype MMXReg = MMXR Word8
+  deriving (Eq)
 
 instance Show MMXReg where
   show (MMXR w) = showReg "mm" w
 
+{-# DEPRECATED mmx_reg "Use mmxReg instead!" #-}
 mmx_reg :: Word8 -> MMXReg
 mmx_reg w = assert (w < 8) $ MMXR w
+
+mmxReg :: Word8 -> MMXReg
+mmxReg w = assert (w < 8) $ MMXR w
+
+mmxRegNo :: MMXReg -> Word8
+mmxRegNo (MMXR w) = w
+
+-- | There are 16 128-bit XMM registers
+newtype XMMReg = XMMR Word8
+  deriving (Show, Eq)
+
+xmmReg :: Word8 -> XMMReg
+xmmReg w = assert (w < 16) $ XMMR w
+
+xmmRegNo :: XMMReg -> Word8
+xmmRegNo (XMMR w) = w
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -296,7 +322,7 @@ data AddrRef
   | Offset_64    Segment Word64
   | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Int32
   | IP_Offset_64 Segment Int32
-  deriving (Show)
+  deriving (Show, Eq)
 
 ------------------------------------------------------------------------
 -- Value
@@ -306,6 +332,7 @@ data Value
   = ControlReg ControlReg
   | DebugReg DebugReg
   | MMXReg MMXReg
+  | XMMReg XMMReg  
   | SegmentValue Segment
   | FarPointer AddrRef
   | VoidMem AddrRef
@@ -322,7 +349,7 @@ data Value
   | DWordReg Reg32
   | QWordReg Reg64
   | JumpOffset Int64
-  deriving (Show)
+  deriving (Show, Eq)
 
 _ppShowReg :: Show r => r -> Doc
 _ppShowReg r = text ('%' : show r)
@@ -336,11 +363,13 @@ ppValue = undefined
 data LockPrefix
    = NoLockPrefix
    | RepPrefix
-  deriving (Show)
+   | RepZPrefix
+  deriving (Show, Eq)
 
 ppLockPrefix :: LockPrefix -> Doc
 ppLockPrefix NoLockPrefix = PP.empty
-ppLockPrefix RepPrefix = text "rep"
+ppLockPrefix RepPrefix  = text "rep"
+ppLockPrefix RepZPrefix = text "repz"
 
 -- | Instruction instance with name and operands.
 data InstructionInstance 
@@ -348,7 +377,7 @@ data InstructionInstance
         , iiOp :: String
         , iiArgs :: [Value]
         }
-  deriving (Show)
+  deriving (Show, Eq)
 
 ppInstruction :: InstructionInstance -> Doc
 ppInstruction i = ppLockPrefix (iiLockPrefix i)

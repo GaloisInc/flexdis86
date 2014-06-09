@@ -37,4 +37,6 @@ optableData =
 
 defaultX64Disassembler :: InstructionParser
 defaultX64Disassembler = p
-  where Right p = mkX64Disassembler optableData
+  where p = case mkX64Disassembler optableData of
+              Right v -> v
+              Left  s -> error ("defaultX64Diassembler: " ++ s)

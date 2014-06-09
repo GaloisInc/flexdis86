@@ -29,4 +29,4 @@ library
     Flexdis86.InstructionSet
     Flexdis86.OpTable
 
-  GHC-options: -Wall -fno-ignore-asserts
+  GHC-options: -Wall -fno-ignore-asserts -O2
