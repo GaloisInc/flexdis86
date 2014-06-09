@@ -16,12 +16,14 @@ module Flexdis86.ByteReader
   ) where
 
 import Control.Applicative
+import Data.Binary.Get (Get, getWord8)
 import Data.Bits
 import Data.Int
 import Data.Word
 
 -- | A Monad with operations for reading values  for reading bytes from a 
 class (Applicative m, Monad m) => ByteReader m where
+  -- | Read a byte.
   readByte :: m Word8
 
   -- | Read a 16-bit value with the least-significant byte first.
@@ -56,3 +58,7 @@ readSDWord = fromIntegral <$> readDWord
 
 readSQWord :: ByteReader m => m Int64
 readSQWord = fromIntegral <$> readQWord
+
+
+instance ByteReader Get where
+  readByte = getWord8

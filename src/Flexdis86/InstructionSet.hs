@@ -8,6 +8,7 @@ This declares the main datatypes for the instruction set.
 -}
 module Flexdis86.InstructionSet
   ( InstructionInstance(..)
+  , ppInstruction
   , Value(..)
   , ControlReg, controlReg
   , DebugReg, debugReg
@@ -26,10 +27,17 @@ module Flexdis86.InstructionSet
   , Int64
   ) where 
 
+import Control.Applicative
 import Control.Exception
 import Data.Int
 import Data.Word
 import qualified Data.Vector as V
+import Text.PrettyPrint.Leijen hiding (empty, (<$>))
+import qualified Text.PrettyPrint.Leijen as PP
+
+showReg :: Show a => String -> a -> String
+showReg p v = "%" ++ p ++ show v
+
 
 -- | There are 16 control registers CR0 through CR15.  
 newtype ControlReg = CR Word8
@@ -50,7 +58,9 @@ debugReg w = assert (w < 16) $ DR w
 
 -- | There are 8 64-bit MMX registers
 newtype MMXReg = MMXR Word8
-  deriving (Show)
+
+instance Show MMXReg where
+  show (MMXR w) = showReg "mm" w
 
 mmx_reg :: Word8 -> MMXReg
 mmx_reg w = assert (w < 8) $ MMXR w
@@ -314,6 +324,12 @@ data Value
   | JumpOffset Int64
   deriving (Show)
 
+_ppShowReg :: Show r => r -> Doc
+_ppShowReg r = text ('%' : show r)
+
+ppValue :: Value -> Doc
+ppValue = undefined
+
 ------------------------------------------------------------------------
 -- InstructionInstance
 
@@ -322,6 +338,10 @@ data LockPrefix
    | RepPrefix
   deriving (Show)
 
+ppLockPrefix :: LockPrefix -> Doc
+ppLockPrefix NoLockPrefix = PP.empty
+ppLockPrefix RepPrefix = text "rep"
+
 -- | Instruction instance with name and operands.
 data InstructionInstance 
    = II { iiLockPrefix :: LockPrefix
@@ -329,3 +349,8 @@ data InstructionInstance
         , iiArgs :: [Value]
         }
   deriving (Show)
+
+ppInstruction :: InstructionInstance -> Doc
+ppInstruction i = ppLockPrefix (iiLockPrefix i)
+                <+> text (iiOp i)
+                <+> hsep (punctuate comma (ppValue <$> iiArgs i))

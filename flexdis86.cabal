@@ -9,12 +9,14 @@ Synopsis: A flexible disassembler or x86
 library
   build-depends:
     base >= 4,
+    binary,
     bytestring,
     containers,
     lens,
     mtl,
     template-haskell,
     vector,
+    wl-pprint,
     xml
 
   hs-source-dirs: src

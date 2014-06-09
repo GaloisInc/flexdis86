@@ -8,7 +8,7 @@ Maintainer  :  jhendrix@galois.com
 {-# LANGUAGE TemplateHaskell #-}
 module Flexdis86.DefaultParser
   ( optableData 
-  , defaultX64Parser
+  , defaultX64Disassembler
   ) where
 
 import qualified Data.ByteString as BS
@@ -35,6 +35,6 @@ optableData =
        [| unsafePerformIO $ unsafePackAddressLen blen $(return addr) |]))
 
 
-defaultX64Parser :: InstructionParser
-defaultX64Parser = p
-  where Right p = mkX64Parser optableData
+defaultX64Disassembler :: InstructionParser
+defaultX64Disassembler = p
+  where Right p = mkX64Disassembler optableData

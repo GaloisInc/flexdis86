@@ -16,9 +16,10 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Disassembler
   ( InstructionParser
-  , mkX64Parser
+  , mkX64Disassembler
   , TableRef
-  , parseInstruction
+  , disassembleInstruction
+  , disassembleBuffer
   ) where
 
 import Control.Applicative
@@ -26,6 +27,7 @@ import Control.Exception
 import Control.Lens
 import Control.Monad.Error
 import Control.Monad.State
+import Data.Binary.Get (Decoder(..), runGetIncremental)
 import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Int
@@ -262,8 +264,8 @@ lookupOperandType i nm =
 
 -- | Create an instruction parser from the given udis86 parser.
 -- This is currently restricted to x64 base operations.
-mkX64Parser :: BS.ByteString -> Either String InstructionParser
-mkX64Parser bs = mkParser . filter ifilter <$> parseOpTable bs
+mkX64Disassembler :: BS.ByteString -> Either String InstructionParser
+mkX64Disassembler bs = mkParser . filter ifilter <$> parseOpTable bs
   where -- Filter out unsupported operations
         ifilter d = d^.reqAddrSize /= Just Size16
                  && d^.defCPUReq == Base
@@ -828,14 +830,14 @@ read_disp8 :: ByteReader m => m Int32
 read_disp8 = fromIntegral <$> readSByte
 
 -- | Parse instruction using byte reader.
-parseInstruction :: ByteReader m
-                 => InstructionParser
-                 -> m InstructionInstance
-parseInstruction tr0 = do 
+disassembleInstruction :: ByteReader m
+                       => InstructionParser
+                       -> m InstructionInstance
+disassembleInstruction tr0 = do 
   b <- readByte
   case tr0 `trVal` b of
     PrefixUnsupported nm  -> fail $ "Unknown prefix: " ++ nm
-    Next tr               -> parseInstruction tr
+    Next tr               -> disassembleInstruction tr
     SetSegment aso s tr   -> parseSegOpcode aso s . trVal tr =<< readByte
     DefaultSegment aso ip -> parseSegOpcode aso no_seg_prefix ip
 
@@ -1097,3 +1099,29 @@ readWithOffset readDisp aso p modRM = do
           | otherwise       = ds
   o <- readDisp
   return $ memRef (sp `setDefault` seg) (Just (base_reg base)) si o
+
+-- | Parse the buffer as a list of instructions.  Returns a list containing
+-- offsets, 
+disassembleBuffer :: InstructionParser
+                  -> BS.ByteString
+                     -- ^ Buffer to decompose
+                  -> [(Int, Int, Maybe InstructionInstance)]
+disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
+  where decoder = runGetIncremental (disassembleInstruction p)
+
+        -- Group continuous regions that cannot be disassembled together.
+        group :: Int -> [(Int, Maybe a)] -> [(Int,Int,Maybe a)]
+        group o ((i,Nothing):(j,Nothing):r) = group o ((i+j,Nothing):r)
+        group o ((i,mv):r) = (o,i,mv):group o r
+        group _ [] = []
+
+        -- Decode instructions.
+        decode :: BS.ByteString
+               -> Decoder InstructionInstance
+               -> [(Int, Maybe InstructionInstance)]
+        decode bs _ | BS.null bs = []
+        decode bs Fail{} = (1, Nothing):decode bs' decoder
+          where Just (_,bs') = BS.uncons bs
+        decode bs (Partial f) = decode bs (f (Just bs))
+        decode bs (Done bs' _ i) = (n, Just i) : decode bs' decoder
+          where n = BS.length bs - BS.length bs'

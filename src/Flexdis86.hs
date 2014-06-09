@@ -10,7 +10,7 @@ module Flexdis86
   ( module Flexdis86.InstructionSet
   , module Flexdis86.ByteReader
   , module Flexdis86.Disassembler
-  , defaultX64Parser
+  , defaultX64Disassembler
   ) where
 
 import Flexdis86.ByteReader
