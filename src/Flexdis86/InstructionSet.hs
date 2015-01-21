@@ -33,6 +33,7 @@ import Control.Exception
 import Data.Int
 import Data.Word
 import qualified Data.Vector as V
+import Numeric (showHex)
 import Text.PrettyPrint.Leijen hiding (empty, (<$>))
 import qualified Text.PrettyPrint.Leijen as PP
 
@@ -42,10 +43,10 @@ showReg p v = "%" ++ p ++ show v
 
 -- | There are 16 control registers CR0 through CR15.  
 newtype ControlReg = CR Word8
-                     deriving Eq
+  deriving Eq
                      
 instance Show ControlReg where
-  show (CR w) = "CR" ++ show w
+  show (CR w) = "cr" ++ show w
 
 controlReg :: Word8 -> ControlReg
 controlReg w = assert (w < 16) $ CR w
@@ -55,8 +56,11 @@ controlRegNo (CR w) = w
 
 -- | There are 8 32-bit debug registers in ia32, and 16 64-bit
 -- debug registers in ia64.
-newtype DebugReg   = DR Word8
-  deriving (Show, Eq)
+newtype DebugReg = DR Word8
+  deriving (Eq)
+
+instance Show DebugReg where
+  show (DR w) = "dr" ++ show w
 
 debugReg :: Word8 -> DebugReg
 debugReg w = assert (w < 16) $ DR w
@@ -83,13 +87,17 @@ mmxRegNo (MMXR w) = w
 
 -- | There are 16 128-bit XMM registers
 newtype XMMReg = XMMR Word8
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show XMMReg where
+  show (XMMR w) = showReg "xmm" w
 
 xmmReg :: Word8 -> XMMReg
 xmmReg w = assert (w < 16) $ XMMR w
 
 xmmRegNo :: XMMReg -> Word8
 xmmRegNo (XMMR w) = w
+
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -324,6 +332,28 @@ data AddrRef
   | IP_Offset_64 Segment Int32
   deriving (Show, Eq)
 
+ppAddrRef :: AddrRef -> Doc
+ppAddrRef addr = 
+  case addr of 
+    Addr_32 seg base roff off -> ppAddr seg base roff off
+                                                          -- or rip? this is 32 bits ...
+    IP_Offset_32 seg off      -> prefix seg off <> parens (text "ip")
+    Offset_32 seg off         -> prefix seg off 
+    Offset_64 seg off         -> prefix seg off 
+    Addr_64 seg base roff off -> ppAddr seg base roff off
+    IP_Offset_64 seg off      -> prefix seg off <> parens (text "rip") 
+  where 
+    prefix seg off = ppShowReg seg <> colon <> text (show off)
+    ppAddr seg base roff off =
+      prefix seg off 
+      <> case (base, roff) of 
+           (Nothing, Nothing)     -> PP.empty -- can this happen?
+           (Just r, Nothing)      -> parens (ppShowReg r)
+           (Nothing, Just (n, r)) -> parens (hsep (punctuate comma [ppShowReg r, int n]))
+           (Just r, Just (n, r')) -> parens (hsep (punctuate comma [ppShowReg r
+                                                                   , ppShowReg r'
+                                                                   , int n]))
+
 ------------------------------------------------------------------------
 -- Value
 
@@ -351,11 +381,40 @@ data Value
   | JumpOffset Int64
   deriving (Show, Eq)
 
-_ppShowReg :: Show r => r -> Doc
-_ppShowReg r = text ('%' : show r)
+ppShowReg :: Show r => r -> Doc
+ppShowReg r = text (show r)
 
-ppValue :: Value -> Doc
-ppValue = undefined
+ppValue :: Word64 -- ^ Base address for offset printing.
+                  -- This should be the address of the next instruction.
+        -> Value
+        -> Doc
+ppValue base v =
+  case v of 
+    ControlReg   r    -> text (show r)
+    DebugReg     r    -> text (show r)
+    MMXReg       r    -> text (show r)
+    XMMReg       r    -> text (show r)
+    SegmentValue r    -> ppShowReg    r
+    -- do the "*" belong here or in ppAddrRef?
+    FarPointer   addr -> text "*" <> ppAddrRef    addr
+    VoidMem      addr -> text "*" <> ppAddrRef    addr
+    Mem8         addr -> text "*" <> ppAddrRef    addr
+    Mem16        addr -> text "*" <> ppAddrRef    addr
+    Mem32        addr -> text "*" <> ppAddrRef    addr
+    Mem64        addr -> text "*" <> ppAddrRef    addr
+    ByteImm      imm  -> ppImm imm
+    WordImm      imm  -> ppImm imm
+    DWordImm     imm  -> ppImm imm
+    QWordImm     imm  -> ppImm imm
+    ByteReg      r    -> ppShowReg    r
+    WordReg      r    -> ppShowReg    r
+    DWordReg     r    -> ppShowReg    r
+    QWordReg     r    -> ppShowReg    r
+    JumpOffset   off  -> text (showHex (base+fromIntegral off) "")
+
+
+ppImm :: (Integral a, Show a) => a -> Doc
+ppImm i = text"0x" <> text (showHex i "")
 
 ------------------------------------------------------------------------
 -- InstructionInstance
@@ -379,7 +438,11 @@ data InstructionInstance
         }
   deriving (Show, Eq)
 
-ppInstruction :: InstructionInstance -> Doc
-ppInstruction i = ppLockPrefix (iiLockPrefix i)
+ppInstruction :: Word64
+                 -- ^ Base address for printing instruction offsets.
+                 -- This should be the address of the next instruction.
+              -> InstructionInstance
+              -> Doc
+ppInstruction base i = ppLockPrefix (iiLockPrefix i)
                 <+> text (iiOp i)
-                <+> hsep (punctuate comma (ppValue <$> iiArgs i))
+                <+> hsep (punctuate comma (ppValue base <$> iiArgs i))

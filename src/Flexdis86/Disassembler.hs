@@ -21,6 +21,8 @@ module Flexdis86.Disassembler
   , mkX64Disassembler
   , TableRef
   , disassembleInstruction
+  , DisassembledAddr(..)
+  , tryDisassemble
   , disassembleBuffer
   ) where
 
@@ -574,9 +576,9 @@ allPrefixedOpcodes def = filter (validPrefix . snd) $ map (mkBytes . unzip) rexs
     -- FIXME: check that the required prefix doesn't occur in the allowed prefixes
     segs   :: [ [(Word8, Prefixes -> Prefixes)] ]
     segs   = concat 
-             $ map permutations -- get all permutations
-             $ map (reqPfx ++) -- add required prefix to every allowed prefix
-             $ simplePfxs ++ [ v : vs | v <- segPrefixes allowed, vs <- simplePfxs ]
+           $ map permutations -- get all permutations
+           $ map (reqPfx ++) -- add required prefix to every allowed prefix
+           $ simplePfxs ++ [ v : vs | v <- segPrefixes allowed, vs <- simplePfxs ]
     -- above with REX
     rexs   :: [ [(Word8, Prefixes -> Prefixes)] ]
     rexs   = segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
@@ -622,7 +624,7 @@ rexPrefixes allowed
 -- argument.  This simplifies parsing at the cost of extra space.
 mkOpcodeTable :: PfxTableFn (RegTable (ModTable RMTable))
               -> TableFn OpcodeTable
-mkOpcodeTable f defs = go [] (concat (map allPrefixedOpcodes defs))
+mkOpcodeTable f defs = go [] (concatMap allPrefixedOpcodes defs)
   where -- Recursive function that generates opcode table by parsing
         -- opcodes in first element of list.
         go :: -- Opcode bytes parsed so far.
@@ -767,7 +769,6 @@ read_disp32 = readSDWord
 read_disp8 :: ByteReader m => m Int32
 read_disp8 = fromIntegral <$> readSByte
 
--- | Parse 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
                        => InstructionParser
@@ -1007,19 +1008,39 @@ readWithOffset readDisp aso p modRM = do
   o <- readDisp
   return $ memRef (sp `setDefault` seg) (Just (base_reg base)) si o
 
+-- | Information about a disassembled instruction at a given address
+data DisassembledAddr = DAddr { disOffset :: Int
+                              , disLen :: Int
+                              , disInstruction :: Maybe InstructionInstance
+                              }
+
+-- | Try disassemble returns the numbers of bytes read and an instrction instance.
+tryDisassemble :: InstructionParser -> BS.ByteString -> (Int, Maybe InstructionInstance)
+tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
+  where bytesRead bs = BS.length bs0 - BS.length bs
+
+        -- Decode instructions.
+        decode :: BS.ByteString
+               -> Decoder InstructionInstance
+               -> (Int, Maybe InstructionInstance)
+        decode _ (Fail bs' _ _) = (bytesRead bs', Nothing)
+        --decode bs (Partial f) | BS.null bs = (bytesRead bs, Nothing)
+        decode bs (Partial f) = decode BS.empty (f (Just bs))
+        decode _ (Done bs' _ i) = (bytesRead bs', Just i)
+
 -- | Parse the buffer as a list of instructions.  Returns a list containing
 -- offsets, 
 disassembleBuffer :: InstructionParser
                   -> BS.ByteString
                      -- ^ Buffer to decompose
-                  -> [(Int, Int, Maybe InstructionInstance)]
+                  -> [DisassembledAddr]
 disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
   where decoder = runGetIncremental (disassembleInstruction p)
 
         -- Group continuous regions that cannot be disassembled together.
-        group :: Int -> [(Int, Maybe a)] -> [(Int,Int,Maybe a)]
+        group :: Int -> [(Int, Maybe InstructionInstance)] -> [DisassembledAddr]
         group o ((i,Nothing):(j,Nothing):r) = group o ((i+j,Nothing):r)
-        group o ((i,mv):r) = (o,i,mv):group o r
+        group o ((i,mv):r) = DAddr o i mv:group (o+i) r
         group _ [] = []
 
         -- Decode instructions.
