@@ -30,3 +30,21 @@ library
     Flexdis86.OpTable
 
   GHC-options: -Wall -fno-ignore-asserts -O2
+
+executable DumpInstr
+  build-depends:
+    flexdis86,
+    base >= 4,
+    binary,
+    bytestring,
+    containers,
+    lens,
+    mtl,
+    template-haskell,
+    vector,
+    wl-pprint,
+    xml
+
+  hs-source-dirs: utils
+  main-is: DumpInstr.hs
+

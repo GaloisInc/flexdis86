@@ -1013,6 +1013,7 @@ data DisassembledAddr = DAddr { disOffset :: Int
                               , disLen :: Int
                               , disInstruction :: Maybe InstructionInstance
                               }
+                              deriving Show
 
 -- | Try disassemble returns the numbers of bytes read and an instrction instance.
 tryDisassemble :: InstructionParser -> BS.ByteString -> (Int, Maybe InstructionInstance)

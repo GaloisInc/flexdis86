@@ -21,9 +21,9 @@ module Flexdis86.InstructionSet
   , Word16
   , Word32
   , Word64
-  , Reg8, low_reg8, high_reg8, al, bl, cl, dl, ah, bh, ch, dh
-  , Reg16, reg16, ax, bx, cx, dx
-  , Reg32, reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi
+  , Reg8, low_reg8, high_reg8, al, bl, cl, dl, ah, bh, ch, dh, is_low_reg, is_high_reg
+  , Reg16, reg16, ax, bx, cx, dx, reg16_reg
+  , Reg32, reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
   , Reg64, reg64, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
   , Int64
   ) where 
@@ -39,7 +39,6 @@ import qualified Text.PrettyPrint.Leijen as PP
 
 showReg :: Show a => String -> a -> String
 showReg p v = "%" ++ p ++ show v
-
 
 -- | There are 16 control registers CR0 through CR15.  
 newtype ControlReg = CR Word8
@@ -150,6 +149,16 @@ ch = high_reg8 (unReg64 rcx)
 dh :: Reg8
 dh = high_reg8 (unReg64 rdx)
 
+is_low_reg  :: Reg8 -> Maybe Reg64
+is_low_reg (Reg8 r)
+  | r < 16    = return $ Reg64 r
+  | otherwise = Nothing
+                
+is_high_reg :: Reg8 -> Maybe Reg64
+is_high_reg (Reg8 r)
+  | 16 <= r && r <= 19   = return $ Reg64 (r - 16)
+  | otherwise            = Nothing
+                           
 ------------------------------------------------------------------------
 -- Reg16
 
@@ -159,6 +168,9 @@ newtype Reg16 = Reg16 Word8
 
 reg16 :: Word8 -> Reg16
 reg16 i = assert (i < 16) (Reg16 i)
+
+reg16_reg :: Reg16 -> Reg64
+reg16_reg (Reg16 r) = Reg64 r
 
 instance Show Reg16 where
   show (Reg16 i) = assert (i < 16) (regNames16 V.! fromIntegral i)
@@ -192,6 +204,8 @@ newtype Reg32 = Reg32 Word8
 reg32 :: Word8 -> Reg32
 reg32 i = assert (i < 16) $ Reg32 i
 
+reg32_reg :: Reg32 -> Reg64
+reg32_reg (Reg32 r) = Reg64 r
 
 instance Show Reg32 where
   show (Reg32 i) = assert (i < 16) (regNames32 V.! fromIntegral i)
