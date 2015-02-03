@@ -26,7 +26,7 @@ module Flexdis86.InstructionSet
   , Reg32, reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
   , Reg64, reg64, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
   , Int64
-  ) where 
+  ) where
 
 import Control.Applicative
 import Control.Exception
@@ -40,10 +40,10 @@ import qualified Text.PrettyPrint.Leijen as PP
 showReg :: Show a => String -> a -> String
 showReg p v = "%" ++ p ++ show v
 
--- | There are 16 control registers CR0 through CR15.  
+-- | There are 16 control registers CR0 through CR15.
 newtype ControlReg = CR Word8
   deriving Eq
-                     
+
 instance Show ControlReg where
   show (CR w) = "cr" ++ show w
 
@@ -64,7 +64,7 @@ instance Show DebugReg where
 debugReg :: Word8 -> DebugReg
 debugReg w = assert (w < 16) $ DR w
 
-debugRegNo :: DebugReg -> Word8 
+debugRegNo :: DebugReg -> Word8
 debugRegNo (DR w) = w
 
 -- | There are 8 64-bit MMX registers
@@ -153,12 +153,12 @@ is_low_reg  :: Reg8 -> Maybe Reg64
 is_low_reg (Reg8 r)
   | r < 16    = return $ Reg64 r
   | otherwise = Nothing
-                
+
 is_high_reg :: Reg8 -> Maybe Reg64
 is_high_reg (Reg8 r)
   | 16 <= r && r <= 19   = return $ Reg64 (r - 16)
   | otherwise            = Nothing
-                           
+
 ------------------------------------------------------------------------
 -- Reg16
 
@@ -181,7 +181,7 @@ regNames16 = V.fromList [ "ax",   "cx",   "dx",   "bx"
                         , "r8w" , "r9w" , "r10w", "r11w"
                         , "r12w", "r13w", "r14w", "r15w"
                         ]
-  
+
 ax :: Reg16
 ax = Reg16 (unReg64 rax)
 
@@ -334,7 +334,7 @@ gs = Segment 5
 -- AddrRef
 
 data AddrRef
-    -- | @Addr_32 s b i o@ denotes a 32-bitIP address that will 
+    -- | @Addr_32 s b i o@ denotes a 32-bit IP address that will
     -- be zero extended in segment @s@ with base @b@, index @i@, and offset @o@.
   = Addr_32      Segment (Maybe Reg32) (Maybe (Int, Reg32)) Int32
   | IP_Offset_32 Segment Int32
@@ -347,20 +347,20 @@ data AddrRef
   deriving (Show, Eq)
 
 ppAddrRef :: AddrRef -> Doc
-ppAddrRef addr = 
-  case addr of 
+ppAddrRef addr =
+  case addr of
     Addr_32 seg base roff off -> ppAddr seg base roff off
                                                           -- or rip? this is 32 bits ...
     IP_Offset_32 seg off      -> prefix seg off <> parens (text "ip")
-    Offset_32 seg off         -> prefix seg off 
-    Offset_64 seg off         -> prefix seg off 
+    Offset_32 seg off         -> prefix seg off
+    Offset_64 seg off         -> prefix seg off
     Addr_64 seg base roff off -> ppAddr seg base roff off
-    IP_Offset_64 seg off      -> prefix seg off <> parens (text "rip") 
-  where 
+    IP_Offset_64 seg off      -> prefix seg off <> parens (text "rip")
+  where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
     ppAddr seg base roff off =
-      prefix seg off 
-      <> case (base, roff) of 
+      prefix seg off
+      <> case (base, roff) of
            (Nothing, Nothing)     -> PP.empty -- can this happen?
            (Just r, Nothing)      -> parens (ppShowReg r)
            (Nothing, Just (n, r)) -> parens (hsep (punctuate comma [ppShowReg r, int n]))
@@ -371,12 +371,17 @@ ppAddrRef addr =
 ------------------------------------------------------------------------
 -- Value
 
+data ValueClass = Address
+                | Immediate
+                | GPR
+
+
 -- | The value of an operand in an instruction instance.
 data Value
   = ControlReg ControlReg
   | DebugReg DebugReg
   | MMXReg MMXReg
-  | XMMReg XMMReg  
+  | XMMReg XMMReg
   | SegmentValue Segment
   | FarPointer AddrRef
   | VoidMem AddrRef
@@ -403,7 +408,7 @@ ppValue :: Word64 -- ^ Base address for offset printing.
         -> Value
         -> Doc
 ppValue base v =
-  case v of 
+  case v of
     ControlReg   r    -> text (show r)
     DebugReg     r    -> text (show r)
     MMXReg       r    -> text (show r)
@@ -445,7 +450,7 @@ ppLockPrefix RepPrefix  = text "rep"
 ppLockPrefix RepZPrefix = text "repz"
 
 -- | Instruction instance with name and operands.
-data InstructionInstance 
+data InstructionInstance
    = II { iiLockPrefix :: LockPrefix
         , iiOp :: String
         , iiArgs :: [Value]
