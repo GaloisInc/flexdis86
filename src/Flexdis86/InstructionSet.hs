@@ -12,8 +12,8 @@ module Flexdis86.InstructionSet
   , Value(..)
   , ControlReg, controlReg, controlRegNo
   , DebugReg, debugReg, debugRegNo
-  , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo
-  , XMMReg, xmmReg, xmmRegNo
+  , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo, mmxRegIdx
+  , XMMReg, xmmReg, xmmRegNo, xmmRegIdx
   , LockPrefix(..), ppLockPrefix
   , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex
   , AddrRef(..)
@@ -84,6 +84,9 @@ mmxReg w = assert (w < 8) $ MMXR w
 mmxRegNo :: MMXReg -> Word8
 mmxRegNo (MMXR w) = w
 
+mmxRegIdx :: MMXReg -> Int
+mmxRegIdx = fromIntegral . mmxRegNo
+
 -- | There are 16 128-bit XMM registers
 newtype XMMReg = XMMR Word8
   deriving (Eq)
@@ -97,6 +100,8 @@ xmmReg w = assert (w < 16) $ XMMR w
 xmmRegNo :: XMMReg -> Word8
 xmmRegNo (XMMR w) = w
 
+xmmRegIdx :: XMMReg -> Int
+xmmRegIdx (XMMR w) = fromIntegral w
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -104,7 +109,7 @@ xmmRegNo (XMMR w) = w
 -- | We use 0 to 15 to correspond to denote the low-order bytes
 -- of the registers, and 16-19 to denote bits 8-15 of regists
 -- rax, rcx, rdx, and rbx respectively.
-data Reg8 = Reg8 Word8
+newtype Reg8 = Reg8 Word8
   deriving (Eq, Ord)
 
 instance Show Reg8 where
