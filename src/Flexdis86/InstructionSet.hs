@@ -388,6 +388,7 @@ data Value
   | MMXReg MMXReg
   | XMMReg XMMReg
   | SegmentValue Segment
+  | X87Register Int
   | FarPointer AddrRef
   | VoidMem AddrRef
   | Mem8  AddrRef
@@ -418,6 +419,7 @@ ppValue base v =
     DebugReg     r    -> text (show r)
     MMXReg       r    -> text (show r)
     XMMReg       r    -> text (show r)
+    X87Register  n    -> text "st" <> parens (int n)
     SegmentValue r    -> ppShowReg    r
     -- do the "*" belong here or in ppAddrRef?
     FarPointer   addr -> text "*" <> ppAddrRef    addr

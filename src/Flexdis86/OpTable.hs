@@ -46,7 +46,7 @@ module Flexdis86.OpTable
 import Control.Applicative
 import Control.Lens
 import Control.Monad.State
-import Data.Bits ((.&.))
+import Data.Bits ((.&.), shiftR)
 import qualified Data.ByteString as BS
 import Data.Char
 import Data.List
@@ -466,6 +466,10 @@ parse_opcode nm = do
       , 0 <= b && b < 64
       -> do setDefCPUReq X87
             x87ModRM ?= Fin64 b
+            -- FIXME: sjw: HACK to avoid making the parser more complex.  Basically, we
+            -- pretend we want both Reg and R/M
+            requiredRM  ?= Fin8 (b .&. 0x7) -- bottom 3 bits
+            requiredReg ?= Fin8 ((b `shiftR` 3) .&. 0x7)
     _  ->  fail $ "Unexpected opcode: " ++ show nm
 
 ------------------------------------------------------------------------

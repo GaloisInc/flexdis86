@@ -132,6 +132,8 @@ data OperandType
    | RG_dbg
      -- | A segment register from ModRM.reg
    | RG_S
+     -- | A floating point register index
+   | RG_ST Int
      -- | An MMX register from ModRM.reg
    | RG_MMX_reg
      -- | A SSE XMM register from ModRM.reg
@@ -154,6 +156,11 @@ data OperandType
      -- | A 64-bit integer memory location.
      -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
    | M_X SizeConstraint
+     
+     -- | A 64-bit floating point memory location.
+     -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
+     -- | M_FloatingPoint SizeConstraint
+     
      -- | A register or memory location.
      -- As a register has size X-Size, and as memory has size X-Size.
      -- Stored in ModRM.rm
@@ -256,11 +263,27 @@ operandHandlerMap = Map.fromList
     -- Memory value stored in ModRM.rm
     -- (ModRM.mod must not equal 3)
   , (,) "M"    $ M
+
+    -- Memory value pointing to floating point value
+  , (,) "M32fp" $ M_X Size32  
+  , (,) "M64fp" $ M_X Size64
+
+
+    -- FP Register indicies
+  , (,) "ST0"   $ RG_ST 0
+  , (,) "ST1"   $ RG_ST 1
+  , (,) "ST2"   $ RG_ST 2
+  , (,) "ST3"   $ RG_ST 3
+  , (,) "ST4"   $ RG_ST 4
+  , (,) "ST5"   $ RG_ST 5
+  , (,) "ST6"   $ RG_ST 6
+  , (,) "ST7"   $ RG_ST 7
+
     -- Memory value pointing to 64-bit integer stored in ModRM.rm
     -- (ModRM.mod must not equal 3).
   , (,) "Mq"  $ M_X Size64
   , (,) "Md"  $ M_X Size32 
-  , (,) "S"    $ RG_S
+  , (,) "S"   $ RG_S
 
   , (,) "Q"    $ RM_MMX
 
@@ -307,7 +330,7 @@ mkX64Disassembler :: BS.ByteString -> Either String InstructionParser
 mkX64Disassembler bs = mkParser . filter ifilter <$> parseOpTable bs
   where -- Filter out unsupported operations
         ifilter d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2])
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
                  && x64Compatible d
         mkParser defs = fst $ runParserGen $ parseTable defs
 
@@ -479,6 +502,7 @@ expectsModRM d
   =  isJust (d^.requiredMod)
   || isJust (d^.requiredReg)
   || isJust (d^.requiredRM)
+  || isJust (d^.x87ModRM)     
   || any modRMOperand (d^.defOperands)
 
 -- | Returns true if operand has a modRMOperand.
@@ -498,6 +522,7 @@ modRMOperand nm =
     RG_C   -> True
     RG_dbg -> True
     RG_S   -> True
+    RG_ST _ -> False -- FIXME(?)
     RG_MMX_reg -> True
     RG_XMM_reg -> True
     RG_XMM_rm -> True    
@@ -506,6 +531,7 @@ modRMOperand nm =
     M_FP  -> True
     M     -> True
     M_X _ -> True
+    -- M_FloatingPoint _ -> False
     MXRX _ _ -> True
     RM_MMX    -> True
     RG_MMX_rm -> True
@@ -699,7 +725,8 @@ mkModTable f pfxdefs
             RG_MMX_rm -> True -- FIXME: no MMX_reg?
             RG_XMM_reg -> True 
             RG_XMM_rm -> True             
-            RM_XMM    -> True             
+            RM_XMM    -> True
+            RG_ST _   -> True
             _         -> False
     ModTable <$> f (filter (memDef . snd) pfxdefs)
              <*> f (filter (regDef . snd) pfxdefs)
@@ -909,6 +936,7 @@ parseValue p osz mmrm tp = do
     RG_C   -> return $ ControlReg (controlReg reg_with_rex)
     RG_dbg -> return $ DebugReg   (debugReg   reg_with_rex)
     RG_S   -> SegmentValue <$> segmentRegisterByIndex reg
+    RG_ST n -> return $ X87Register n
     RG_MMX_reg -> return $ MMXReg (mmxReg reg)
     RG_XMM_reg -> return $ XMMReg (xmmReg reg)
     RG_XMM_rm  -> return $ XMMReg (xmmReg rm_reg)    
