@@ -283,7 +283,9 @@ operandHandlerMap = Map.fromList
     -- Memory value pointing to 64-bit integer stored in ModRM.rm
     -- (ModRM.mod must not equal 3).
   , (,) "Mq"  $ M_X Size64
-  , (,) "Md"  $ M_X Size32 
+  , (,) "Md"  $ M_X Size32
+  , (,) "Mw"  $ M_X Size16 
+    
   , (,) "S"   $ RG_S
 
   , (,) "Q"    $ RM_MMX
