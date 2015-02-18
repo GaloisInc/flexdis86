@@ -395,6 +395,9 @@ data Value
   | Mem16 AddrRef
   | Mem32 AddrRef
   | Mem64 AddrRef
+  | FPMem32 AddrRef
+  | FPMem64 AddrRef
+  | FPMem80 AddrRef        
   | ByteImm  Word8
   | WordImm  Word16
   | DWordImm Word32
@@ -428,6 +431,9 @@ ppValue base v =
     Mem16        addr -> text "*" <> ppAddrRef    addr
     Mem32        addr -> text "*" <> ppAddrRef    addr
     Mem64        addr -> text "*" <> ppAddrRef    addr
+    FPMem32      addr -> text "*" <> ppAddrRef    addr
+    FPMem64      addr -> text "*" <> ppAddrRef    addr
+    FPMem80      addr -> text "*" <> ppAddrRef    addr    
     ByteImm      imm  -> ppImm imm
     WordImm      imm  -> ppImm imm
     DWordImm     imm  -> ppImm imm

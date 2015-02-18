@@ -18,6 +18,7 @@ module Flexdis86.OpTable
   , ModeLimit(..)
   , ModConstraint(..)
   , SizeConstraint(..)
+  , FPSizeConstraint(..)
   , Fin8, unFin8
   , Fin64, unFin64
     -- * Def
@@ -293,6 +294,11 @@ data ModConstraint = OnlyMem
 -- | Describes whether a value is 16, 32 or 64-bits.
 data SizeConstraint = Size16 | Size32 | Size64
   deriving (Eq, Show)
+
+-- | Describes whether a floating point memory address value is 32, 64, or 80-bits.
+data FPSizeConstraint = FPSize32 | FPSize64 | FPSize80
+  deriving (Eq, Show)
+
 
 -- | The definition of an instruction.
 data Def = Def  { _defMnemonic :: String

@@ -158,8 +158,8 @@ data OperandType
    | M_X SizeConstraint
      
      -- | A 64-bit floating point memory location.
-     -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
-     -- | M_FloatingPoint SizeConstraint
+     -- Decoded as for M_X
+   | M_FloatingPoint FPSizeConstraint
      
      -- | A register or memory location.
      -- As a register has size X-Size, and as memory has size X-Size.
@@ -265,8 +265,9 @@ operandHandlerMap = Map.fromList
   , (,) "M"    $ M
 
     -- Memory value pointing to floating point value
-  , (,) "M32fp" $ M_X Size32  
-  , (,) "M64fp" $ M_X Size64
+  , (,) "M32fp" $ M_FloatingPoint FPSize32  
+  , (,) "M64fp" $ M_FloatingPoint FPSize64
+  , (,) "M80fp" $ M_FloatingPoint FPSize80
 
 
     -- FP Register indicies
@@ -531,7 +532,7 @@ modRMOperand nm =
     M_FP  -> True
     M     -> True
     M_X _ -> True
-    -- M_FloatingPoint _ -> False
+    M_FloatingPoint _ -> True
     MXRX _ _ -> True
     RM_MMX    -> True
     RG_MMX_rm -> True
@@ -706,6 +707,7 @@ mkModTable f pfxdefs
             M_FP    -> True
             M       -> True
             M_X _   -> True
+            M_FloatingPoint _ -> True            
             MXRX _ _ -> True
             RM_MMX  -> True
             _       -> False
@@ -950,7 +952,11 @@ parseValue p osz mmrm tp = do
     M_X sz -> case sz of
                 Size16 -> Mem16 <$> addr 
                 Size32 -> Mem32 <$> addr 
-                Size64 -> Mem64 <$> addr 
+                Size64 -> Mem64 <$> addr
+    M_FloatingPoint sz -> case sz of
+                FPSize32 -> FPMem32 <$> addr 
+                FPSize64 -> FPMem64 <$> addr
+                FPSize80 -> FPMem80 <$> addr                 
     MXRX msz _rsz
       | modRM_mod modRM == 3 -> 
         case osz of
