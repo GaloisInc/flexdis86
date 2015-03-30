@@ -15,7 +15,7 @@ module Flexdis86.InstructionSet
   , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo, mmxRegIdx
   , XMMReg, xmmReg, xmmRegNo, xmmRegIdx
   , LockPrefix(..), ppLockPrefix
-  , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex
+  , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex, segmentRegNo
   , AddrRef(..)
   , Word8
   , Word16
@@ -24,7 +24,7 @@ module Flexdis86.InstructionSet
   , Reg8, low_reg8, high_reg8, al, bl, cl, dl, ah, bh, ch, dh, is_low_reg, is_high_reg
   , Reg16, reg16, ax, bx, cx, dx, reg16_reg
   , Reg32, reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
-  , Reg64, reg64, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
+  , Reg64, reg64, reg64No, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
   , Int64
   ) where
 
@@ -257,6 +257,9 @@ newtype Reg64 = Reg64 { unReg64 :: Word8 }
 reg64 :: Word8 -> Reg64
 reg64 i = assert (i < 16) $ Reg64 i
 
+reg64No :: Reg64 -> Word8
+reg64No (Reg64 r) = r
+
 -- | Return index of 64-bit register.
 reg64Idx :: Reg64 -> Int
 reg64Idx = fromIntegral . unReg64
@@ -316,6 +319,9 @@ segmentRegisterByIndex :: Monad m => Word8 -> m Segment
 segmentRegisterByIndex r
   | r < 6 = return (Segment r)
   | otherwise = fail "Invalid segment register."
+
+segmentRegNo :: Segment -> Word8
+segmentRegNo (Segment r) = r
 
 es :: Segment
 es = Segment 0
