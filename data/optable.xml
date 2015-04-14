@@ -5506,6 +5506,13 @@
     </instruction>
 
     <instruction>
+        <mnemonic>pause</mnemonic>
+        <def>
+            <opc>f3 90</opc>
+        </def>
+    </instruction>
+    
+    <instruction>
         <mnemonic>pavgb</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
