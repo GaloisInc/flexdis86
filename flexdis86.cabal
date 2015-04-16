@@ -9,6 +9,7 @@ Synopsis: A flexible disassembler or x86
 library
   build-depends:
     base >= 4,
+    ansi-wl-pprint,
     binary,
     bytestring,
     containers,
@@ -16,7 +17,6 @@ library
     mtl,
     template-haskell,
     vector,
-    wl-pprint,
     xml
 
   hs-source-dirs: src
@@ -33,18 +33,17 @@ library
 
 executable DumpInstr
   build-depends:
-    flexdis86,
     base >= 4,
+    ansi-wl-pprint,
     binary,
     bytestring,
     containers,
+    flexdis86,
     lens,
     mtl,
     template-haskell,
     vector,
-    wl-pprint,
     xml
 
   hs-source-dirs: utils
   main-is: DumpInstr.hs
-

@@ -34,8 +34,8 @@ import Data.Int
 import Data.Word
 import qualified Data.Vector as V
 import Numeric (showHex)
-import Text.PrettyPrint.Leijen hiding (empty, (<$>))
-import qualified Text.PrettyPrint.Leijen as PP
+import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 showReg :: Show a => String -> a -> String
 showReg p v = "%" ++ p ++ show v
@@ -403,7 +403,7 @@ data Value
   | Mem64 AddrRef
   | FPMem32 AddrRef
   | FPMem64 AddrRef
-  | FPMem80 AddrRef        
+  | FPMem80 AddrRef
   | ByteImm  Word8
   | WordImm  Word16
   | DWordImm Word32
@@ -439,7 +439,7 @@ ppValue base v =
     Mem64        addr -> text "*" <> ppAddrRef    addr
     FPMem32      addr -> text "*" <> ppAddrRef    addr
     FPMem64      addr -> text "*" <> ppAddrRef    addr
-    FPMem80      addr -> text "*" <> ppAddrRef    addr    
+    FPMem80      addr -> text "*" <> ppAddrRef    addr
     ByteImm      imm  -> ppImm imm
     WordImm      imm  -> ppImm imm
     DWordImm     imm  -> ppImm imm
