@@ -4997,6 +4997,11 @@
             <pfx>rep seg oso rexw</pfx>
             <opc>a5 /o=32</opc>
         </def>
+    </instruction>
+
+    <instruction>
+        <!-- This is a hack to avoid overloading SSE and non-SSE mnemonics. -->
+        <mnemonic>movsd_sse</mnemonic>
         <def>
             <pfx>rep aso rexr rexx rexb</pfx>
             <opc>/sse=f2 0f 10</opc>
@@ -5166,7 +5171,7 @@
         <def>
             <opc>90</opc>
         </def>
---> 
+-->
        <def>
             <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 19</opc>
@@ -5511,7 +5516,7 @@
             <opc>f3 90</opc>
         </def>
     </instruction>
-    
+
     <instruction>
         <mnemonic>pavgb</mnemonic>
         <def>
@@ -5713,7 +5718,7 @@
             <opr>V Ed Ib</opr>
             <class>sse4.1</class>
         </def>
- 
+
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
             <opc>/sse=66 0f 3a 22 /o=32</opc>
@@ -8481,7 +8486,7 @@
     </instruction>
 
     <!--
-         SSE 2 
+         SSE 2
      -->
 
     <instruction>

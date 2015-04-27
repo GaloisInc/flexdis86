@@ -11,7 +11,7 @@ This declares the parser for optable.xml file.
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternGuards #-}
-module Flexdis86.OpTable 
+module Flexdis86.OpTable
   ( -- * Primitive types.
     CPURequirement(..)
   , Vendor(..)
@@ -41,7 +41,7 @@ module Flexdis86.OpTable
   , defOperands
   , x64Compatible
     -- * Parsing defs
-  , parseOpTable 
+  , parseOpTable
   ) where
 
 import Control.Applicative
@@ -84,7 +84,7 @@ instance Functor ElemParser where
 
 instance Applicative ElemParser where
   pure v = EP $ \s -> Right (v,s)
-  m <*> h = EP $ \s -> do 
+  m <*> h = EP $ \s -> do
     (f,s1) <- unEP m s
     (x,s2) <- unEP h s1
     return (f x, s2)
@@ -152,7 +152,7 @@ opt nm p = do
 
 checkEnd :: ElemParser ()
 checkEnd = do
-  me <- getNextElt 
+  me <- getNextElt
   case me of
     Nothing -> return ()
     Just e -> pushElt e >> fail "Expected end of elements."
@@ -218,7 +218,7 @@ data CPURequirement
    | SMX
      -- | AMD 3D now definition.
    | AMD_3DNOW
-   | SSE 
+   | SSE
    | SSE2
    | SSE3
      -- | The movbe instruction which is unique to the atom.
@@ -452,23 +452,23 @@ parse_opcode nm = do
            _ -> fail $ "Unexpected operand size: " ++ r
 
     _ | Just r <- stripPrefix "/reg=" nm
-      , [(b,"")] <- readHex r 
+      , [(b,"")] <- readHex r
       , 0 <= b && b < 8
       -> requiredReg ?= Fin8 b
     _ | Just r <- stripPrefix "/rm=" nm
-      , [(b,"")] <- readHex r 
+      , [(b,"")] <- readHex r
       , 0 <= b && b < 8
       -> requiredRM ?= Fin8 b
     _ | Just r <- stripPrefix "/3dnow=" nm
-      , [(b,"")] <- readHex r 
+      , [(b,"")] <- readHex r
       -> do setDefCPUReq AMD_3DNOW
             addOpcode b -- We don't use requiredPrefix here because it is a suffix
     _ | Just r <- stripPrefix "/sse=" nm
-      , [(b,"")] <- readHex r 
+      , [(b,"")] <- readHex r
       -> do setDefCPUReq SSE
             requiredPrefix ?= b
     _ | Just r <- stripPrefix "/x87=" nm
-      , [(b,"")] <- readHex r 
+      , [(b,"")] <- readHex r
       , 0 <= b && b < 64
       -> do setDefCPUReq X87
             x87ModRM ?= Fin64 b
@@ -490,11 +490,11 @@ x64Compatible d =
 
 -- | Recognizes form for mnemoics
 isMnemonic :: String -> Bool
-isMnemonic (h:r) = isLower h && all isLowerOrDigit r
+isMnemonic (h:r) = (isLower h || h == '_') && all isLowerOrDigit r
 isMnemonic [] = False
 
 isLowerOrDigit :: Char -> Bool
-isLowerOrDigit c = isLower c || isDigit c
+isLowerOrDigit c = isLower c || isDigit c || (c == '_')
 
 parse_instruction :: ElemParser [Def]
 parse_instruction = do

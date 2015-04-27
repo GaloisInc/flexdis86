@@ -16,12 +16,13 @@ module Flexdis86.ByteReader
   ) where
 
 import Control.Applicative
+import qualified Data.ByteString as B
 import Data.Binary.Get (Get, getWord8)
 import Data.Bits
 import Data.Int
 import Data.Word
 
--- | A Monad with operations for reading values  for reading bytes from a 
+-- | A reader monad for reading values from a stream.
 class (Applicative m, Monad m) => ByteReader m where
   -- | Read a byte.
   readByte :: m Word8
