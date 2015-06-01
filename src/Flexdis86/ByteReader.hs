@@ -16,7 +16,6 @@ module Flexdis86.ByteReader
   ) where
 
 import Control.Applicative
-import qualified Data.ByteString as B
 import Data.Binary.Get (Get, getWord8)
 import Data.Bits
 import Data.Int

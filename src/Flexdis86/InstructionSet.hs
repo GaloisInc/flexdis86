@@ -9,6 +9,7 @@ This declares the main datatypes for the instruction set.
 module Flexdis86.InstructionSet
   ( InstructionInstance(..)
   , ppInstruction
+  , Flexdis86.OpTable.SizeConstraint(..)
   , Value(..)
   , ControlReg, controlReg, controlRegNo
   , DebugReg, debugReg, debugRegNo
@@ -36,6 +37,8 @@ import qualified Data.Vector as V
 import Numeric (showHex)
 import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+
+import Flexdis86.OpTable (SizeConstraint(..))
 
 showReg :: Show a => String -> a -> String
 showReg p v = "%" ++ p ++ show v
@@ -382,10 +385,11 @@ ppAddrRef addr =
 ------------------------------------------------------------------------
 -- Value
 
+{-
 data ValueClass = Address
                 | Immediate
                 | GPR
-
+-}
 
 -- | The value of an operand in an instruction instance.
 data Value
@@ -470,9 +474,13 @@ ppLockPrefix RepZPrefix = text "repz"
 
 -- | Instruction instance with name and operands.
 data InstructionInstance
-   = II { iiLockPrefix :: LockPrefix
-        , iiOp :: String
-        , iiArgs :: [Value]
+   = II { iiLockPrefix :: !LockPrefix
+          -- | Whether the address size is 16,32, or 64 bits.
+          -- Among other things, this is used to determine whether
+          -- to use ecx or rcx with the rep prefix.
+        , iiAddrSize :: !SizeConstraint
+        , iiOp   :: !String
+        , iiArgs :: ![Value]
         }
   deriving (Show, Eq)
 
