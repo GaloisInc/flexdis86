@@ -601,7 +601,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>cmovz</mnemonic>
+        <mnemonic>cmove</mnemonic>
         <def>
             <pfx>aso oso rexw rexr rexx rexb</pfx>
             <opc>0f 44</opc>
@@ -610,7 +610,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>cmovnz</mnemonic>
+        <mnemonic>cmovne</mnemonic>
         <def>
             <pfx>aso oso rexw rexr rexx rexb</pfx>
             <opc>0f 45</opc>
@@ -3998,7 +3998,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jz</mnemonic>
+        <mnemonic>je</mnemonic>
         <def>
             <opc>74</opc>
             <opr>Jb</opr>
@@ -4012,7 +4012,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jnz</mnemonic>
+        <mnemonic>jne</mnemonic>
         <def>
             <opc>75</opc>
             <opr>Jb</opr>
@@ -7397,7 +7397,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>setz</mnemonic>
+        <mnemonic>sete</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 94</opc>
@@ -7406,7 +7406,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>setnz</mnemonic>
+        <mnemonic>setne</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 95</opc>

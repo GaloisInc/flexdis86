@@ -360,27 +360,72 @@ data AddrRef
   | IP_Offset_64 Segment Int32
   deriving (Show, Eq)
 
+pp0xHex :: (Integral a, Show a) => a -> Doc
+pp0xHex n = text "0x" <> text (showHex n' "")
+  where n' = fromIntegral (fromIntegral n :: Int64) :: Word64
+
+ppSigned0xHex :: (Integral a, Show a) => a -> Doc
+ppSigned0xHex n = sign_ <> pp0xHex (abs n)
+  where sign_ = if n >= 0 then PP.empty else text "-"
+
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
   case addr of
-    Addr_32 seg base roff off -> ppAddr seg base roff off
+    Addr_32 seg base roff off ->
+      (case base 
+         of Just r | isDefaultSeg32 seg r -> id
+                   | seg == fs -> ((text (show seg) <> colon) <+>) 
+                   | seg == gs -> ((text (show seg) <> colon) <+>) 
+                   | otherwise -> id -- ((text (show seg) <> colon) <+>)
+            _ -> id) (ppAddr seg base roff off)
                                                           -- or rip? this is 32 bits ...
-    IP_Offset_32 seg off      -> prefix seg off <> parens (text "ip")
+    IP_Offset_32 seg off      -> brackets $ text "ip+" <> pp0xHex off
     Offset_32 seg off         -> prefix seg off
     Offset_64 seg off         -> prefix seg off
-    Addr_64 seg base roff off -> ppAddr seg base roff off
-    IP_Offset_64 seg off      -> prefix seg off <> parens (text "rip")
+    Addr_64 seg base roff off -> 
+      (case base 
+         of Just r | isDefaultSeg64 seg r -> id
+                   | seg == fs -> ((text (show seg) <> colon) <+>)
+                   | seg == gs -> ((text (show seg) <> colon) <+>)
+                   | otherwise -> id -- ((text (show seg) <> colon) <+>)
+            _ -> id) (ppAddr seg base roff off)
+    IP_Offset_64 seg off      -> brackets $ text "rip+"<> pp0xHex off
   where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
+    addOrSub n = text $ if n >= 0 then "+" else "-"
     ppAddr seg base roff off =
-      prefix seg off
-      <> case (base, roff) of
-           (Nothing, Nothing)     -> PP.empty -- can this happen?
-           (Just r, Nothing)      -> parens (ppShowReg r)
-           (Nothing, Just (n, r)) -> parens (hsep (punctuate comma [ppShowReg r, int n]))
-           (Just r, Just (n, r')) -> parens (hsep (punctuate comma [ppShowReg r
-                                                                   , ppShowReg r'
-                                                                   , int n]))
+      case (base, roff, off) of
+         (Nothing, Nothing, 0)      -> PP.empty -- can this happen?
+         (Nothing, Just (n, r), 0)  -> brackets (ppShowReg r <> text "*" <> int n)
+         (Just r, Nothing, 0)      -> brackets (ppShowReg r)
+         (Just r, Just (n, r'), 0)  -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
+         (Nothing, Nothing, n')     -> brackets $ ppSigned0xHex n'
+         (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <> pp0xHex (abs n'))
+         (Nothing, Just (n, r), n') -> brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
+         (Just r, Just (n, r'), n') -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
+
+isDefaultSeg32 :: Segment -> Reg32 -> Bool
+isDefaultSeg32 seg reg = isDefaultSeg64 seg $ reg32_reg reg
+
+isDefaultSeg64 :: Segment -> Reg64 -> Bool
+isDefaultSeg64 (Segment 2) (Reg64  4) = True
+isDefaultSeg64 (Segment 2) (Reg64  5) = True
+isDefaultSeg64 (Segment 3) (Reg64  0) = True
+isDefaultSeg64 (Segment 3) (Reg64  1) = True
+isDefaultSeg64 (Segment 3) (Reg64  2) = True
+isDefaultSeg64 (Segment 3) (Reg64  3) = True
+isDefaultSeg64 (Segment 3) (Reg64  6) = True
+isDefaultSeg64 (Segment 3) (Reg64  7) = True
+isDefaultSeg64 (Segment 3) (Reg64  8) = True
+isDefaultSeg64 (Segment 3) (Reg64  9) = True
+isDefaultSeg64 (Segment 3) (Reg64 10) = True
+isDefaultSeg64 (Segment 3) (Reg64 11) = True
+isDefaultSeg64 (Segment 3) (Reg64 12) = True
+isDefaultSeg64 (Segment 3) (Reg64 13) = True
+isDefaultSeg64 (Segment 3) (Reg64 14) = True
+isDefaultSeg64 (Segment 3) (Reg64 15) = True
+isDefaultSeg64 _ _ = False
+
 
 ------------------------------------------------------------------------
 -- Value
@@ -436,16 +481,16 @@ ppValue base v =
     X87Register  n    -> text "st" <> parens (int n)
     SegmentValue r    -> ppShowReg    r
     -- do the "*" belong here or in ppAddrRef?
-    FarPointer   addr -> text "*" <> ppAddrRef    addr
-    VoidMem      addr -> text "*" <> ppAddrRef    addr
-    Mem8         addr -> text "*" <> ppAddrRef    addr
-    Mem16        addr -> text "*" <> ppAddrRef    addr
-    Mem32        addr -> text "*" <> ppAddrRef    addr
-    Mem64        addr -> text "*" <> ppAddrRef    addr
-    Mem128       addr -> text "*" <> ppAddrRef    addr
-    FPMem32      addr -> text "*" <> ppAddrRef    addr
-    FPMem64      addr -> text "*" <> ppAddrRef    addr
-    FPMem80      addr -> text "*" <> ppAddrRef    addr
+    FarPointer   addr -> text "??FAR PTR??"            <+> ppAddrRef    addr
+    VoidMem      addr -> ppAddrRef addr
+    Mem8         addr -> text "BYTE PTR"    <+> ppAddrRef addr
+    Mem16        addr -> text "WORD PTR"    <+> ppAddrRef addr
+    Mem32        addr -> text "DWORD PTR"   <+> ppAddrRef addr
+    Mem64        addr -> text "QWORD PTR"   <+> ppAddrRef addr
+    Mem128       addr -> text "XMMWORD PTR" <+> ppAddrRef addr
+    FPMem32      addr -> text "DWORD PTR"   <+> ppAddrRef addr
+    FPMem64      addr -> text "QWORD PTR"   <+> ppAddrRef addr
+    FPMem80      addr -> text "TBYTE PTR"   <+> ppAddrRef addr
     ByteImm      imm  -> ppImm imm
     WordImm      imm  -> ppImm imm
     DWordImm     imm  -> ppImm imm
@@ -486,11 +531,23 @@ data InstructionInstance
         }
   deriving (Show, Eq)
 
+padToWidth :: Int -> String -> String
+padToWidth n s = if l > 0 then s ++ (replicate (n - l) ' ') else s
+  where l = length s
+
+ppPunctuate :: Doc -> [Doc] -> Doc
+ppPunctuate p (d1:d2:ds) = d1 <> p <> ppPunctuate p (d2 : ds)
+ppPunctuate p (d:[]) = d
+ppPunctuate p [] = PP.empty
+
+
 ppInstruction :: Word64
                  -- ^ Base address for printing instruction offsets.
                  -- This should be the address of the next instruction.
               -> InstructionInstance
               -> Doc
-ppInstruction base i = ppLockPrefix (iiLockPrefix i)
-                <+> text (iiOp i)
-                <+> hsep (punctuate comma (ppValue base <$> iiArgs i))
+ppInstruction base i = 
+  let sLockPrefix = ppLockPrefix (iiLockPrefix i)
+  in (if iiLockPrefix i == NoLockPrefix then id else (sLockPrefix <+>))
+    (text $ padToWidth 6 $ iiOp i)
+     <+> (ppPunctuate comma $ ppValue base <$> iiArgs i)
