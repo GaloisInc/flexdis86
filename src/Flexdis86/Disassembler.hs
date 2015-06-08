@@ -906,6 +906,7 @@ memSizeFn osz sz =
     Size16 -> Mem16
     Size32 -> Mem32
     Size64 -> Mem64
+    Size128 -> Mem128
 
 parseValue :: ByteReader m
            => Prefixes
@@ -974,7 +975,7 @@ parseValue p osz mmrm tp = do
     RM_XMM
       | modRM_mod modRM == 3 ->
         pure $ XMMReg $ xmmReg $ modRM_rm modRM
-      | otherwise -> Mem64 <$> addr
+      | otherwise -> Mem128 <$> addr
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
     M    ->    VoidMem <$> addr

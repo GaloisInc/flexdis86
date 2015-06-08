@@ -292,7 +292,7 @@ data ModConstraint = OnlyMem
 -- Instruction
 
 -- | Describes whether a value is 16, 32 or 64-bits.
-data SizeConstraint = Size16 | Size32 | Size64
+data SizeConstraint = Size16 | Size32 | Size64 | Size128
   deriving (Eq, Show)
 
 -- | Describes whether a floating point memory address value is 32, 64, or 80-bits.
