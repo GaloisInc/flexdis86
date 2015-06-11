@@ -4849,6 +4849,7 @@
 
     <instruction>
         <mnemonic>movlpd</mnemonic>
+        <class>sse</class>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 12 /mod=!11</opc>

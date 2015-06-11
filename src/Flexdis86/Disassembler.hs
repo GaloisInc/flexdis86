@@ -43,6 +43,8 @@ import qualified Data.Vector.Mutable as VM
 import Data.Word
 import Numeric (showHex)
 
+import Debug.Trace
+
 import Flexdis86.ByteReader
 import Flexdis86.InstructionSet
 import Flexdis86.OpTable
@@ -716,6 +718,7 @@ mkModTable f pfxdefs
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
+            Just OnlyMem -> True
             _ -> all modRMMemOperand (d^.defOperands)
         modRMMemOperand nm =
           case lookupOperandType "" nm of
@@ -733,6 +736,7 @@ mkModTable f pfxdefs
     let regDef d =
           case d^.requiredMod of
             Just OnlyMem -> False
+            Just OnlyReg -> True            
             _ -> all regOperand (d^.defOperands)
         regOperand nm =
           case lookupOperandType "" nm of
@@ -823,6 +827,7 @@ disassembleInstruction :: ByteReader m
                        -> m InstructionInstance
 disassembleInstruction tr0 = do
   b <- readByte
+  
   case tr0 `trVal` b of
     OpcodeTable tr -> disassembleInstruction tr
     SkipModRM pfx osz nm tps -> finish <$> traverse (parseValue pfx osz Nothing) tps
