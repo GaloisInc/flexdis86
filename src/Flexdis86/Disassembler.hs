@@ -43,6 +43,8 @@ import qualified Data.Vector.Mutable as VM
 import Data.Word
 import Numeric (showHex)
 
+import Debug.Trace
+
 import Flexdis86.ByteReader
 import Flexdis86.InstructionSet
 import Flexdis86.OpTable
@@ -821,6 +823,7 @@ disassembleInstruction :: ByteReader m
                        -> m InstructionInstance
 disassembleInstruction tr0 = do
   b <- readByte
+  
   case tr0 `trVal` b of
     OpcodeTable tr -> disassembleInstruction tr
     SkipModRM pfx osz nm tps -> finish <$> traverse (parseValue pfx osz Nothing) tps
