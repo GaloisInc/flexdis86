@@ -436,10 +436,10 @@ rsp_idx = 4
 rbp_idx :: Word8
 rbp_idx = 5
 
-sib_si :: (Word8 -> r) -> SIB -> Maybe (Int,r)
+sib_si :: (Word8 -> Word8) -> SIB -> Maybe (Int,Word8)
 sib_si index_reg sib | idx == rsp_idx = Nothing
-                     | otherwise      = Just (2^sib_scale sib, index_reg idx)
-  where idx = sib_index sib
+                     | otherwise      = Just (2^sib_scale sib, idx)
+  where idx = index_reg $ sib_index sib
 
 
 -- | A TableRef describes a table of parsers to read based on the bytes.
@@ -642,10 +642,12 @@ allPrefixedOpcodes def = filter (validPrefix . snd) $ map (mkBytes . unzip) rexs
 simplePrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
 simplePrefixes allowed = [ v | (name, v) <- pfxs, name `elem` allowed ]
   where
-    pfxs =  [ ("repz", (0xf2, set prLockPrefix RepZPrefix))
-            , ("rep",  (0xf3, set prLockPrefix RepPrefix))
-            , ("oso",  (0x66, set prOSO True))
-            , ("aso",  (0x67, set prASO True)) ]
+    pfxs =  [ ("lock",  (0xf0, set prLockPrefix LockPrefix))
+            , ("repnz", (0xf2, set prLockPrefix RepNZPrefix))
+            , ("repz",  (0xf3, set prLockPrefix RepZPrefix))
+            , ("rep",   (0xf3, set prLockPrefix RepPrefix))
+            , ("oso",   (0x66, set prOSO True))
+            , ("aso",   (0x67, set prASO True)) ]
 
 segPrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
 segPrefixes allowed
@@ -710,13 +712,27 @@ data ModTable a
 requireModCheck :: Def -> Bool
 requireModCheck d = isJust (d^.requiredMod)
 
-mkModTable :: PfxTableFn a -> PfxTableFn (ModTable a)
 mkModTable f pfxdefs
   | any (requireModCheck . snd) pfxdefs = do
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
-            _ -> all modRMMemOperand (d^.defOperands)
+            _ -> none modRMRegOperand (d^.defOperands)
+        modRMRegOperand nm =
+          case lookupOperandType "" nm of
+            OpType sc _ ->
+              case sc of
+                ModRM_rm_mod3 -> True
+                _ -> False
+            MXRX _ _  -> True
+            RG_MMX_rm -> True -- FIXME: no MMX_reg?
+            RG_XMM_rm -> True
+            RG_ST _   -> True
+            _         -> False
+    let regDef d =
+          case d^.requiredMod of
+            Just OnlyMem -> False
+            _ -> none modRMMemOperand (d^.defOperands)
         modRMMemOperand nm =
           case lookupOperandType "" nm of
             OpType sc _ ->
@@ -729,26 +745,8 @@ mkModTable f pfxdefs
             M_FloatingPoint _ -> True
             MXRX _ _ -> True
             RM_MMX  -> True
+            RM_XMM  -> True
             _       -> False
-    let regDef d =
-          case d^.requiredMod of
-            Just OnlyMem -> False
-            _ -> all regOperand (d^.defOperands)
-        regOperand nm =
-          case lookupOperandType "" nm of
-            OpType sc _ ->
-              case sc of
-                ModRM_rm -> True
-                ModRM_rm_mod3 -> True
-                _ -> False
-            MXRX _ _  -> True
-            RM_MMX    -> True
-            RG_MMX_rm -> True -- FIXME: no MMX_reg?
-            RG_XMM_reg -> True
-            RG_XMM_rm -> True
-            RM_XMM    -> True
-            RG_ST _   -> True
-            _         -> False
     ModTable <$> f (filter (memDef . snd) pfxdefs)
              <*> f (filter (regDef . snd) pfxdefs)
   | otherwise = ModUnchecked <$> f pfxdefs
@@ -970,11 +968,11 @@ parseValue p osz mmrm tp = do
     RG_S   -> SegmentValue <$> segmentRegisterByIndex reg
     RG_ST n -> return $ X87Register n
     RG_MMX_reg -> return $ MMXReg (mmxReg reg)
-    RG_XMM_reg -> return $ XMMReg (xmmReg reg)
+    RG_XMM_reg -> return $ XMMReg (xmmReg reg_with_rex)
     RG_XMM_rm  -> return $ XMMReg (xmmReg rm_reg)
     RM_XMM
       | modRM_mod modRM == 3 ->
-        pure $ XMMReg $ xmmReg $ modRM_rm modRM
+        pure $ XMMReg $ xmmReg $ rm_reg
       | otherwise -> Mem128 <$> addr
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
@@ -1011,7 +1009,11 @@ parseValue p osz mmrm tp = do
       case osz of
         Size16 ->  WordImm . fromIntegral <$> readSWord
         Size32 -> DWordImm . fromIntegral <$> readDWord
-        Size64 -> QWordImm . fromIntegral <$> readDWord
+        Size64 -> do dWord <- (fromIntegral <$> readDWord) :: ByteReader m => m Word32
+                     pure $ QWordImm $ 
+                       if testBit dWord 31
+                       then 0xffffffff00000000 .|. fromIntegral dWord
+                       else fromIntegral dWord
 
 -- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m

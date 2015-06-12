@@ -75,7 +75,7 @@ newtype MMXReg = MMXR Word8
   deriving (Eq)
 
 instance Show MMXReg where
-  show (MMXR w) = showReg "mm" w
+  show (MMXR w) = "mm" ++ show w
 
 {-# DEPRECATED mmx_reg "Use mmxReg instead!" #-}
 mmx_reg :: Word8 -> MMXReg
@@ -95,7 +95,7 @@ newtype XMMReg = XMMR Word8
   deriving (Eq)
 
 instance Show XMMReg where
-  show (XMMR w) = showReg "xmm" w
+  show (XMMR w) = "xmm" ++ show w
 
 xmmReg :: Word8 -> XMMReg
 xmmReg w = assert (w < 16) $ XMMR w
@@ -384,22 +384,24 @@ ppAddrRef addr =
     Offset_64 seg off         -> prefix seg off
     Addr_64 seg base roff off -> 
       (case base 
-         of Just r | isDefaultSeg64 seg r -> id
-                   | seg == fs -> ((text (show seg) <> colon) <+>)
-                   | seg == gs -> ((text (show seg) <> colon) <+>)
-                   | otherwise -> id -- ((text (show seg) <> colon) <+>)
-            _ -> id) (ppAddr seg base roff off)
+         of Just r  | seg == fs -> ((text (show seg) <> colon) <>)
+                    | seg == gs -> ((text (show seg) <> colon) <>)
+                    | isDefaultSeg64 seg r -> id
+                    | otherwise -> id -- ((text (show seg) <> colon) <+>)
+            Nothing | seg == fs -> ((text (show seg) <> colon) <>)
+                    | seg == gs -> ((text (show seg) <> colon) <>)
+	            | otherwise -> id) (ppAddr seg base roff off)
     IP_Offset_64 seg off      -> brackets $ text "rip+"<> pp0xHex off
   where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
     addOrSub n = text $ if n >= 0 then "+" else "-"
     ppAddr seg base roff off =
       case (base, roff, off) of
-         (Nothing, Nothing, 0)      -> PP.empty -- can this happen?
+         (Nothing, Nothing, 0)      -> text "0x0" -- happens with fs and gs segments
          (Nothing, Just (n, r), 0)  -> brackets (ppShowReg r <> text "*" <> int n)
          (Just r, Nothing, 0)      -> brackets (ppShowReg r)
          (Just r, Just (n, r'), 0)  -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
-         (Nothing, Nothing, n')     -> brackets $ ppSigned0xHex n'
+         (Nothing, Nothing, n')     -> ppSigned0xHex n'
          (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <> pp0xHex (abs n'))
          (Nothing, Just (n, r), n') -> brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
          (Just r, Just (n, r'), n') -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
@@ -510,14 +512,18 @@ ppImm i = text"0x" <> text (showHex i "")
 
 data LockPrefix
    = NoLockPrefix
+   | LockPrefix
    | RepPrefix
    | RepZPrefix
+   | RepNZPrefix
   deriving (Show, Eq)
 
 ppLockPrefix :: LockPrefix -> Doc
 ppLockPrefix NoLockPrefix = PP.empty
+ppLockPrefix LockPrefix = text "lock"
 ppLockPrefix RepPrefix  = text "rep"
 ppLockPrefix RepZPrefix = text "repz"
+ppLockPrefix RepNZPrefix = text "repnz"
 
 -- | Instruction instance with name and operands.
 data InstructionInstance
@@ -548,6 +554,29 @@ ppInstruction :: Word64
               -> Doc
 ppInstruction base i = 
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
-  in (if iiLockPrefix i == NoLockPrefix then id else (sLockPrefix <+>))
-    (text $ padToWidth 6 $ iiOp i)
-     <+> (ppPunctuate comma $ ppValue base <$> iiArgs i)
+      args = iiArgs i
+      op = iiOp i
+  in
+   case (op, args)
+        -- special casem for one-bit shift instructions
+     of ("sar", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
+                                     <+> ppValue base dst  
+                                     <> comma <> text "1"
+        ("sal", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
+                                     <+> ppValue base dst  
+                                     <> comma <> text "1"
+        ("shr", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
+                                     <+> ppValue base dst  
+                                     <> comma <> text "1"
+        ("shl", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
+                                     <+> ppValue base dst  
+                                     <> comma <> text "1"
+        -- objdump prints as nop
+        ("xchg", [DWordReg (Reg32 0), DWordReg (Reg32 0)]) -> text "nop"
+        _ -> (case (args, iiLockPrefix i)
+                of ([], NoLockPrefix) -> text op
+                   (_, NoLockPrefix) -> (text $ padToWidth 6 op)
+                                         <+> (ppPunctuate comma $ ppValue base <$> args)
+                   ([], _) -> sLockPrefix <+> text op
+                   (_,_) -> sLockPrefix <+> text op
+                              <+> (ppPunctuate comma $ ppValue base <$> args))
