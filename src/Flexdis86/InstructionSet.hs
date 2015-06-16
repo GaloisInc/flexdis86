@@ -33,6 +33,7 @@ import Control.Applicative
 import Control.Exception
 import Data.Int
 import Data.Word
+import Data.Bits
 import qualified Data.Vector as V
 import Numeric (showHex)
 import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
@@ -401,10 +402,10 @@ ppAddrRef addr =
          (Nothing, Just (n, r), 0)  -> brackets (ppShowReg r <> text "*" <> int n)
          (Just r, Nothing, 0)      -> brackets (ppShowReg r)
          (Just r, Just (n, r'), 0)  -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
-         (Nothing, Nothing, n')     -> ppSigned0xHex n'
-         (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <> pp0xHex (abs n'))
+         (Nothing, Nothing, n')     -> pp0xHex n'
+         (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <>  pp0xHex (abs n'))
          (Nothing, Just (n, r), n') -> brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
-         (Just r, Just (n, r'), n') -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
+         (Just r, Just (n, r'), n') -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub (fromIntegral n') <> pp0xHex (abs n'))
 
 isDefaultSeg32 :: Segment -> Reg32 -> Bool
 isDefaultSeg32 seg reg = isDefaultSeg64 seg $ reg32_reg reg
@@ -480,7 +481,7 @@ ppValue base v =
     DebugReg     r    -> text (show r)
     MMXReg       r    -> text (show r)
     XMMReg       r    -> text (show r)
-    X87Register  n    -> text "st" <> parens (int n)
+    X87Register  n    -> text "st" <> if n == 0 then PP.empty else parens (int n)
     SegmentValue r    -> ppShowReg    r
     -- do the "*" belong here or in ppAddrRef?
     FarPointer   addr -> text "??FAR PTR??"            <+> ppAddrRef    addr
@@ -546,6 +547,7 @@ ppPunctuate p (d1:d2:ds) = d1 <> p <> ppPunctuate p (d2 : ds)
 ppPunctuate p (d:[]) = d
 ppPunctuate p [] = PP.empty
 
+nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]
 
 ppInstruction :: Word64
                  -- ^ Base address for printing instruction offsets.
@@ -559,24 +561,17 @@ ppInstruction base i =
   in
    case (op, args)
         -- special casem for one-bit shift instructions
-     of ("sar", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
-                                     <+> ppValue base dst  
-                                     <> comma <> text "1"
-        ("sal", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
-                                     <+> ppValue base dst  
-                                     <> comma <> text "1"
-        ("shr", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
-                                     <+> ppValue base dst  
-                                     <> comma <> text "1"
-        ("shl", [dst, ByteImm 1]) -> (text $ padToWidth 6 op) 
+     of (_, [dst, ByteImm 1]) 
+          | op `elem` nonHex1Instrs -> 
+                                     (text $ padToWidth 6 op) 
                                      <+> ppValue base dst  
                                      <> comma <> text "1"
         -- objdump prints as nop
         ("xchg", [DWordReg (Reg32 0), DWordReg (Reg32 0)]) -> text "nop"
-        _ -> (case (args, iiLockPrefix i)
-                of ([], NoLockPrefix) -> text op
-                   (_, NoLockPrefix) -> (text $ padToWidth 6 op)
-                                         <+> (ppPunctuate comma $ ppValue base <$> args)
-                   ([], _) -> sLockPrefix <+> text op
-                   (_,_) -> sLockPrefix <+> text op
-                              <+> (ppPunctuate comma $ ppValue base <$> args))
+        _ -> case (args, iiLockPrefix i)
+               of ([], NoLockPrefix) -> text op
+                  (_, NoLockPrefix) -> (text $ padToWidth 6 op)
+                                       <+> (ppPunctuate comma $ ppValue base <$> args)
+                  ([], _) -> sLockPrefix <+> text op
+                  (_,_) -> sLockPrefix <+> text op
+                           <+> (ppPunctuate comma $ ppValue base <$> args)

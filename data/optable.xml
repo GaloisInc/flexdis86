@@ -1400,6 +1400,9 @@
         <def>
             <opc>d9 /mod=11 /x87=20</opc>
         </def>
+        <def>
+            <opc>d9 /mod=11 /x87=24</opc>
+        </def>
     </instruction>
 
     <instruction>
@@ -2685,20 +2688,16 @@
     </instruction>
 
     <instruction>
-        <mnemonic>fldln2</mnemonic>
+        <mnemonic>fldz</mnemonic>
         <class>X87</class>
         <def>
             <opc>d9 /mod=11 /x87=2d</opc>
         </def>
-    </instruction>
-
-    <instruction>
-        <mnemonic>fldz</mnemonic>
-        <class>X87</class>
         <def>
             <opc>d9 /mod=11 /x87=2e</opc>
         </def>
     </instruction>
+
 
     <instruction>
         <mnemonic>fldcw</mnemonic>
@@ -3421,14 +3420,6 @@
         <def>
             <opc>de /mod=11 /x87=27</opc>
             <opr>ST7 ST0</opr>
-        </def>
-    </instruction>
-
-    <instruction>
-        <mnemonic>ftst</mnemonic>
-        <class>X87</class>
-        <def>
-            <opc>d9 /mod=11 /x87=24</opc>
         </def>
     </instruction>
 
@@ -4769,6 +4760,11 @@
 
     <instruction>
         <mnemonic>movd</mnemonic>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>/sse=66 0f 6e</opc>
+            <opr>V Ey</opr>
+        </def>
     </instruction>
 
     <instruction>
@@ -4815,13 +4811,13 @@
         <class>sse2</class>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=66 0f 12 </opc>
-            <opr>V M</opr>
+            <opc>/sse=66 0f 12 /mod=!11</opc>
+            <opr>V W</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 13</opc>
-            <opr>M V</opr>
+            <opr>W V</opr>
         </def>
     </instruction>
 
@@ -4939,11 +4935,6 @@
         </def>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
-            <opc>/sse=66 0f 6e</opc>
-            <opr>V Ey</opr>
-        </def>
-        <def>
-            <pfx>aso rexw rexr rexx rexb</pfx>
             <opc>0f 6e</opc>
             <opr>P Ey</opr>
         </def>
@@ -4980,8 +4971,7 @@
     </instruction>
 
     <instruction>
-        <!-- This is a hack to avoid overloading SSE and non-SSE mnemonics. -->
-        <mnemonic>movsd_sse</mnemonic>
+        <mnemonic>movsd</mnemonic>
         <def>
             <pfx>rep aso rexr rexx rexb</pfx>
             <opc>/sse=f2 0f 10</opc>
@@ -7876,17 +7866,17 @@
     <instruction>
         <mnemonic>test</mnemonic>
         <def>
-            <pfx>aso rexw rexr rexx rexb</pfx>
+            <pfx>aso rexw rexr rexx rexb seg</pfx>
             <opc>f6 /reg=0</opc>
             <opr>Eb Ib</opr>
         </def>
         <def>
-            <pfx>aso rexr rexx rexb</pfx>
+            <pfx>aso rexr rexx rexb seg</pfx>
             <opc>84</opc>
             <opr>Eb Gb</opr>
         </def>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso oso rexw rexr rexx rexb seg</pfx>
             <opc>85</opc>
             <opr>Ev Gv</opr>
         </def>
@@ -7900,12 +7890,12 @@
             <opr>rAX sIz</opr>
         </def>
         <def>
-            <pfx>aso rexw rexr rexx rexb</pfx>
+            <pfx>aso rexw rexr rexx rexb seg</pfx>
             <opc>f6 /reg=1</opc>
             <opr>Eb Ib</opr>
         </def>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso oso rexw rexr rexx rexb seg</pfx>
             <opc>f7 /reg=0</opc>
             <opr>Ev sIz</opr>
         </def>
@@ -7916,6 +7906,15 @@
             <opr>Ev Iz</opr>
         </def>
 -->
+    </instruction>
+
+    <instruction>
+        <mnemonic>tzcnt</mnemonic>
+        <def>
+            <pfx>aso oso rexr rexx rexb rexw seg</pfx>
+            <opc>/sse=f3 0f bc</opc>
+            <opr>Gv Ev</opr>
+        </def>
     </instruction>
 
     <instruction>
@@ -8218,7 +8217,7 @@
     <instruction>
         <mnemonic>xgetbv</mnemonic>
     <def>
-        <opc>0f 01 /mod=11 /reg=2 /rm=0</opc>
+        <opc>0f 01 /reg=2 /mod=11 /rm=0</opc>
     </def>
     </instruction>
 

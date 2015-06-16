@@ -688,7 +688,7 @@ mkOpcodeTable f defs = go [] (concatMap allPrefixedOpcodes defs)
            -- definitions.
           | all opcodeDone l = do
               case l of
-                _ | all (expectsModRM.snd.snd) l ->
+                _ | all (expectsModRM.snd.snd) l -> do
                      ReadModRM <$> f (snd <$> l)
                 [([],(pfx, d))] -> assert (not (expectsModRM d)) $
                     return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps
@@ -837,18 +837,19 @@ disassembleInstruction tr0 = do
 
 parseGenRegTable :: ByteReader m
               => (ModRM -> a -> m InstructionInstance)
+              -> (ModRM -> Word8)
               -> ModRM
               -> RegTable a
               -> m InstructionInstance
-parseGenRegTable f modRM (RegTable v) = f modRM mtable
-  where mtable = v `regIdx` modRM_reg modRM
-parseGenRegTable f modRM (RegUnchecked m) = f modRM m
+parseGenRegTable f g modRM (RegTable v) = f modRM mtable
+  where mtable = v `regIdx` g modRM
+parseGenRegTable f g modRM (RegUnchecked m) = f modRM m
 
 parseRegTable :: ByteReader m
               => ModRM
               -> RegTable (ModTable RMTable)
               -> m InstructionInstance
-parseRegTable = parseGenRegTable parseModTable
+parseRegTable = parseGenRegTable parseModTable modRM_reg
 
 parseModTable :: ByteReader m
               => ModRM
@@ -864,7 +865,7 @@ parseRMTable :: ByteReader m
              => ModRM
              -> RMTable
              -> m InstructionInstance
-parseRMTable = parseGenRegTable parseReadTable
+parseRMTable = parseGenRegTable parseReadTable modRM_rm
 
 parseReadTable :: ByteReader m
                => ModRM
@@ -872,7 +873,7 @@ parseReadTable :: ByteReader m
                -> m InstructionInstance
 parseReadTable _ NoParse = fail "Invalid instruction."
 parseReadTable modRM (ReadTable pfx osz nm tps) =
-    finish <$> traverse (parseValue pfx osz (Just modRM)) tps
+  finish <$>  traverse (parseValue pfx osz (Just modRM)) tps
   where finish args = II { iiLockPrefix = pfx^.prLockPrefix
                          , iiAddrSize = prAddrSize pfx
                          , iiOp = nm
