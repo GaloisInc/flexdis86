@@ -25,5 +25,5 @@ main = do args <- getArgs
           let bs = BS.pack $ map (fst . head) nums
 
           case map disInstruction $ disassembleBuffer defaultX64Disassembler bs of
-           Just ii : _ -> print ii
+           Just ii : _ -> print ii >> print (ppInstruction 0 ii)
            _           -> error "No parse"

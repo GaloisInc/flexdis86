@@ -786,14 +786,17 @@
         <def>
             <pfx>repz repnz seg</pfx>
             <opc>a6</opc>
+            <opr>MIsb MIdb</opr>
         </def>
         <def>
             <pfx>repz repnz oso rexw seg</pfx>
             <opc>a7 /o=16</opc>
+            <opr>MIsw MIdw</opr>
         </def>
         <def>
             <pfx>rep repz oso rexw seg</pfx>
             <opc>a7 /o=32</opc>
+            <opr>MIsd MIdd</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
@@ -803,6 +806,7 @@
         <def>
             <pfx>repz oso rexw seg</pfx>
             <opc>a7 /o=64</opc>
+            <opr>MIsq MIdq</opr>
         </def>
     </instruction>
 
@@ -4955,18 +4959,22 @@
         <def>
             <pfx>rep seg</pfx>
             <opc>a4</opc>
+            <opr>MIdb MIsb</opr>
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>a5 /o=16</opc>
+            <opr>MIdw MIsw</opr>
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>a5 /o=32</opc>
+            <opr>MIdd MIsd</opr>            
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>a5 /o=64</opc>
+            <opr>MIdq MIsq</opr>            
         </def>
     </instruction>
 
@@ -7332,19 +7340,23 @@
         <def>
             <pfx>repz repnz</pfx>
             <opc>ae</opc>
+            <opr>AL MIdb</opr>            
         </def>
         <def>
             <pfx>repz repnz oso rexw</pfx>
             <opc>af /o=16</opc>
-        </def>
-        <def>
-            <pfx>repz repnz oso rexw</pfx>
-            <opc>af /o=64</opc>
+            <opr>eAX MIdw</opr>
         </def>
         <def>
             <pfx>repz repnz oso rexw</pfx>
             <opc>af /o=32</opc>
+            <opr>eAX MIdd</opr>            
         </def>
+        <def>
+          <pfx>repz repnz oso rexw</pfx>
+            <opc>af /o=64</opc>
+            <opr>rAX MIdq</opr>
+        </def>        
     </instruction>
 
     <instruction>
@@ -7696,18 +7708,22 @@
         <def>
             <pfx>rep seg</pfx>
             <opc>aa</opc>
+            <opr>MIdb AL</opr>
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>ab /o=16</opc>
+            <opr>MIdw eAX</opr>
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>ab /o=32</opc>
+            <opr>MIdd eAX</opr>
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>ab /o=64</opc>
+            <opr>MIdq rAX</opr>
         </def>
     </instruction>
 

@@ -191,6 +191,10 @@ data OperandType
      -- | An MMX register from ModRM.rm
    | RG_MMX_rm
 
+     -- | An implicit memory location based upon the given register.
+     -- Altered by ASO.
+   | M_Implicit Segment Reg64 OperandSize
+
      -- | The constant one.
    | IM_1
     -- | An immediate with 8 bits that is sign extended to match operand size.
@@ -210,6 +214,15 @@ operandHandlerMap = Map.fromList
   , (,) "CL"  $ OpType (Reg_fixed 1) BSize
   , (,) "DX"  $ OpType (Reg_fixed 2) WSize
 
+  , (,) "MIdb" $ M_Implicit es rdi BSize
+  , (,) "MIdw" $ M_Implicit es rdi WSize
+  , (,) "MIdd" $ M_Implicit es rdi DSize
+  , (,) "MIdq" $ M_Implicit es rdi QSize  
+  , (,) "MIsb" $ M_Implicit ds rsi BSize
+  , (,) "MIsw" $ M_Implicit ds rsi WSize
+  , (,) "MIsd" $ M_Implicit ds rsi DSize
+  , (,) "MIsq" $ M_Implicit ds rsi QSize
+    
     -- Fixed segment registers.
   , (,) "FS"  $ SEG fs
   , (,) "GS"  $ SEG gs
@@ -557,6 +570,7 @@ modRMOperand nm =
     MXRX _ _ -> True
     RM_MMX    -> True
     RG_MMX_rm -> True
+    M_Implicit{} -> False
     IM_1  -> False
     IM_SB -> False
     IM_SZ -> False
@@ -1002,6 +1016,11 @@ parseValue p osz mmrm tp = do
       | otherwise -> Mem64 <$> addr
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
       pure $ MMXReg $ mmxReg $ modRM_rm modRM
+    M_Implicit seg r sz ->
+      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing 0
+      where
+        mkaddr | aso = memRef_32
+               | otherwise = memRef_64
     IM_1 -> pure $ ByteImm 1
     IM_SB -> do
       b <- readSByte
