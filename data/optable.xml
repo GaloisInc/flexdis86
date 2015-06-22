@@ -843,7 +843,7 @@
         <def>
             <pfx>aso rexr rexx rexb lock seg</pfx>
             <opc>0f c7 /reg=1 /o=32</opc>
-            <opr>M</opr>
+            <opr>Mq</opr>
         </def>
     </instruction>
 
