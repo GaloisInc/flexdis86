@@ -4776,12 +4776,12 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 16</opc>
-            <opr>V M</opr>
+            <opr>V Mq</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 17</opc>
-            <opr>M V</opr>
+            <opr>Mq V</opr>
         </def>
     </instruction>
 
@@ -4816,12 +4816,12 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 12 /mod=!11</opc>
-            <opr>V W</opr>
+            <opr>V Mq</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 13</opc>
-            <opr>W V</opr>
+            <opr>Mq V</opr>
         </def>
     </instruction>
 
