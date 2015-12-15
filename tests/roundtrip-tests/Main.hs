@@ -13,17 +13,20 @@ import qualified Test.Tasty.HUnit as T
 import qualified Data.Elf as E
 import qualified Flexdis86 as D
 import qualified Flexdis86.Assembler as A
+import Hexdump
 
 main :: IO ()
 main = T.defaultMain testCases
 
 testCases :: T.TestTree
 testCases = T.testGroup "Roundtrip Tests" [
-  simpleOpcodes
+  zeroOperandTests,
+  immediateTests,
+  singleOperandTests
   ]
 
-simpleOpcodes :: T.TestTree
-simpleOpcodes =
+zeroOperandTests :: T.TestTree
+zeroOperandTests =
   T.testGroup "ZeroOperandOpcodes" (map mkTest zeroOperandOpcodeTests)
 
 zeroOperandOpcodeTests :: [(String, [String])]
@@ -43,10 +46,33 @@ zeroOperandOpcodeTests = [ ("ret", ["ret"])
                          , ("memory fence", ["mfence"])
                          , ("store fence", ["sfence"])
                          , ("load fence", ["lfence"])
+                           -- This test (cwd) requires a size override
+                           -- to 16 bits because it otherwise shares
+                           -- an opcode with cdq
+                         , ("convert word to dword", ["cwd"])
+                         , ("convert dword to qword", ["cdq"])
                          ]
 
+singleOperandTests :: T.TestTree
+singleOperandTests =
+  T.testGroup "SingleOperandOpcodes" (map mkTest singleOperandOpcodes)
 
+singleOperandOpcodes :: [(String, [String])]
+singleOperandOpcodes = [ ("increment r8", ["inc %ah"])
+                       , ("increment r16", ["inc %ax"])
+                       , ("increment r32", ["inc %eax"])
+                       , ("increment r64", ["inc %rax"])
+                       ]
 
+immediateTests :: T.TestTree
+immediateTests =
+  T.testGroup "ImmediateOperandOpcodes" (map mkTest immediateOperandOpcodes)
+
+immediateOperandOpcodes :: [(String, [String])]
+immediateOperandOpcodes = [ ("push imm8", ["push $3"])
+                          , ("push imm16", ["push $15000"])
+                          , ("push imm32", ["push $1000000000"])
+                          ]
 
 mkTest :: (String, [String]) -> T.TestTree
 mkTest (name, insns) = T.testCase name $ do
@@ -70,6 +96,7 @@ mkTest (name, insns) = T.testCase name $ do
           T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
           let instances = mapMaybe D.disInstruction disInsns
               assembledInsns = mapMaybe A.assembleInstruction instances
+          putStrLn (prettyHex (B.concat assembledInsns))
           T.assertEqual "Assembled bytes" codeBytes (B.concat assembledInsns)
 
 readCodeSegment :: FilePath -> IO B.ByteString
