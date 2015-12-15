@@ -37,6 +37,7 @@ import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import Flexdis86.OpTable (SizeConstraint(..), Def)
+import Flexdis86.Prefixes
 import Flexdis86.Register
 import Flexdis86.Segment
 
@@ -187,20 +188,6 @@ ppImm i = text"0x" <> text (showHex i "")
 ------------------------------------------------------------------------
 -- InstructionInstance
 
-data LockPrefix
-   = NoLockPrefix
-   | LockPrefix
-   | RepPrefix
-   | RepZPrefix
-   | RepNZPrefix
-  deriving (Show, Eq)
-
-ppLockPrefix :: LockPrefix -> Doc
-ppLockPrefix NoLockPrefix = PP.empty
-ppLockPrefix LockPrefix = text "lock"
-ppLockPrefix RepPrefix  = text "rep"
-ppLockPrefix RepZPrefix = text "repz"
-ppLockPrefix RepNZPrefix = text "repnz"
 
 -- | Instruction instance with name and operands.
 data InstructionInstance
@@ -214,7 +201,9 @@ data InstructionInstance
         , iiAddrSize :: !SizeConstraint
         , iiOp   :: !String
         , iiArgs :: ![Value]
-        , iiEncoding :: !Def
+        , iiPrefixes :: !Prefixes
+        , iiRequiredPrefix :: Maybe Word8
+        , iiOpcode :: [Word8]
         }
   deriving (Show, Eq)
 

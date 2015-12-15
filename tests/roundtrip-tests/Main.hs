@@ -24,11 +24,29 @@ testCases = T.testGroup "Roundtrip Tests" [
 
 simpleOpcodes :: T.TestTree
 simpleOpcodes =
-  T.testGroup "SimpleOpcodes" (map mkTest simpleOpcodeTests)
+  T.testGroup "ZeroOperandOpcodes" (map mkTest zeroOperandOpcodeTests)
 
-simpleOpcodeTests :: [(String, [String])]
-simpleOpcodeTests = [ ("ret", ["ret"])
-                    ]
+zeroOperandOpcodeTests :: [(String, [String])]
+zeroOperandOpcodeTests = [ ("ret", ["ret"])
+                         , ("x87 wait", ["wait"])
+                         , ("int3", ["int $0x3"])
+                         , ("nop", ["nop"])
+                         , ("halt", ["hlt"])
+                         , ("cmc", ["cmc"])
+                         , ("clear carry flag", ["clc"])
+                         , ("set carry flag", ["stc"])
+                         , ("clear interrupt flag", ["cli"])
+                         , ("set interrupt flag", ["sti"])
+                         , ("clear direction flag", ["cld"])
+                         , ("set direction flag", ["std"])
+                         , ("undefined instruction", ["ud2"])
+                         , ("memory fence", ["mfence"])
+                         , ("store fence", ["sfence"])
+                         , ("load fence", ["lfence"])
+                         ]
+
+
+
 
 mkTest :: (String, [String]) -> T.TestTree
 mkTest (name, insns) = T.testCase name $ do

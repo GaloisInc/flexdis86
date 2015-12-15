@@ -8,7 +8,7 @@ import qualified Data.ByteString as B
 import Data.Maybe ( mapMaybe, maybeToList )
 
 import Flexdis86.InstructionSet
-import Flexdis86.OpTable
+import Flexdis86.Prefixes
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.ByteString
 assembleInstruction ii = do
@@ -17,11 +17,12 @@ assembleInstruction ii = do
                              , [opcode]
                              ]
   where
-    lockPrefixes = maybeToList (encodeLockPrefix (iiLockPrefix ii))
-    reqPrefix = maybeToList (encodeRequiredPrefix (L.view requiredPrefix enc))
-    opcode = B.pack (L.view defOpcodes enc)
+    lockPrefixes = maybeToList (encodeLockPrefix (L.view prLockPrefix pfxs))
+    reqPrefix = maybeToList (encodeRequiredPrefix (iiRequiredPrefix ii))
+    opcode = B.pack (iiOpcode ii)
+    pfxs = iiPrefixes ii
 --    modrm = maybeToList (encodeModRM (L.view requiredMod enc) (L.view requiredReg enc) (L.view requiredRM enc))
-    enc = iiEncoding ii
+--    enc = iiEncoding ii
 
 encodeRequiredPrefix :: Maybe Word8 -> Maybe B.ByteString
 encodeRequiredPrefix = fmap B.singleton

@@ -34,13 +34,11 @@ import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Int
 import Data.List (subsequences, permutations)
-import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import Data.Word
-import Numeric (showHex)
 
 import Prelude
 
@@ -48,64 +46,8 @@ import Flexdis86.ByteReader
 import Flexdis86.InstructionSet
 import Flexdis86.Operand
 import Flexdis86.OpTable
+import Flexdis86.Prefixes
 import Flexdis86.Register
-
--- | Prefixes for an instruction.
-data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
-                         , _prSP  :: SegmentPrefix
-                         , _prREX :: REX
-                         , _prASO :: Bool
-                         , _prOSO :: Bool
-                         }
-                deriving (Show)
-
--- | REX value for 64-bit mode.
-newtype REX = REX { unREX :: Word8 }
-  deriving (Eq)
-
-instance Show REX where
-  showsPrec _ (REX rex) = showHex rex
-
--- | Includes segment prefix and branch override hints.
-newtype SegmentPrefix = SegmentPrefix Word8
-  deriving (Show)
-
-prLockPrefix :: Simple Lens Prefixes LockPrefix
-prLockPrefix = lens _prLockPrefix (\s v -> s { _prLockPrefix = v })
-
-prSP :: Simple Lens Prefixes SegmentPrefix
-prSP = lens _prSP (\s v -> s { _prSP = v})
-
-prREX :: Simple Lens Prefixes REX
-prREX = lens _prREX (\s v -> s { _prREX = v })
-
-prASO :: Simple Lens Prefixes Bool
-prASO = lens _prASO (\s v -> s { _prASO = v })
-
-prOSO :: Simple Lens Prefixes Bool
-prOSO = lens _prOSO (\s v -> s { _prOSO = v })
-
-prAddrSize :: Prefixes -> SizeConstraint
-prAddrSize pfx | pfx^.prASO = Size32
-               | otherwise  = Size64
-
-
-------------------------------------------------------------------------
--- SegmentPrefix
-
-no_seg_prefix :: SegmentPrefix
-no_seg_prefix = SegmentPrefix 0
-
-setDefault :: SegmentPrefix -> Segment -> Segment
-setDefault (SegmentPrefix 0) s = s
-setDefault (SegmentPrefix 0x26) _ = es
-setDefault (SegmentPrefix 0x2e) _ = cs
-setDefault (SegmentPrefix 0x36) _ = ss
-setDefault (SegmentPrefix 0x3e) _ = ds
-setDefault (SegmentPrefix 0x64) _ = fs
-setDefault (SegmentPrefix 0x65) _ = gs
-setDefault (SegmentPrefix w) _ = error $ "Unexpected segment prefix: " ++ showHex w ""
-
 
 
 -- | Create an instruction parser from the given udis86 parser.
@@ -600,7 +542,9 @@ disassembleInstruction tr0 = do
                  , iiAddrSize = prAddrSize pfx
                  , iiOp   = nm
                  , iiArgs = args
-                 , iiEncoding = df
+                 , iiPrefixes = pfx
+                 , iiRequiredPrefix = view requiredPrefix df
+                 , iiOpcode = view defOpcodes df
                  }
     ReadModRM t -> flip parseRegTable t =<< readModRM
 
@@ -612,7 +556,7 @@ parseGenRegTable :: ByteReader m
               -> m InstructionInstance
 parseGenRegTable f g modRM (RegTable v) = f modRM mtable
   where mtable = v `regIdx` g modRM
-parseGenRegTable f g modRM (RegUnchecked m) = f modRM m
+parseGenRegTable f _g modRM (RegUnchecked m) = f modRM m
 
 parseRegTable :: ByteReader m
               => ModRM
@@ -647,7 +591,9 @@ parseReadTable modRM (ReadTable pfx osz nm tps df) =
                          , iiAddrSize = prAddrSize pfx
                          , iiOp = nm
                          , iiArgs = args
-                         , iiEncoding = df
+                         , iiPrefixes = pfx
+                         , iiRequiredPrefix = view requiredPrefix df
+                         , iiOpcode = view defOpcodes df
                          }
 
 -- | Returns the size of a function.

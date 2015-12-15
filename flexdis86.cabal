@@ -31,6 +31,7 @@ library
     Flexdis86.InstructionSet
     Flexdis86.Operand
     Flexdis86.OpTable
+    Flexdis86.Prefixes
     Flexdis86.Register
     Flexdis86.Segment
 
