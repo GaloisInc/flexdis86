@@ -55,6 +55,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Word
 
+import Prelude
+
 import Numeric (readDec, readHex)
 import Text.XML.Light
 
@@ -186,7 +188,7 @@ newtype Fin8 = Fin8 { unFin8 :: Word8 }
 
 -- | A value 0-63.
 newtype Fin64 = Fin64 { unFin64 :: Word8 }
-  deriving (Show)
+  deriving (Eq, Show)
 
 -- | Mode effect on instruction semantecs.
 data Mode
@@ -286,7 +288,7 @@ valid64 m = m == AnyMode || m == Only64
 -- can be only memory (e.g. !11), only a register (e.g., =11).
 data ModConstraint = OnlyMem
                    | OnlyReg
-  deriving (Show)
+  deriving (Eq, Show)
 
 ------------------------------------------------------------------------
 -- Instruction
@@ -316,7 +318,7 @@ data Def = Def  { _defMnemonic :: String
                 , _requiredRM :: Maybe Fin8
                 , _x87ModRM    :: Maybe Fin64
                 , _defOperands  :: [String]
-                } deriving (Show)
+                } deriving (Eq, Show)
 
 -- | Mnemonic for definition.
 defMnemonic :: Simple Lens Def String
