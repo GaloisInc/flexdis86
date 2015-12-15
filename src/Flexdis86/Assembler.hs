@@ -5,20 +5,25 @@ module Flexdis86.Assembler (
 import qualified Control.Lens as L
 import Control.Monad ( MonadPlus(..) )
 import qualified Data.ByteString as B
-import Data.Maybe ( mapMaybe, maybeToList )
+import qualified Data.ByteString.Builder as B
+import qualified Data.ByteString.Lazy as LB
+import Data.Maybe ( catMaybes )
 
 import Flexdis86.InstructionSet
 import Flexdis86.Prefixes
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.ByteString
 assembleInstruction ii = do
-  return $ B.concat $ concat [ lockPrefixes
-                             , reqPrefix
+  return $ B.concat $ concat [ prefixBytes
                              , [opcode]
+                             , map encodeOperand (iiArgs ii)
                              ]
   where
-    lockPrefixes = maybeToList (encodeLockPrefix (L.view prLockPrefix pfxs))
-    reqPrefix = maybeToList (encodeRequiredPrefix (iiRequiredPrefix ii))
+    prefixBytes = catMaybes [ encodeLockPrefix (L.view prLockPrefix pfxs)
+                            , if L.view prOSO pfxs then Just (B.singleton 0x66) else Nothing
+                            , if L.view prASO pfxs then Just (B.singleton 0x67) else Nothing
+                            , encodeRequiredPrefix (iiRequiredPrefix ii)
+                            ]
     opcode = B.pack (iiOpcode ii)
     pfxs = iiPrefixes ii
 --    modrm = maybeToList (encodeModRM (L.view requiredMod enc) (L.view requiredReg enc) (L.view requiredRM enc))
@@ -35,6 +40,15 @@ encodeLockPrefix pfx =
     RepNZPrefix -> Just (B.singleton 0xF2)
     RepPrefix -> Just (B.singleton 0xF3)
     RepZPrefix -> Just (B.singleton 0xF3)
+
+encodeOperand :: Value -> B.ByteString
+encodeOperand v =
+  case v of
+    ByteImm imm -> B.singleton imm
+    WordImm imm -> LB.toStrict $ B.toLazyByteString $ B.word16LE imm
+    DWordImm imm -> LB.toStrict $ B.toLazyByteString $ B.word32LE imm
+    QWordImm imm -> LB.toStrict $ B.toLazyByteString $ B.word64LE imm
+    ByteReg r8 -> undefined
 
 {- Note [x86 Instruction Format]
 

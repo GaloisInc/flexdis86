@@ -204,6 +204,9 @@ data InstructionInstance
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
         , iiOpcode :: [Word8]
+        , iiHasModRM :: Bool
+          -- ^ True if the instruction requires a ModRM byte.  We'll
+          -- compute that based on the operands later.
         }
   deriving (Show, Eq)
 
