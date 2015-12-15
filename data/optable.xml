@@ -6797,7 +6797,7 @@
         <def>
             <pfx>oso</pfx>
             <opc>68</opc>
-            <opr>sIz</opr>
+            <opr>Iz</opr>
             <mode>def64</mode>
         </def>
         <def>
@@ -6809,7 +6809,7 @@
         <def>
             <pfx>oso</pfx>
             <opc>6a</opc>
-            <opr>sIb</opr>
+            <opr>Ib</opr>
             <mode>def64</mode>
         </def>
     </instruction>
