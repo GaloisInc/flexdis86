@@ -51,6 +51,8 @@ zeroOperandOpcodeTests = [ ("ret", ["ret"])
                            -- an opcode with cdq
                          , ("convert word to dword", ["cwd"])
                          , ("convert dword to qword", ["cdq"])
+                         , ("swapgs", ["swapgs"])
+                         , ("xgetbv", ["xgetbv"])
                          ]
 
 singleOperandTests :: T.TestTree
@@ -58,10 +60,18 @@ singleOperandTests =
   T.testGroup "SingleOperandOpcodes" (map mkTest singleOperandOpcodes)
 
 singleOperandOpcodes :: [(String, [String])]
-singleOperandOpcodes = [ ("increment r8", ["inc %ah"])
-                       , ("increment r16", ["inc %ax"])
+singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
+                         -- %al is 0, while %ah is non-zero
+                       , ("increment r8/al", ["inc %al"])
+                       , ("increment r16/ax", ["inc %ax"])
+                       , ("increment r16/bx", ["inc %bx"])
                        , ("increment r32", ["inc %eax"])
                        , ("increment r64", ["inc %rax"])
+                         -- %edx is interesting because the encoding
+                         -- of %eax is 0, while %edx is non-zero.
+                         -- This will make sure we shift the REG field
+                         -- correctly.
+                       , ("increment edx", ["inc %edx"])
                        ]
 
 immediateTests :: T.TestTree

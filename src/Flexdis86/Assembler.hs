@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 module Flexdis86.Assembler (
   assembleInstruction
   ) where
@@ -9,30 +10,63 @@ import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as LB
-import Data.Maybe ( catMaybes, fromMaybe, maybeToList )
+import Data.Maybe ( catMaybes, fromMaybe, mapMaybe, maybeToList )
 
 import Flexdis86.OpTable ( ModConstraint(..), unFin8 )
 import Flexdis86.InstructionSet
 import Flexdis86.Prefixes
-
+import Flexdis86.Register
+import Debug.Trace
+debug = flip trace
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.ByteString
 assembleInstruction ii = do
   return $ B.concat $ concat [ prefixBytes
                              , [opcode]
                              , maybeToList (fmap B.singleton (encodeModRM ii))
-                             , map encodeOperand (iiArgs ii)
+                             , mapMaybe encodeImmediate (iiArgs ii)
                              ]
   where
     prefixBytes = catMaybes [ encodeLockPrefix (L.view prLockPrefix pfxs)
                             , if L.view prOSO pfxs then Just (B.singleton 0x66) else Nothing
                             , if L.view prASO pfxs then Just (B.singleton 0x67) else Nothing
+                            , encodeREXPrefix (L.view prREX pfxs)
                             , encodeRequiredPrefix (iiRequiredPrefix ii)
                             ]
     opcode = B.pack (iiOpcode ii)
     pfxs = iiPrefixes ii
 
 encodeModRM :: (Alternative m) => InstructionInstance -> m Word8
-encodeModRM ii = encodeRequiredModRM ii <|> empty
+encodeModRM ii
+  | not (iiHasModRM ii) = empty
+  | otherwise = encodeRequiredModRM ii <|> encodeOperandModRM ii <|> empty
+
+-- | Build a ModRM byte based on the operands of the instruction.
+encodeOperandModRM :: (Alternative m) => InstructionInstance -> m Word8
+encodeOperandModRM ii =
+  case iiArgs ii of
+    [ByteReg r8] -> pure $ mkModRM directRegister 0 (reg8ToRM r8) `debug` show ("byte", r8, reg8ToRM r8)
+    [WordReg (Reg16 rno)] -> pure $ mkModRM directRegister 0 rno
+    [DWordReg (Reg32 rno)] -> pure $ mkModRM directRegister 0 rno `debug` show ("dword", rno, mkModRM directRegister 0 rno)
+    [QWordReg (Reg64 rno)] -> pure $ mkModRM directRegister 0 rno
+
+-- | We represent the high registers (e.g., ah) as 16+raxno.
+--
+-- We need to remove the 16 we added (hence the 0xf mask).  Further,
+-- x86 represents the high registers starting ah at 4.
+reg8ToRM :: Reg8 -> Word8
+reg8ToRM (Reg8 rno)
+  | rno >= 16 = rno .&. 0xf + 4
+  | otherwise = rno
+
+-- | This is the "direct register" addressing method with the value
+-- already shifted appropriately.
+directRegister :: Word8
+directRegister = 3 `shiftL` 6
+
+-- | From constituent components, construct the ModRM byte with
+-- appropriate shifting.
+mkModRM :: Word8 -> Word8 -> Word8 -> Word8
+mkModRM modb regb rmb = modb .|. regb .|. rmb
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
 -- bits.
@@ -53,6 +87,8 @@ encodeRequiredModRM ii =
           pure $ fromMaybe 0 mmod .|. fromMaybe 0 mreg .|. fromMaybe 0 mrm
       | otherwise -> empty
 
+
+
 modConstraintVal :: ModConstraint -> Word8
 modConstraintVal mc =
   case mc of
@@ -71,14 +107,21 @@ encodeLockPrefix pfx =
     RepPrefix -> Just (B.singleton 0xF3)
     RepZPrefix -> Just (B.singleton 0xF3)
 
-encodeOperand :: Value -> B.ByteString
-encodeOperand v =
+-- | Right now, a zero REX prefix is ignored and any other value is
+-- returned directly.  Not entirely sure if that is correct, but it
+-- seems to work okay.
+encodeREXPrefix :: REX -> Maybe B.ByteString
+encodeREXPrefix (REX rex) | rex == 0 = Nothing
+                          | otherwise = Just (B.singleton rex)
+
+encodeImmediate :: Value -> Maybe B.ByteString
+encodeImmediate v =
   case v of
-    ByteImm imm -> B.singleton imm
-    WordImm imm -> LB.toStrict $ B.toLazyByteString $ B.word16LE imm
-    DWordImm imm -> LB.toStrict $ B.toLazyByteString $ B.word32LE imm
-    QWordImm imm -> LB.toStrict $ B.toLazyByteString $ B.word64LE imm
-    ByteReg r8 -> undefined
+    ByteImm imm -> Just $ B.singleton imm
+    WordImm imm -> Just $ LB.toStrict $ B.toLazyByteString $ B.word16LE imm
+    DWordImm imm -> Just $ LB.toStrict $ B.toLazyByteString $ B.word32LE imm
+    QWordImm imm -> Just $ LB.toStrict $ B.toLazyByteString $ B.word64LE imm
+    _ -> Nothing
 
 {- Note [x86 Instruction Format]
 
