@@ -36,7 +36,7 @@ import Numeric (showHex)
 import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
-import Flexdis86.OpTable (SizeConstraint(..), Def)
+import Flexdis86.OpTable
 import Flexdis86.Prefixes
 import Flexdis86.Register
 import Flexdis86.Segment
@@ -207,11 +207,14 @@ data InstructionInstance
         , iiHasModRM :: Bool
           -- ^ True if the instruction requires a ModRM byte.  We'll
           -- compute that based on the operands later.
+        , iiRequiredMod :: Maybe ModConstraint
+        , iiRequiredReg :: Maybe Fin8
+        , iiRequiredRM :: Maybe Fin8
         }
   deriving (Show, Eq)
 
-
-instructionSize :: InstructionInstance -> Int
+-- | Compute the size of an instruction in bytes
+instructionSize :: InstructionInstance -> Word8
 instructionSize = undefined
 
 padToWidth :: Int -> String -> String

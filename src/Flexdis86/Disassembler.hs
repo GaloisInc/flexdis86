@@ -546,6 +546,9 @@ disassembleInstruction tr0 = do
                  , iiRequiredPrefix = view requiredPrefix df
                  , iiOpcode = view defOpcodes df
                  , iiHasModRM = False
+                 , iiRequiredMod = view requiredMod df
+                 , iiRequiredReg = view requiredReg df
+                 , iiRequiredRM = view requiredRM df
                  }
     ReadModRM t -> flip parseRegTable t =<< readModRM
 
@@ -596,6 +599,9 @@ parseReadTable modRM (ReadTable pfx osz nm tps df) =
                          , iiRequiredPrefix = view requiredPrefix df
                          , iiOpcode = view defOpcodes df
                          , iiHasModRM = True
+                         , iiRequiredMod = view requiredMod df
+                         , iiRequiredReg = view requiredReg df
+                         , iiRequiredRM = view requiredRM df
                          }
 
 -- | Returns the size of a function.
