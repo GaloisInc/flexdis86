@@ -106,8 +106,7 @@ mkTest (name, insns) = T.testCase name $ do
           T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
           let instances = mapMaybe D.disInstruction disInsns
               assembledInsns = mapMaybe A.assembleInstruction instances
-          putStrLn (prettyHex (B.concat assembledInsns))
-          T.assertEqual "Assembled bytes" codeBytes (B.concat assembledInsns)
+          T.assertEqual ("Assembled bytes\n" ++ prettyHex (B.concat assembledInsns))  codeBytes (B.concat assembledInsns)
 
 readCodeSegment :: FilePath -> IO B.ByteString
 readCodeSegment fp = do
