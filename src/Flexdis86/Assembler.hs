@@ -43,13 +43,37 @@ encodeModRM ii
 -- | Build a ModRM byte based on the operands of the instruction.
 encodeOperandModRM :: (Alternative m) => InstructionInstance -> m Word8
 encodeOperandModRM ii =
-  case iiArgs ii of
-    [ByteReg r8] -> pure $ mkModRM directRegister 0 (reg8ToRM r8)
-    [WordReg (Reg16 rno)] -> pure $ mkModRM directRegister 0 rno
-    [DWordReg (Reg32 rno)] -> pure $ mkModRM directRegister 0 rno
-    [QWordReg (Reg64 rno)] -> pure $ mkModRM directRegister 0 rno
-    [DWordReg (Reg32 rno1), DWordReg (Reg32 rno2)] ->
-      pure $ mkModRM directRegister rno2 rno1 `debug` show ("dword regs", rno1, rno2)
+  case filter isNotImmediate (iiArgs ii) of
+    [] -> empty
+    [op1] -> pure $ mkModRM (mkMode op1) 0 (encodeValue op1)
+    [op1, op2] -> pure $ mkModRM (mkMode op1) (encodeValue op2) (encodeValue op1)
+    _ -> empty
+
+mkMode :: Value -> Word8
+mkMode v =
+  case v of
+    ByteReg {} -> directRegister
+    WordReg {} -> directRegister
+    DWordReg {} -> directRegister
+    QWordReg {} -> directRegister
+    _ -> error "mkMode: Unsupported mode"
+
+encodeValue :: Value -> Word8
+encodeValue v =
+  case v of
+    ByteReg r8 -> reg8ToRM r8
+    WordReg (Reg16 rno) -> rno
+    DWordReg (Reg32 rno) -> rno
+    QWordReg (Reg64 rno) -> rno
+
+isNotImmediate :: Value -> Bool
+isNotImmediate val =
+  case val of
+    ByteImm {} -> False
+    WordImm {} -> False
+    DWordImm {} -> False
+    QWordImm {} -> False
+    _ -> True
 
 -- | We represent the high registers (e.g., ah) as 16+raxno.
 --
