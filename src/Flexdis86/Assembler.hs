@@ -63,12 +63,12 @@ reg8ToRM (Reg8 rno)
 -- | This is the "direct register" addressing method with the value
 -- already shifted appropriately.
 directRegister :: Word8
-directRegister = 3 `shiftL` 6
+directRegister = 3
 
 -- | From constituent components, construct the ModRM byte with
 -- appropriate shifting.
 mkModRM :: Word8 -> Word8 -> Word8 -> Word8
-mkModRM modb regb rmb = modb .|. regb .|. rmb
+mkModRM modb regb rmb = (modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
 -- bits.
