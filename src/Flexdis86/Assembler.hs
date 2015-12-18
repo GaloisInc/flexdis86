@@ -44,10 +44,12 @@ encodeModRM ii
 encodeOperandModRM :: (Alternative m) => InstructionInstance -> m Word8
 encodeOperandModRM ii =
   case iiArgs ii of
-    [ByteReg r8] -> pure $ mkModRM directRegister 0 (reg8ToRM r8) `debug` show ("byte", r8, reg8ToRM r8)
+    [ByteReg r8] -> pure $ mkModRM directRegister 0 (reg8ToRM r8)
     [WordReg (Reg16 rno)] -> pure $ mkModRM directRegister 0 rno
-    [DWordReg (Reg32 rno)] -> pure $ mkModRM directRegister 0 rno `debug` show ("dword", rno, mkModRM directRegister 0 rno)
+    [DWordReg (Reg32 rno)] -> pure $ mkModRM directRegister 0 rno
     [QWordReg (Reg64 rno)] -> pure $ mkModRM directRegister 0 rno
+    [DWordReg (Reg32 rno1), DWordReg (Reg32 rno2)] ->
+      pure $ mkModRM directRegister rno2 rno1 `debug` show ("dword regs", rno1, rno2)
 
 -- | We represent the high registers (e.g., ah) as 16+raxno.
 --

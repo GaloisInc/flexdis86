@@ -22,7 +22,8 @@ testCases :: T.TestTree
 testCases = T.testGroup "Roundtrip Tests" [
   zeroOperandTests,
   immediateTests,
-  singleOperandTests
+  singleOperandTests,
+  twoOperandTests
   ]
 
 zeroOperandTests :: T.TestTree
@@ -73,6 +74,15 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                          -- correctly.
                        , ("increment edx", ["inc %edx"])
                        ]
+
+twoOperandTests :: T.TestTree
+twoOperandTests =
+  T.testGroup "TwoOperandTests" (map mkTest twoOperandOpcodes)
+
+twoOperandOpcodes :: [(String, [String])]
+twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
+                    , ("test reg reg (edx)", ["test %edx, %edx"])
+                    ]
 
 immediateTests :: T.TestTree
 immediateTests =
