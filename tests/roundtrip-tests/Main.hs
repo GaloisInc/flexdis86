@@ -73,6 +73,25 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                          -- This will make sure we shift the REG field
                          -- correctly.
                        , ("increment edx", ["inc %edx"])
+                         -- This one uses a memory reference through a register
+                       , ("increment mem32 via eax", ["incl (%eax)"])
+                       , ("increment mem32 via ecx", ["incl (%ecx)"])
+                       , ("increment mem32 via esi", ["incl (%esi)"])
+                       , ("increment mem32 via edi", ["incl (%edi)"])
+                       , ("increment mem16 via eax", ["incw (%eax)"])
+                       , ("increment mem16 via edx", ["incw (%edx)"])
+                       , ("increment mem8 via eax", ["incb (%eax)"])
+                       , ("increment mem8 via ebx", ["incb (%ebx)"])
+                       , ("increment mem64 via eax", ["incq (%eax)"])
+                       , ("increment mem64 via ecx", ["incq (%ecx)"])
+                         -- Memory reference through a 64 bit register
+                       , ("increment mem32 via rax", ["incl (%rax)"])
+                       , ("increment mem32 via rdx", ["incl (%rdx)"])
+                       , ("increment mem8 via r12", ["incb (%r12)"])
+                       , ("increment mem8 via r13", ["incb (%r13)"]) -- Broken - r13 encoding? segment also looks wrong
+                         -- Reg+disp8
+                       , ("increment mem32 via rdx+disp8", ["incl 0x10(%rdx)"])
+                       , ("increment mem32 via rdx+disp32", ["incl 0x1000000(%rdx)"])
                        ]
 
 twoOperandTests :: T.TestTree
@@ -82,6 +101,7 @@ twoOperandTests =
 twoOperandOpcodes :: [(String, [String])]
 twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("test reg reg (edx)", ["test %edx, %edx"])
+                    , ("test reg reg (ebx, ecx)", ["test %ebx, %ecx"])
                     ]
 
 immediateTests :: T.TestTree

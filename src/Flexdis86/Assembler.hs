@@ -22,41 +22,78 @@ assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.ByteString
 assembleInstruction ii = do
   return $ B.concat $ concat [ prefixBytes
                              , [opcode]
-                             , maybeToList (fmap B.singleton (encodeModRM ii))
+                             , maybeToList (encodeModRMDisp ii) -- (fmap B.singleton (encodeModRM ii))
                              , mapMaybe encodeImmediate (iiArgs ii)
                              ]
   where
     prefixBytes = catMaybes [ encodeLockPrefix (L.view prLockPrefix pfxs)
-                            , if L.view prOSO pfxs then Just (B.singleton 0x66) else Nothing
                             , if L.view prASO pfxs then Just (B.singleton 0x67) else Nothing
+                            , if L.view prOSO pfxs then Just (B.singleton 0x66) else Nothing
                             , encodeREXPrefix (L.view prREX pfxs)
                             , encodeRequiredPrefix (iiRequiredPrefix ii)
                             ]
     opcode = B.pack (iiOpcode ii)
     pfxs = iiPrefixes ii
 
-encodeModRM :: (Alternative m) => InstructionInstance -> m Word8
-encodeModRM ii
+-- | Construct the ModR/M, SIB, and Displacement bytes
+--
+-- The arguments all determine these together, so we really need to
+-- build a combined byte string.
+encodeModRMDisp :: (Alternative m) => InstructionInstance -> m B.ByteString
+encodeModRMDisp ii
   | not (iiHasModRM ii) = empty
   | otherwise = encodeRequiredModRM ii <|> encodeOperandModRM ii <|> empty
 
 -- | Build a ModRM byte based on the operands of the instruction.
-encodeOperandModRM :: (Alternative m) => InstructionInstance -> m Word8
+encodeOperandModRM :: (Alternative m) => InstructionInstance -> m B.ByteString
 encodeOperandModRM ii =
   case filter isNotImmediate (iiArgs ii) of
     [] -> empty
-    [op1] -> pure $ mkModRM (mkMode op1) 0 (encodeValue op1)
-    [op1, op2] -> pure $ mkModRM (mkMode op1) (encodeValue op2) (encodeValue op1)
+    [op1] -> pure $ B.singleton $ mkModRM (mkMode op1) 0 (encodeValue op1)
+    [op1, op2] -> pure $ B.singleton $ mkModRM (mkMode op1) (encodeValue op2) (encodeValue op1)
     _ -> empty
 
 mkMode :: Value -> Word8
 mkMode v =
-  case v of
+  case v `debug` show ("mode", v) of
     ByteReg {} -> directRegister
     WordReg {} -> directRegister
     DWordReg {} -> directRegister
     QWordReg {} -> directRegister
+    Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
+    Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
     _ -> error "mkMode: Unsupported mode"
+{-
+mkMode :: Value -> Word8
+mkMode v =
+  case v `debug` show ("mode", v) of
+    ByteReg {} -> directRegister
+    WordReg {} -> directRegister
+    DWordReg {} -> directRegister
+    QWordReg {} -> directRegister
+    Mem64 (Addr_64 _ (Just _) _ _) -> noDisplacement
+    Mem32 (Addr_64 _ (Just _) _ _) -> noDisplacement
+    Mem16 (Addr_64 _ (Just _) _ _) -> noDisplacement
+    Mem8 (Addr_64 _ (Just _) _ _) -> noDisplacement
+    Mem64 (Addr_32 _ (Just _) _ _) -> noDisplacement
+    Mem32 (Addr_32 _ (Just _) _ _) -> noDisplacement
+    Mem16 (Addr_32 _ (Just _) _ _) -> noDisplacement
+    Mem8 (Addr_32 _ (Just _) _ _) -> noDisplacement
+    _ -> error "mkMode: Unsupported mode"
+-}
+-- | This is the "direct register" addressing method with the value
+-- already shifted appropriately.
+directRegister :: Word8
+directRegister = 3
+
+noDisplacement :: Word8
+noDisplacement = 0
 
 encodeValue :: Value -> Word8
 encodeValue v =
@@ -65,6 +102,14 @@ encodeValue v =
     WordReg (Reg16 rno) -> rno
     DWordReg (Reg32 rno) -> rno
     QWordReg (Reg64 rno) -> rno
+    Mem64 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
+    Mem32 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
+    Mem16 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
+    Mem8 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
+    Mem64 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
+    Mem32 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
+    Mem16 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
+    Mem8 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
 
 isNotImmediate :: Value -> Bool
 isNotImmediate val =
@@ -75,7 +120,7 @@ isNotImmediate val =
     QWordImm {} -> False
     _ -> True
 
--- | We represent the high registers (e.g., ah) as 16+raxno.
+-- | We represent the high registers (e.g., ah) as 16+regnum.
 --
 -- We need to remove the 16 we added (hence the 0xf mask).  Further,
 -- x86 represents the high registers starting ah at 4.
@@ -83,11 +128,6 @@ reg8ToRM :: Reg8 -> Word8
 reg8ToRM (Reg8 rno)
   | rno >= 16 = rno .&. 0xf + 4
   | otherwise = rno
-
--- | This is the "direct register" addressing method with the value
--- already shifted appropriately.
-directRegister :: Word8
-directRegister = 3
 
 -- | From constituent components, construct the ModRM byte with
 -- appropriate shifting.
@@ -100,17 +140,21 @@ mkModRM modb regb rmb = (modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb
 -- If there are no arguments to the instruction, we can take a partial
 -- set of mod/reg/rm values and compute the byte with zeros for the
 -- missing values.
-encodeRequiredModRM :: (Alternative m) => InstructionInstance -> m Word8
+encodeRequiredModRM :: (Alternative m) => InstructionInstance -> m B.ByteString
 encodeRequiredModRM ii =
   case (fmap ((`shiftL` 6) . modConstraintVal) (iiRequiredMod ii),
         fmap ((`shiftL` 3) . unFin8) (iiRequiredReg ii),
         fmap unFin8 (iiRequiredRM ii)) of
     (Nothing, Nothing, Nothing) -> empty
     (Just rmod, Just rreg, Just rrm) ->
-      pure $ rmod .|. rreg .|. rrm
+      -- FIXME: Does this case require shifting?  I think it might, if
+      -- the values are pulled right from the XML file.  On the other
+      -- hand, the tests with required bytes seem to pass (see the
+      -- mfence tests)
+      pure $ B.singleton (rmod .|. rreg .|. rrm)
     (mmod, mreg, mrm)
       | null (iiArgs ii) ->
-          pure $ fromMaybe 0 mmod .|. fromMaybe 0 mreg .|. fromMaybe 0 mrm
+          pure $ B.singleton (fromMaybe 0 mmod .|. fromMaybe 0 mreg .|. fromMaybe 0 mrm)
       | otherwise -> empty
 
 

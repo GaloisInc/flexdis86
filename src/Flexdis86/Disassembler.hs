@@ -128,7 +128,7 @@ sib_base s = unSIB s .&. 0x7
 ------------------------------------------------------------------------
 -- Misc
 
-type AddrOpts = Segment -> Maybe Word8 -> Maybe (Int,Word8) -> Int32 -> AddrRef
+type AddrOpts = Segment -> Maybe Word8 -> Maybe (Int,Word8) -> Displacement -> AddrRef
 
 memRef_32 :: AddrOpts
 memRef_32 s b si o = Addr_32 s (reg32 <$> b) (over _2 reg32 <$> si) o
@@ -520,12 +520,12 @@ readSIB :: ByteReader m => m SIB
 readSIB = SIB <$> readByte
 
 -- | Read 32bit value
-read_disp32 :: ByteReader m => m Int32
-read_disp32 = readSDWord
+read_disp32 :: ByteReader m => m Displacement
+read_disp32 = Disp32 <$> readSDWord
 
 -- | Read an 8bit value and sign extend to 32-bits.
-read_disp8 :: ByteReader m => m Int32
-read_disp8 = fromIntegral <$> readSByte
+read_disp8 :: ByteReader m => m Displacement
+read_disp8 = Disp8 <$> readSByte
 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
@@ -727,7 +727,7 @@ parseValue p osz mmrm tp = do
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
       pure $ MMXReg $ mmxReg $ modRM_rm modRM
     M_Implicit seg r sz ->
-      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing 0
+      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing NoDisplacement
       where
         mkaddr | aso = memRef_32
                | otherwise = memRef_64
@@ -771,7 +771,7 @@ readNoOffset aso p modRM = do
     else do
       let seg | base == rsp_idx = sp `setDefault` ss
               | otherwise       = sp `setDefault` ds
-      return $ memRef seg (Just (base_reg base)) si 0
+      return $ memRef seg (Just (base_reg base)) si NoDisplacement
   else if rm == rbp_idx then do
     let ip_offset | aso = IP_Offset_32
                   | otherwise = IP_Offset_64
@@ -779,10 +779,10 @@ readNoOffset aso p modRM = do
     ip_offset seg <$> read_disp32
   else do
     let seg = sp `setDefault` ds
-    return $ memRef seg (Just (base_reg rm)) Nothing 0
+    return $ memRef seg (Just (base_reg rm)) Nothing NoDisplacement
 
 readWithOffset :: ByteReader m
-               => m Int32
+               => m Displacement
                -> Bool -- ^ Address size override
                -> Prefixes
                -> ModRM

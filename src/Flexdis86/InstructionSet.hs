@@ -18,6 +18,7 @@ module Flexdis86.InstructionSet
   , XMMReg, xmmReg, xmmRegNo, xmmRegIdx
   , LockPrefix(..), ppLockPrefix
   , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex, segmentRegNo
+  , Displacement(..)
   , AddrRef(..)
   , Word8
   , Word16
@@ -45,17 +46,32 @@ import Flexdis86.Segment
 ------------------------------------------------------------------------
 -- AddrRef
 
+-- | Displacement in an indirect memory reference.
+--
+-- These can be encoded as either 8 or 32 bits
+data Displacement = Disp32 Int32
+                  | Disp8 Int8
+                  | NoDisplacement
+                  deriving (Eq, Ord, Show)
+
+displacementInt :: Displacement -> Int
+displacementInt d =
+  case d of
+    NoDisplacement -> 0
+    Disp32 o -> fromIntegral o
+    Disp8 o -> fromIntegral o
+
 data AddrRef
     -- | @Addr_32 s b i o@ denotes a 32-bit IP address that will
     -- be zero extended in segment @s@ with base @b@, index @i@, and offset @o@.
-  = Addr_32      Segment (Maybe Reg32) (Maybe (Int, Reg32)) Int32
-  | IP_Offset_32 Segment Int32
+  = Addr_32      Segment (Maybe Reg32) (Maybe (Int, Reg32)) Displacement
+  | IP_Offset_32 Segment Displacement
     -- | Offset relative to segment base.
   | Offset_32    Segment Word32
     -- | Offset relative to segment base.
   | Offset_64    Segment Word64
-  | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Int32
-  | IP_Offset_64 Segment Int32
+  | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
+  | IP_Offset_64 Segment Displacement
   deriving (Show, Eq)
 
 pp0xHex :: (Integral a, Show a) => a -> Doc
@@ -77,7 +93,7 @@ ppAddrRef addr =
                    | otherwise -> id -- ((text (show seg) <> colon) <+>)
             _ -> id) (ppAddr seg base roff off)
                                                           -- or rip? this is 32 bits ...
-    IP_Offset_32 seg off      -> brackets $ text "ip+" <> pp0xHex off
+    IP_Offset_32 seg off      -> brackets $ text "ip+" <> pp0xHex (displacementInt off)
     Offset_32 seg off         -> prefix seg off
     Offset_64 seg off         -> prefix seg off
     Addr_64 seg base roff off -> 
@@ -89,20 +105,22 @@ ppAddrRef addr =
             Nothing | seg == fs -> ((text (show seg) <> colon) <>)
                     | seg == gs -> ((text (show seg) <> colon) <>)
 	            | otherwise -> id) (ppAddr seg base roff off)
-    IP_Offset_64 seg off      -> brackets $ text "rip+"<> pp0xHex off
+    IP_Offset_64 seg off      -> brackets $ text "rip+"<> pp0xHex (displacementInt off)
   where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
     addOrSub n = text $ if n >= 0 then "+" else "-"
     ppAddr seg base roff off =
-      case (base, roff, off) of
+      case (base, roff, displacementInt off) of
          (Nothing, Nothing, 0)      -> text "0x0" -- happens with fs and gs segments
          (Nothing, Just (n, r), 0)  -> brackets (ppShowReg r <> text "*" <> int n)
          (Just r, Nothing, 0)      -> brackets (ppShowReg r)
          (Just r, Just (n, r'), 0)  -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
          (Nothing, Nothing, n')     -> pp0xHex n'
          (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <>  pp0xHex (abs n'))
-         (Nothing, Just (n, r), n') -> brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
-         (Just r, Just (n, r'), n') -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub (fromIntegral n') <> pp0xHex (abs n'))
+         (Nothing, Just (n, r), n') ->
+           brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
+         (Just r, Just (n, r'), n') ->
+           brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub (fromIntegral n') <> pp0xHex (abs n'))
 
 
 
