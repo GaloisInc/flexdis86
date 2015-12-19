@@ -27,14 +27,13 @@ module Flexdis86.InstructionSet
   ) where
 
 import Control.Applicative
-import Control.Exception
 import Data.Int
 import Data.Word
-import Data.Bits
-import qualified Data.Vector as V
 import Numeric (showHex)
 import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+
+import Prelude
 
 import Flexdis86.OpTable
 import Flexdis86.Prefixes
