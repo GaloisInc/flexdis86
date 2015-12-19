@@ -9,7 +9,7 @@ import Control.Monad ( MonadPlus(..) )
 import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Builder as B
-import Data.Maybe ( catMaybes, fromMaybe, mapMaybe )
+import Data.Maybe ( fromMaybe )
 import Data.Monoid
 
 import Prelude
@@ -18,8 +18,7 @@ import Flexdis86.OpTable ( ModConstraint(..), unFin8 )
 import Flexdis86.InstructionSet
 import Flexdis86.Prefixes
 import Flexdis86.Register
-import Debug.Trace
-debug = flip trace
+
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
   return $ mconcat [ prefixBytes
@@ -54,11 +53,9 @@ encodeOperandModRM ii =
     [op1] ->
       pure $ withMode op1 $ \mode disp ->
         mkModRM mode 0 (encodeValue op1) <> disp
-      -- pure $ B.singleton $ mkModRM (mkMode op1) 0 (encodeValue op1)
     [op1, op2] ->
       pure $ withMode op1 $ \mode disp ->
         mkModRM mode (encodeValue op2) (encodeValue op1) <> disp
-      -- pure $ B.singleton $ mkModRM (mkMode op1) (encodeValue op2) (encodeValue op1)
     _ -> empty
 
 -- | Compute the mode bits and displacement for a 'Value'.
@@ -68,7 +65,7 @@ encodeOperandModRM ii =
 -- once makes the most sense.
 withMode :: Value -> (Word8 -> B.Builder -> a) -> a
 withMode v k =
-  case v `debug` show ("mode", v) of
+  case v of
     ByteReg {} -> k directRegister mempty
     WordReg {} -> k directRegister mempty
     DWordReg {} -> k directRegister mempty
@@ -82,23 +79,38 @@ withMode v k =
     Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
 
-    -- Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
-    -- Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    Mem64 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem32 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem16 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem8 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem64 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem32 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem16 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem8 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+
+    Mem64 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem32 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem16 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem8 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem64 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem32 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem16 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem8 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     _ -> error "mkMode: Unsupported mode"
 
 -- | This is the "direct register" addressing method with the value
 -- already shifted appropriately.
 directRegister :: Word8
-directRegister = 3
+directRegister = 0x3
 
 noDisplacement :: Word8
 noDisplacement = 0
+
+disp8 :: Word8
+disp8 = 0x1
+
+disp32 :: Word8
+disp32 = 0x2
 
 encodeValue :: Value -> Word8
 encodeValue v =

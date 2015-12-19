@@ -92,6 +92,8 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("increment mem8 via r12", ["incb (%r12)"])
                        , ("increment mem8 via r13", ["incb (%r13)"]) -- Broken - r13 encoding? segment also looks wrong
                          -- Reg+disp8
+                       , ("increment mem32 via edx+disp8", ["incl 0x10(%edx)"])
+                       , ("increment mem32 via edx+disp32", ["incl 0x1000000(%edx)"])
                        , ("increment mem32 via rdx+disp8", ["incl 0x10(%rdx)"])
                        , ("increment mem32 via rdx+disp32", ["incl 0x1000000(%rdx)"])
                        ]
