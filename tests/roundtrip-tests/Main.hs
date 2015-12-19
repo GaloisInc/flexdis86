@@ -2,6 +2,8 @@ module Main ( main ) where
 
 import Data.Bits ( Bits )
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy.Builder as B
+import qualified Data.ByteString.Lazy as LB
 import Data.Maybe ( mapMaybe )
 import qualified System.Exit as IO
 import qualified System.IO as IO
@@ -135,8 +137,8 @@ mkTest (name, insns) = T.testCase name $ do
           let disInsns = D.disassembleBuffer D.defaultX64Disassembler codeBytes
           T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
           let instances = mapMaybe D.disInstruction disInsns
-              assembledInsns = mapMaybe A.assembleInstruction instances
-          T.assertEqual ("Assembled bytes\n" ++ prettyHex (B.concat assembledInsns))  codeBytes (B.concat assembledInsns)
+              assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe A.assembleInstruction instances)
+          T.assertEqual ("Assembled bytes\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
 
 readCodeSegment :: FilePath -> IO B.ByteString
 readCodeSegment fp = do

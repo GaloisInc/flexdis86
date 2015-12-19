@@ -8,9 +8,11 @@ import qualified Control.Lens as L
 import Control.Monad ( MonadPlus(..) )
 import Data.Bits
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Builder as B
-import qualified Data.ByteString.Lazy as LB
-import Data.Maybe ( catMaybes, fromMaybe, mapMaybe, maybeToList )
+import qualified Data.ByteString.Lazy.Builder as B
+import Data.Maybe ( catMaybes, fromMaybe, mapMaybe )
+import Data.Monoid
+
+import Prelude
 
 import Flexdis86.OpTable ( ModConstraint(..), unFin8 )
 import Flexdis86.InstructionSet
@@ -18,75 +20,78 @@ import Flexdis86.Prefixes
 import Flexdis86.Register
 import Debug.Trace
 debug = flip trace
-assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.ByteString
+assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
-  return $ B.concat $ concat [ prefixBytes
-                             , [opcode]
-                             , maybeToList (encodeModRMDisp ii) -- (fmap B.singleton (encodeModRM ii))
-                             , mapMaybe encodeImmediate (iiArgs ii)
-                             ]
+  return $ mconcat [ prefixBytes
+                   , opcode
+                   , fromMaybe mempty (encodeModRMDisp ii)
+                   , mconcat (map encodeImmediate (iiArgs ii))
+                   ]
   where
-    prefixBytes = catMaybes [ encodeLockPrefix (L.view prLockPrefix pfxs)
-                            , if L.view prASO pfxs then Just (B.singleton 0x67) else Nothing
-                            , if L.view prOSO pfxs then Just (B.singleton 0x66) else Nothing
-                            , encodeREXPrefix (L.view prREX pfxs)
-                            , encodeRequiredPrefix (iiRequiredPrefix ii)
-                            ]
-    opcode = B.pack (iiOpcode ii)
+    prefixBytes = mconcat [ encodeLockPrefix (L.view prLockPrefix pfxs)
+                          , if L.view prASO pfxs then B.word8 0x67 else mempty
+                          , if L.view prOSO pfxs then B.word8 0x66 else mempty
+                          , encodeREXPrefix (L.view prREX pfxs)
+                          , encodeRequiredPrefix (iiRequiredPrefix ii)
+                          ]
+    opcode = B.byteString (B.pack (iiOpcode ii))
     pfxs = iiPrefixes ii
 
 -- | Construct the ModR/M, SIB, and Displacement bytes
 --
 -- The arguments all determine these together, so we really need to
 -- build a combined byte string.
-encodeModRMDisp :: (Alternative m) => InstructionInstance -> m B.ByteString
+encodeModRMDisp :: (Alternative m) => InstructionInstance -> m B.Builder
 encodeModRMDisp ii
   | not (iiHasModRM ii) = empty
   | otherwise = encodeRequiredModRM ii <|> encodeOperandModRM ii <|> empty
 
 -- | Build a ModRM byte based on the operands of the instruction.
-encodeOperandModRM :: (Alternative m) => InstructionInstance -> m B.ByteString
+encodeOperandModRM :: (Alternative m) => InstructionInstance -> m B.Builder
 encodeOperandModRM ii =
   case filter isNotImmediate (iiArgs ii) of
     [] -> empty
-    [op1] -> pure $ B.singleton $ mkModRM (mkMode op1) 0 (encodeValue op1)
-    [op1, op2] -> pure $ B.singleton $ mkModRM (mkMode op1) (encodeValue op2) (encodeValue op1)
+    [op1] ->
+      pure $ withMode op1 $ \mode disp ->
+        mkModRM mode 0 (encodeValue op1) <> disp
+      -- pure $ B.singleton $ mkModRM (mkMode op1) 0 (encodeValue op1)
+    [op1, op2] ->
+      pure $ withMode op1 $ \mode disp ->
+        mkModRM mode (encodeValue op2) (encodeValue op1) <> disp
+      -- pure $ B.singleton $ mkModRM (mkMode op1) (encodeValue op2) (encodeValue op1)
     _ -> empty
 
-mkMode :: Value -> Word8
-mkMode v =
+-- | Compute the mode bits and displacement for a 'Value'.
+-- Eventually, this will also compute the SIB.
+--
+-- The three are all very closely related, so computing them all at
+-- once makes the most sense.
+withMode :: Value -> (Word8 -> B.Builder -> a) -> a
+withMode v k =
   case v `debug` show ("mode", v) of
-    ByteReg {} -> directRegister
-    WordReg {} -> directRegister
-    DWordReg {} -> directRegister
-    QWordReg {} -> directRegister
-    Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
-    Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> noDisplacement
+    ByteReg {} -> k directRegister mempty
+    WordReg {} -> k directRegister mempty
+    DWordReg {} -> k directRegister mempty
+    QWordReg {} -> k directRegister mempty
+    Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+
+    -- Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
+    -- Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement Nothing
     _ -> error "mkMode: Unsupported mode"
-{-
-mkMode :: Value -> Word8
-mkMode v =
-  case v `debug` show ("mode", v) of
-    ByteReg {} -> directRegister
-    WordReg {} -> directRegister
-    DWordReg {} -> directRegister
-    QWordReg {} -> directRegister
-    Mem64 (Addr_64 _ (Just _) _ _) -> noDisplacement
-    Mem32 (Addr_64 _ (Just _) _ _) -> noDisplacement
-    Mem16 (Addr_64 _ (Just _) _ _) -> noDisplacement
-    Mem8 (Addr_64 _ (Just _) _ _) -> noDisplacement
-    Mem64 (Addr_32 _ (Just _) _ _) -> noDisplacement
-    Mem32 (Addr_32 _ (Just _) _ _) -> noDisplacement
-    Mem16 (Addr_32 _ (Just _) _ _) -> noDisplacement
-    Mem8 (Addr_32 _ (Just _) _ _) -> noDisplacement
-    _ -> error "mkMode: Unsupported mode"
--}
+
 -- | This is the "direct register" addressing method with the value
 -- already shifted appropriately.
 directRegister :: Word8
@@ -131,8 +136,8 @@ reg8ToRM (Reg8 rno)
 
 -- | From constituent components, construct the ModRM byte with
 -- appropriate shifting.
-mkModRM :: Word8 -> Word8 -> Word8 -> Word8
-mkModRM modb regb rmb = (modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb
+mkModRM :: Word8 -> Word8 -> Word8 -> B.Builder
+mkModRM modb regb rmb = B.word8 ((modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb)
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
 -- bits.
@@ -140,7 +145,7 @@ mkModRM modb regb rmb = (modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb
 -- If there are no arguments to the instruction, we can take a partial
 -- set of mod/reg/rm values and compute the byte with zeros for the
 -- missing values.
-encodeRequiredModRM :: (Alternative m) => InstructionInstance -> m B.ByteString
+encodeRequiredModRM :: (Alternative m) => InstructionInstance -> m B.Builder
 encodeRequiredModRM ii =
   case (fmap ((`shiftL` 6) . modConstraintVal) (iiRequiredMod ii),
         fmap ((`shiftL` 3) . unFin8) (iiRequiredReg ii),
@@ -151,13 +156,11 @@ encodeRequiredModRM ii =
       -- the values are pulled right from the XML file.  On the other
       -- hand, the tests with required bytes seem to pass (see the
       -- mfence tests)
-      pure $ B.singleton (rmod .|. rreg .|. rrm)
+      pure $ B.word8 (rmod .|. rreg .|. rrm)
     (mmod, mreg, mrm)
       | null (iiArgs ii) ->
-          pure $ B.singleton (fromMaybe 0 mmod .|. fromMaybe 0 mreg .|. fromMaybe 0 mrm)
+          pure $ B.word8 (fromMaybe 0 mmod .|. fromMaybe 0 mreg .|. fromMaybe 0 mrm)
       | otherwise -> empty
-
-
 
 modConstraintVal :: ModConstraint -> Word8
 modConstraintVal mc =
@@ -165,33 +168,35 @@ modConstraintVal mc =
     OnlyReg -> 3
     OnlyMem -> 0
 
-encodeRequiredPrefix :: Maybe Word8 -> Maybe B.ByteString
-encodeRequiredPrefix = fmap B.singleton
+encodeRequiredPrefix :: Maybe Word8 -> B.Builder
+encodeRequiredPrefix = maybe mempty B.word8
 
-encodeLockPrefix :: LockPrefix -> Maybe B.ByteString
+encodeLockPrefix :: LockPrefix -> B.Builder
 encodeLockPrefix pfx =
   case pfx of
-    NoLockPrefix -> Nothing
-    LockPrefix -> Just (B.singleton 0xF0)
-    RepNZPrefix -> Just (B.singleton 0xF2)
-    RepPrefix -> Just (B.singleton 0xF3)
-    RepZPrefix -> Just (B.singleton 0xF3)
+    NoLockPrefix -> mempty
+    LockPrefix -> B.word8 0xF0
+    RepNZPrefix -> B.word8 0xF2
+    RepPrefix -> B.word8 0xF3
+    RepZPrefix -> B.word8 0xF3
 
 -- | Right now, a zero REX prefix is ignored and any other value is
 -- returned directly.  Not entirely sure if that is correct, but it
 -- seems to work okay.
-encodeREXPrefix :: REX -> Maybe B.ByteString
-encodeREXPrefix (REX rex) | rex == 0 = Nothing
-                          | otherwise = Just (B.singleton rex)
+encodeREXPrefix :: REX -> B.Builder
+encodeREXPrefix (REX rex) | rex == 0 = mempty
+                          | otherwise = B.word8 rex
 
-encodeImmediate :: Value -> Maybe B.ByteString
+encodeImmediate :: Value -> B.Builder
 encodeImmediate v =
   case v of
-    ByteImm imm -> Just $ B.singleton imm
-    WordImm imm -> Just $ LB.toStrict $ B.toLazyByteString $ B.word16LE imm
-    DWordImm imm -> Just $ LB.toStrict $ B.toLazyByteString $ B.word32LE imm
-    QWordImm imm -> Just $ LB.toStrict $ B.toLazyByteString $ B.word64LE imm
-    _ -> Nothing
+    ByteImm imm -> B.word8 imm
+    WordImm imm -> B.word16LE imm
+    DWordImm imm -> B.word32LE imm
+    QWordImm imm -> B.word64LE imm
+    _ -> mempty
+
+
 
 {- Note [x86 Instruction Format]
 
