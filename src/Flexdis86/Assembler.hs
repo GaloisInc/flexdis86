@@ -4,6 +4,7 @@ module Flexdis86.Assembler (
   ) where
 
 import Control.Applicative
+import Control.Arrow ( second )
 import qualified Control.Lens as L
 import Control.Monad ( MonadPlus(..) )
 import Data.Bits
@@ -52,11 +53,45 @@ encodeOperandModRM ii =
     [] -> empty
     [op1] ->
       pure $ withMode op1 $ \mode disp ->
-        mkModRM mode 0 (encodeValue op1) <> disp
+        let rm = encodeValue op1
+        in withSIB mode rm op1 $ \sib ->
+             mkModRM mode 0 rm <> sib <> disp
     [op1, op2] ->
       pure $ withMode op1 $ \mode disp ->
-        mkModRM mode (encodeValue op2) (encodeValue op1) <> disp
+        let rm = encodeValue op1
+        in withSIB mode rm op1 $ \sib ->
+             mkModRM mode (encodeValue op2) rm <> sib <> disp
     _ -> empty
+
+-- | Provide the SIB to the callback, if it is required
+withSIB :: Word8 -> Word8 -> Value -> (B.Builder -> a) -> a
+withSIB mode rm val k
+  | not (requiresSIB rm) || mode == directRegister = k mempty
+  | otherwise =
+    case val of
+      Mem8 (Addr_32 _seg mbase midx _) ->
+        let midx' = fmap (second (unReg64 . reg32_reg)) midx
+            mbase' = fmap (unReg64 . reg32_reg) mbase
+        in k (mkSIB midx' mbase')
+      Mem8 (Addr_64 _seg mbase midx _) ->
+        let midx' = fmap (second unReg64) midx
+            mbase' = fmap unReg64 mbase
+        in k (mkSIB midx' mbase')
+      _ -> k mempty
+
+mkSIB :: Maybe (Int, Word8)
+         -- ^ (optional) (2^Scale, Index)
+      -> Maybe Word8
+         -- ^ Register base
+      -> B.Builder
+mkSIB mScaleIdx mBase =
+  case (mScaleIdx, mBase) of
+    (Nothing, Just rno) -> B.word8 ((4 `shiftL` 3) .|. (rno .&. 0x7))
+    (Just (scale, ix), Just rno) ->
+      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. (rno .&. 0x7))
+
+requiresSIB :: Word8 -> Bool
+requiresSIB = (==0x4)
 
 -- | Compute the mode bits and displacement for a 'Value'.
 -- Eventually, this will also compute the SIB.
@@ -70,6 +105,7 @@ withMode v k =
     WordReg {} -> k directRegister mempty
     DWordReg {} -> k directRegister mempty
     QWordReg {} -> k directRegister mempty
+
     Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
@@ -119,10 +155,10 @@ encodeValue v =
     WordReg (Reg16 rno) -> rno
     DWordReg (Reg32 rno) -> rno
     QWordReg (Reg64 rno) -> rno
-    Mem64 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
-    Mem32 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
-    Mem16 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
-    Mem8 (Addr_64 _ (Just (Reg64 rno)) _ _) -> rno
+    Mem64 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
+    Mem32 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
+    Mem16 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
+    Mem8 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem64 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem32 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem16 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
