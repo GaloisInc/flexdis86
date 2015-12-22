@@ -1,20 +1,15 @@
 module Roundtrip ( roundtripTests ) where
 
-import Data.Bits ( Bits )
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Builder as B
 import qualified Data.ByteString.Lazy as LB
 import Data.Maybe ( mapMaybe )
-import qualified System.Exit as IO
-import qualified System.IO as IO
-import qualified System.IO.Temp as IO
-import qualified System.Process as P
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
-import qualified Data.Elf as E
 import qualified Flexdis86 as D
 import Hexdump
+
+import Util ( withAssembledCode )
 
 roundtripTests :: T.TestTree
 roundtripTests = T.testGroup "Roundtrip Tests" [
@@ -124,38 +119,10 @@ immediateOperandOpcodes = [ ("push imm8", ["push $3"])
 
 mkTest :: (String, [String]) -> T.TestTree
 mkTest (name, insns) = T.testCase name $ do
-  IO.withSystemTempFile "roundtrip.s" $ \fname h -> do
-    mapM_ (IO.hPutStrLn h) [ "  .global _start"
-                           , "  .text"
-                           , "_start:"
-                           ]
-    mapM_ (IO.hPutStrLn h) (map ("  "++) insns)
-    IO.hFlush h
-    IO.withSystemTempFile "roundtrip.exe" $ \outfile exeH -> do
-      IO.hClose exeH
-      let p = P.proc "gcc" ["-nostdlib", "-o", outfile, fname]
-      (_, _, _, ph) <- P.createProcess p
-      ec <- P.waitForProcess ph
-      case ec of
-        IO.ExitFailure code -> T.assertFailure ("Assembler failed with exit status " ++ show code)
-        IO.ExitSuccess -> do
-          codeBytes <- readCodeSegment outfile
-          let disInsns = D.disassembleBuffer D.defaultX64Disassembler codeBytes
-          T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
-          let instances = mapMaybe D.disInstruction disInsns
-              assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe D.assembleInstruction instances)
-          T.assertEqual ("Assembled bytes\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
+  withAssembledCode insns $ \codeBytes -> do
+    let disInsns = D.disassembleBuffer D.defaultX64Disassembler codeBytes
+    T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
+    let instances = mapMaybe D.disInstruction disInsns
+        assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe D.assembleInstruction instances)
+    T.assertEqual ("Assembled bytes\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
 
-readCodeSegment :: FilePath -> IO B.ByteString
-readCodeSegment fp = do
-  bytes <- B.readFile fp
-  case E.parseElf bytes of
-    Left (off, msg) -> error ("Failed to parse ELF file at offset " ++ show off ++ ": " ++ msg)
-    Right (E.Elf32 someElf) -> extractCodeSegment someElf
-    Right (E.Elf64 someElf) -> extractCodeSegment someElf
-
-extractCodeSegment :: (Bits w, Integral w, E.ElfWidth w) => E.Elf w -> IO B.ByteString
-extractCodeSegment e = do
-  case E.findSectionByName ".text" e of
-    Nothing -> error "Could not find code segment"
-    Just textSection -> return $ E.elfSectionData textSection

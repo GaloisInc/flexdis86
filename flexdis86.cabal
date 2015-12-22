@@ -61,7 +61,9 @@ test-suite roundtrip-tests
   default-language: Haskell2010
   main-is: Main.hs
   hs-source-dirs: tests/roundtrip-tests
-  other-modules: Roundtrip
+  other-modules: Assemble
+                 Roundtrip
+                 Util
   ghc-options: -Wall
   build-depends: flexdis86,
                  base,
