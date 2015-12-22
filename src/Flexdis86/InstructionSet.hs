@@ -221,9 +221,6 @@ data InstructionInstance
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
         , iiOpcode :: [Word8]
-        , iiHasModRM :: Bool
-          -- ^ True if the instruction requires a ModRM byte.  We'll
-          -- compute that based on the operands later.
         , iiRequiredMod :: Maybe ModConstraint
         , iiRequiredReg :: Maybe Fin8
         , iiRequiredRM :: Maybe Fin8

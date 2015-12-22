@@ -7,8 +7,9 @@ Maintainer  :  jhendrix@galois.com
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Flexdis86.DefaultParser
-  ( optableData 
+  ( optableData
   , defaultX64Disassembler
+  , defaultX64Assembler
   ) where
 
 import qualified Data.ByteString as BS
@@ -16,6 +17,7 @@ import Language.Haskell.TH.Syntax
 import Data.ByteString.Unsafe (unsafePackAddressLen)
 import System.IO.Unsafe (unsafePerformIO)
 
+import Flexdis86.Assembler
 import Flexdis86.Disassembler
 
 {-# NOINLINE optableData #-}
@@ -40,3 +42,9 @@ defaultX64Disassembler = p
   where p = case mkX64Disassembler optableData of
               Right v -> v
               Left  s -> error ("defaultX64Diassembler: " ++ s)
+
+defaultX64Assembler :: AssemblerContext
+defaultX64Assembler =
+  case mkX64Assembler optableData of
+    Right c -> c
+    Left err -> error ("defaultX64Assembler: " ++ err)

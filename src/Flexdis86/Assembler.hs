@@ -1,5 +1,8 @@
 {-# LANGUAGE ViewPatterns #-}
 module Flexdis86.Assembler (
+  AssemblerContext,
+  assemblerContext,
+  mkInstruction,
   assembleInstruction
   ) where
 
@@ -10,15 +13,77 @@ import Control.Monad ( MonadPlus(..) )
 import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Builder as B
-import Data.Maybe ( fromMaybe )
+import qualified Data.Map.Strict as M
+import Data.Maybe ( fromMaybe, isJust )
 import Data.Monoid
 
 import Prelude
 
-import Flexdis86.OpTable ( ModConstraint(..), unFin8 )
+import Flexdis86.OpTable
 import Flexdis86.InstructionSet
 import Flexdis86.Prefixes
 import Flexdis86.Register
+
+data AssemblerContext =
+  AssemblerContext { acDefs :: M.Map String [Def]
+                   }
+  deriving (Show)
+
+assemblerContext :: [Def] -> AssemblerContext
+assemblerContext = AssemblerContext . foldr addDef M.empty
+  where
+    addDef d = M.alter (Just . (maybe [d] (d:))) (L.view defMnemonic d)
+
+mkInstruction :: (Alternative f)
+              => AssemblerContext
+              -> String
+              -- ^ Mnemonic
+              -> [Value]
+              -- ^ Arguments
+              -> f InstructionInstance
+mkInstruction ctx mnemonic args =
+  foldr (<|>) empty (map (findEncoding args) defs)
+  where
+    defs = fromMaybe [] $ M.lookup mnemonic (acDefs ctx)
+
+findEncoding :: (Alternative f) => [Value] -> Def -> f InstructionInstance
+findEncoding args def
+  | not (argumentsCongruent args def) = empty
+  | otherwise = pure $ II { iiLockPrefix = NoLockPrefix
+                          , iiAddrSize = Size16
+                          , iiOp = L.view defMnemonic def
+                          , iiArgs = args
+                          , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
+                                                  , _prSP = no_seg_prefix
+                                                  , _prREX = REX 0
+                                                  , _prASO = False
+                                                  , _prOSO = False
+                                                  }
+                          , iiRequiredPrefix = L.view requiredPrefix def
+                          , iiOpcode = L.view defOpcodes def
+                          , iiRequiredMod = L.view requiredMod def
+                          , iiRequiredReg = L.view requiredReg def
+                          , iiRequiredRM = L.view requiredRM def
+                          }
+
+-- Need to build prefixes based on arg sizes...
+
+-- | Return True if the value list matches the operand types supported
+-- by the given 'Def'.
+argumentsCongruent :: [Value] -> Def -> Bool
+argumentsCongruent args def =
+  length args == length opTypes && all matchOperandType (zip opTypes args)
+  where
+    opTypes = L.view defOperands def
+
+-- | Return True if the given 'Value' can be encoded with the operand
+-- type (specified as a String).
+matchOperandType :: (String, Value) -> Bool
+matchOperandType ops =
+  case ops of
+    ("Ib", ByteImm _) -> True
+    ("Iw", WordImm _) -> True
+    _ -> False
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
@@ -43,8 +108,15 @@ assembleInstruction ii = do
 -- build a combined byte string.
 encodeModRMDisp :: (Alternative m) => InstructionInstance -> m B.Builder
 encodeModRMDisp ii
-  | not (iiHasModRM ii) = empty
+  | not (hasModRM ii) = empty
   | otherwise = encodeRequiredModRM ii <|> encodeOperandModRM ii <|> empty
+
+hasModRM :: InstructionInstance -> Bool
+hasModRM ii = or [ isJust (iiRequiredMod ii)
+                 , isJust (iiRequiredReg ii)
+                 , isJust (iiRequiredRM ii)
+                 , any isNotImmediate (iiArgs ii)
+                 ]
 
 -- | Build a ModRM byte based on the operands of the instruction.
 encodeOperandModRM :: (Alternative m) => InstructionInstance -> m B.Builder

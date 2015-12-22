@@ -18,6 +18,7 @@ This defines a disassembler based on optable definitions.
 module Flexdis86.Disassembler
   ( InstructionParser
   , mkX64Disassembler
+  , mkX64Assembler
   , TableRef
   , disassembleInstruction
   , DisassembledAddr(..)
@@ -42,6 +43,7 @@ import Data.Word
 
 import Prelude
 
+import Flexdis86.Assembler
 import Flexdis86.ByteReader
 import Flexdis86.InstructionSet
 import Flexdis86.Operand
@@ -53,12 +55,16 @@ import Flexdis86.Register
 -- | Create an instruction parser from the given udis86 parser.
 -- This is currently restricted to x64 base operations.
 mkX64Disassembler :: BS.ByteString -> Either String InstructionParser
-mkX64Disassembler bs = mkParser . filter ifilter <$> parseOpTable bs
-  where -- Filter out unsupported operations
-        ifilter d = d^.reqAddrSize /= Just Size16
+mkX64Disassembler bs = mkParser . filter defSupported <$> parseOpTable bs
+  where mkParser defs = fst $ runParserGen $ parseTable defs
+
+defSupported :: Def -> Bool
+defSupported d = d^.reqAddrSize /= Just Size16
                  && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
                  && x64Compatible d
-        mkParser defs = fst $ runParserGen $ parseTable defs
+
+mkX64Assembler :: BS.ByteString -> Either String AssemblerContext
+mkX64Assembler bs = (assemblerContext . filter defSupported) <$> parseOpTable bs
 
 ------------------------------------------------------------------------
 -- REX
@@ -545,7 +551,6 @@ disassembleInstruction tr0 = do
                  , iiPrefixes = pfx
                  , iiRequiredPrefix = view requiredPrefix df
                  , iiOpcode = view defOpcodes df
-                 , iiHasModRM = False
                  , iiRequiredMod = view requiredMod df
                  , iiRequiredReg = view requiredReg df
                  , iiRequiredRM = view requiredRM df
@@ -598,7 +603,6 @@ parseReadTable modRM (ReadTable pfx osz nm tps df) =
                          , iiPrefixes = pfx
                          , iiRequiredPrefix = view requiredPrefix df
                          , iiOpcode = view defOpcodes df
-                         , iiHasModRM = True
                          , iiRequiredMod = view requiredMod df
                          , iiRequiredReg = view requiredReg df
                          , iiRequiredRM = view requiredRM df
