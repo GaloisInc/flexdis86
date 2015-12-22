@@ -10,7 +10,7 @@ module Flexdis86.InstructionSet
   ( InstructionInstance(..)
   , ppInstruction
   , instructionSize
-  , Flexdis86.OpTable.SizeConstraint(..)
+  , SizeConstraint(..)
   , Value(..)
   , ControlReg, controlReg, controlRegNo
   , DebugReg, debugReg, debugRegNo
@@ -37,7 +37,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import Prelude
 
 import Flexdis86.Operand
-import Flexdis86.OpTable
+import Flexdis86.Sizes
 import Flexdis86.Prefixes
 import Flexdis86.Register
 import Flexdis86.Segment

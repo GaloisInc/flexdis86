@@ -20,8 +20,8 @@ import Numeric ( showHex )
 import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
-import Flexdis86.OpTable
 import Flexdis86.Segment
+import Flexdis86.Sizes
 
 -- | Prefixes for an instruction.
 data Prefixes = Prefixes { _prLockPrefix :: LockPrefix

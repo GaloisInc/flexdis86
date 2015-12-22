@@ -34,6 +34,7 @@ library
     Flexdis86.Prefixes
     Flexdis86.Register
     Flexdis86.Segment
+    Flexdis86.Sizes
 
   GHC-options: -Wall -fno-ignore-asserts -O2
 

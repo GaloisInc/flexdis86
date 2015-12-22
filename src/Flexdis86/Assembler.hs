@@ -25,19 +25,17 @@ import Flexdis86.OpTable
 import Flexdis86.InstructionSet
 import Flexdis86.Prefixes
 import Flexdis86.Register
+import Flexdis86.Sizes
 
 data AssemblerContext =
-  AssemblerContext { acDefs :: M.Map String [(Def, [OperandType])]
+  AssemblerContext { acDefs :: M.Map String [Def]
                    }
   deriving (Show)
 
 assemblerContext :: [Def] -> AssemblerContext
 assemblerContext = AssemblerContext . foldr addDef M.empty
   where
-    addDef d =
-      let opTys = map (lookupOperandType "") (L.view defOperands d)
-          val = (d, opTys)
-      in M.alter (Just . (maybe [val] (val:))) (L.view defMnemonic d)
+    addDef d = M.alter (Just . (maybe [d] (d:))) (L.view defMnemonic d)
 
 mkInstruction :: (MonadPlus m)
               => AssemblerContext
@@ -51,8 +49,9 @@ mkInstruction ctx mnemonic args =
   where
     defs = fromMaybe [] $ M.lookup mnemonic (acDefs ctx)
 
-findEncoding :: (MonadPlus m) => [Value] -> (Def, [OperandType]) -> m InstructionInstance
-findEncoding args (def, opTypes) = do
+findEncoding :: (MonadPlus m) => [Value] -> Def -> m InstructionInstance
+findEncoding args def = do
+  let opTypes = L.view defOperands def
   guard (length args == length opTypes)
   let argTypes = zip args opTypes
   F.forM_ argTypes $ \at -> guard (matchOperandType at)

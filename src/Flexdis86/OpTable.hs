@@ -16,11 +16,6 @@ module Flexdis86.OpTable
     CPURequirement(..)
   , Vendor(..)
   , ModeLimit(..)
-  , ModConstraint(..)
-  , SizeConstraint(..)
-  , FPSizeConstraint(..)
-  , Fin8, unFin8
-  , Fin64, unFin64
     -- * Def
   , Def
   , defMnemonic
@@ -59,6 +54,11 @@ import Prelude
 
 import Numeric (readDec, readHex)
 import Text.XML.Light
+
+import Flexdis86.Operand
+import Flexdis86.Register
+import Flexdis86.Segment
+import Flexdis86.Sizes
 
 qname :: String -> QName
 qname nm = QName { qName = nm, qURI = Nothing, qPrefix = Nothing }
@@ -182,14 +182,6 @@ required_text nm = next $ checkTag nm >> asText
 ------------------------------------------------------------------------
 -- Misc
 
--- | A value 0-7.
-newtype Fin8 = Fin8 { unFin8 :: Word8 }
-  deriving (Eq, Enum, Integral, Num, Ord, Real, Show)
-
--- | A value 0-63.
-newtype Fin64 = Fin64 { unFin64 :: Word8 }
-  deriving (Eq, Show)
-
 -- | Mode effect on instruction semantecs.
 data Mode
      -- | Default operand size is 64 bits in x64 mode.
@@ -284,22 +276,8 @@ data ModeLimit
 valid64 :: ModeLimit -> Bool
 valid64 m = m == AnyMode || m == Only64
 
--- | Identifies whether the mod value of a RM field
--- can be only memory (e.g. !11), only a register (e.g., =11).
-data ModConstraint = OnlyMem
-                   | OnlyReg
-  deriving (Eq, Show)
-
 ------------------------------------------------------------------------
 -- Instruction
-
--- | Describes whether a value is 16, 32 or 64-bits.
-data SizeConstraint = Size16 | Size32 | Size64 | Size128
-  deriving (Eq, Show)
-
--- | Describes whether a floating point memory address value is 32, 64, or 80-bits.
-data FPSizeConstraint = FPSize32 | FPSize64 | FPSize80
-  deriving (Eq, Show)
 
 
 -- | The definition of an instruction.
@@ -317,7 +295,7 @@ data Def = Def  { _defMnemonic :: String
                 , _requiredReg :: Maybe Fin8
                 , _requiredRM :: Maybe Fin8
                 , _x87ModRM    :: Maybe Fin64
-                , _defOperands  :: [String]
+                , _defOperands  :: [OperandType]
                 } deriving (Eq, Show)
 
 -- | Mnemonic for definition.
@@ -380,7 +358,7 @@ x87ModRM :: Simple Lens Def (Maybe Fin64)
 x87ModRM = lens _x87ModRM (\s v -> s { _x87ModRM = v })
 
 -- | Operand descriptions.
-defOperands :: Simple Lens Def [String]
+defOperands :: Simple Lens Def [OperandType]
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 
 -- | Parse a definition.
@@ -409,7 +387,7 @@ parse_def nm creq v = do
                , _requiredReg = Nothing
                , _requiredRM  = Nothing
                , _x87ModRM = Nothing
-               , _defOperands = oprnds
+               , _defOperands = map (lookupOperandType "") oprnds
                }
   flip execStateT d0 $ do
     mapM_ parse_opcode (words opc_text)
@@ -518,3 +496,157 @@ parseOpTable bs = do
   case parseXMLDoc bs of
     Nothing -> Left "Not an XML document"
     Just elt -> runElemParser parse_x86_optable elt
+
+operandHandlerMap :: Map.Map String OperandType
+operandHandlerMap = Map.fromList
+  [ -- Fixed values implicitly derived from opcode.
+    (,) "AL"  $ OpType (Reg_fixed 0) BSize
+  , (,) "eAX" $ OpType (Reg_fixed 0) ZSize
+  , (,) "rAX" $ OpType (Reg_fixed 0) VSize
+  , (,) "CL"  $ OpType (Reg_fixed 1) BSize
+  , (,) "DX"  $ OpType (Reg_fixed 2) WSize
+
+  , (,) "MIdb" $ M_Implicit es rdi BSize
+  , (,) "MIdw" $ M_Implicit es rdi WSize
+  , (,) "MIdd" $ M_Implicit es rdi DSize
+  , (,) "MIdq" $ M_Implicit es rdi QSize
+  , (,) "MIsb" $ M_Implicit ds rsi BSize
+  , (,) "MIsw" $ M_Implicit ds rsi WSize
+  , (,) "MIsd" $ M_Implicit ds rsi DSize
+  , (,) "MIsq" $ M_Implicit ds rsi QSize
+
+    -- Fixed segment registers.
+  , (,) "FS"  $ SEG fs
+  , (,) "GS"  $ SEG gs
+
+    -- Register values stored in opcode that also depend on REX.b
+  , (,) "R0b" $ OpType (Opcode_reg 0) BSize
+  , (,) "R1b" $ OpType (Opcode_reg 1) BSize
+  , (,) "R2b" $ OpType (Opcode_reg 2) BSize
+  , (,) "R3b" $ OpType (Opcode_reg 3) BSize
+  , (,) "R4b" $ OpType (Opcode_reg 4) BSize
+  , (,) "R5b" $ OpType (Opcode_reg 5) BSize
+  , (,) "R6b" $ OpType (Opcode_reg 6) BSize
+  , (,) "R7b" $ OpType (Opcode_reg 7) BSize
+  , (,) "R0v" $ OpType (Opcode_reg 0) VSize
+  , (,) "R1v" $ OpType (Opcode_reg 1) VSize
+  , (,) "R2v" $ OpType (Opcode_reg 2) VSize
+  , (,) "R3v" $ OpType (Opcode_reg 3) VSize
+  , (,) "R4v" $ OpType (Opcode_reg 4) VSize
+  , (,) "R5v" $ OpType (Opcode_reg 5) VSize
+  , (,) "R6v" $ OpType (Opcode_reg 6) VSize
+  , (,) "R7v" $ OpType (Opcode_reg 7) VSize
+  , (,) "R0y" $ OpType (Opcode_reg 0) YSize
+  , (,) "R1y" $ OpType (Opcode_reg 1) YSize
+  , (,) "R2y" $ OpType (Opcode_reg 2) YSize
+  , (,) "R3y" $ OpType (Opcode_reg 3) YSize
+  , (,) "R4y" $ OpType (Opcode_reg 4) YSize
+  , (,) "R5y" $ OpType (Opcode_reg 5) YSize
+  , (,) "R6y" $ OpType (Opcode_reg 6) YSize
+  , (,) "R7y" $ OpType (Opcode_reg 7) YSize
+
+    -- Register values stored in ModRM.reg.
+  , (,) "Gb"  $ OpType ModRM_reg BSize
+  , (,) "Gd"  $ OpType ModRM_reg DSize
+  , (,) "Gq"  $ OpType ModRM_reg QSize
+  , (,) "Gv"  $ OpType ModRM_reg VSize
+  , (,) "Gy"  $ OpType ModRM_reg YSize
+
+    -- Control register read from ModRM.reg.
+  , (,) "C"   $ RG_C
+    -- Debug register read from ModRM.reg.
+  , (,) "D"   $ RG_dbg
+
+    -- MMX register stored in ModRM.reg
+  , (,) "P"    $ RG_MMX_reg
+
+    -- MMX register stored in ModRM.rm
+    -- (ModRM.mod must equal 3).
+  , (,) "N"    $ RG_MMX_rm
+   -- Register operand stored in ModRM.rm (ModRM.mod must equal 3)
+  , (,) "R"    $ OpType ModRM_rm_mod3 RDQSize
+
+    -- RM fields are read from ModRM.rm
+  , (,) "Eb"  $ OpType ModRM_rm BSize
+  , (,) "Ew"  $ OpType ModRM_rm WSize
+  , (,) "Ed"  $ OpType ModRM_rm DSize
+  , (,) "Eq"  $ OpType ModRM_rm QSize
+  , (,) "Ev"  $ OpType ModRM_rm VSize
+  , (,) "Ey"  $ OpType ModRM_rm YSize
+
+    -- Memory or register value stored in ModRM.rm
+    -- As a  register has size VSize, and as memory has size WSize.
+  , (,) "MwRv" $ MXRX VSize WSize
+    -- As a  register has size DSize, and as memory has size BSize.
+  , (,) "MbRd" $ MXRX BSize DSize
+  , (,) "MwRy" $ MXRX WSize YSize
+
+    -- Far Pointer (which is an address) stored in ModRM.rm
+    -- (ModRM.mod must not equal 3)
+  , (,) "Fv"   $ M_FP
+    -- Memory value stored in ModRM.rm
+    -- (ModRM.mod must not equal 3)
+  , (,) "M"    $ M
+
+    -- Memory value pointing to floating point value
+  , (,) "M32fp" $ M_FloatingPoint FPSize32
+  , (,) "M64fp" $ M_FloatingPoint FPSize64
+  , (,) "M80fp" $ M_FloatingPoint FPSize80
+
+
+    -- FP Register indicies
+  , (,) "ST0"   $ RG_ST 0
+  , (,) "ST1"   $ RG_ST 1
+  , (,) "ST2"   $ RG_ST 2
+  , (,) "ST3"   $ RG_ST 3
+  , (,) "ST4"   $ RG_ST 4
+  , (,) "ST5"   $ RG_ST 5
+  , (,) "ST6"   $ RG_ST 6
+  , (,) "ST7"   $ RG_ST 7
+
+    -- Memory value pointing to 64-bit integer stored in ModRM.rm
+    -- (ModRM.mod must not equal 3).
+  , (,) "Mq"  $ M_X Size64
+  , (,) "Md"  $ M_X Size32
+  , (,) "Mw"  $ M_X Size16
+
+  , (,) "S"   $ RG_S
+
+  , (,) "Q"    $ RM_MMX
+
+    -- Immediate values with different sizes.
+    -- An immediate byte that does not need to be extended.
+  , (,) "Ib"  $ OpType ImmediateSource BSize
+    -- An immediate word that does not need to be extended.
+  , (,) "Iw"  $ OpType ImmediateSource WSize
+    -- A size v value that does not need to be extended.
+  , (,) "Iv"  $ OpType ImmediateSource VSize
+    -- A size z value that does not need to be extended.
+  , (,) "Iz"  $ OpType ImmediateSource ZSize
+
+    -- Constant one
+  , (,) "I1"  $ IM_1
+
+  , (,) "Jb"   $ OpType JumpImmediate  BSize
+  , (,) "Jz"   $ OpType JumpImmediate  ZSize
+
+  , (,) "Ob"   $ OpType OffsetSource BSize
+  , (,) "Ov"   $ OpType OffsetSource VSize
+
+    -- An immediate byte that is sign extended to an operator size.
+  , (,) "sIb" $ IM_SB
+    -- An immediate ZSize value that is sign extended to the operator
+    -- size.
+  , (,) "sIz" $ IM_SZ
+
+    -- XMM
+  , (,) "U"   $ RG_XMM_rm
+  , (,) "V"   $ RG_XMM_reg
+  , (,) "W"   $ RM_XMM
+  ]
+
+lookupOperandType :: String -> String -> OperandType
+lookupOperandType i nm =
+  case Map.lookup nm operandHandlerMap of
+    Just h -> h
+    Nothing -> error $ "Unknown operand: " ++ i ++ " " ++ show nm

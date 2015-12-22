@@ -50,6 +50,7 @@ import Flexdis86.Operand
 import Flexdis86.OpTable
 import Flexdis86.Prefixes
 import Flexdis86.Register
+import Flexdis86.Sizes
 
 
 -- | Create an instruction parser from the given udis86 parser.
@@ -239,9 +240,9 @@ expectsModRM d
   || any modRMOperand (d^.defOperands)
 
 -- | Returns true if operand has a modRMOperand.
-modRMOperand :: String -> Bool
+modRMOperand :: OperandType -> Bool
 modRMOperand nm =
-  case lookupOperandType "" nm of
+  case nm of
     OpType sc _ ->
       case sc of
         ModRM_rm        -> True
@@ -404,7 +405,7 @@ mkOpcodeTable f defs = go [] (concatMap allPrefixedOpcodes defs)
                      ReadModRM <$> f (snd <$> l)
                 [([],(pfx, d))] -> assert (not (expectsModRM d)) $
                     return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps d
-                  where tps = lookupOperandType "" <$> view defOperands d
+                  where tps = view defOperands d
                 _ -> error $ "mkOpcodeTable: ambiguous operators " ++ show (map snd l)
             -- If we still have opcodes to parse, check that all definitions
             -- expect at least one more opcode, and generate table for next
@@ -437,7 +438,7 @@ mkModTable f pfxdefs
             Just OnlyReg -> False
             _ -> none modRMRegOperand (d^.defOperands)
         modRMRegOperand nm =
-          case lookupOperandType "" nm of
+          case nm of
             OpType sc _ ->
               case sc of
                 ModRM_rm_mod3 -> True
@@ -452,7 +453,7 @@ mkModTable f pfxdefs
             Just OnlyMem -> False
             _ -> none modRMMemOperand (d^.defOperands)
         modRMMemOperand nm =
-          case lookupOperandType "" nm of
+          case nm of
             OpType sc _ ->
               case sc of
                 ModRM_rm -> True
@@ -509,7 +510,7 @@ parseTable = fmap asOpcodeTable . makeTables finished
 
       finished []         = return NoParse
       finished [(pfx, d)] = let nm = d^.defMnemonic
-                                tps = lookupOperandType "" <$> view defOperands d
+                                tps = view defOperands d
                             in
                              return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps d
       finished pfxdefs = fail $ "parseTable ambiguous" ++ show (map snd pfxdefs)
@@ -547,7 +548,7 @@ disassembleInstruction tr0 = do
               II { iiLockPrefix = pfx^.prLockPrefix
                  , iiAddrSize = prAddrSize pfx
                  , iiOp   = nm
-                 , iiArgs = zipWith typeTagOperand args (view defOperands df)
+                 , iiArgs = zipWith (,) args (view defOperands df)
                  , iiPrefixes = pfx
                  , iiRequiredPrefix = view requiredPrefix df
                  , iiOpcode = view defOpcodes df
@@ -599,7 +600,7 @@ parseReadTable modRM (ReadTable pfx osz nm tps df) =
   where finish args = II { iiLockPrefix = pfx^.prLockPrefix
                          , iiAddrSize = prAddrSize pfx
                          , iiOp = nm
-                         , iiArgs = zipWith typeTagOperand args (view defOperands df)
+                         , iiArgs = zipWith (,) args (view defOperands df)
                          , iiPrefixes = pfx
                          , iiRequiredPrefix = view requiredPrefix df
                          , iiOpcode = view defOpcodes df
@@ -607,8 +608,6 @@ parseReadTable modRM (ReadTable pfx osz nm tps df) =
                          , iiRequiredReg = view requiredReg df
                          , iiRequiredRM = view requiredRM df
                          }
-
-typeTagOperand arg opTyStr = (arg, lookupOperandType "" opTyStr)
 
 -- | Returns the size of a function.
 sizeFn :: SizeConstraint -> OperandSize -> SizeConstraint
