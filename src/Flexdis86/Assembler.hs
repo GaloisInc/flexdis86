@@ -89,6 +89,7 @@ mkSIB mScaleIdx mBase =
     (Nothing, Just rno) -> B.word8 ((4 `shiftL` 3) .|. (rno .&. 0x7))
     (Just (scale, ix), Just rno) ->
       B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. (rno .&. 0x7))
+    other -> error ("Unexpected inputs to mkSIB: " ++ show other)
 
 requiresSIB :: Word8 -> Bool
 requiresSIB = (==0x4)
