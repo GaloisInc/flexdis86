@@ -14,7 +14,6 @@ import qualified Test.Tasty.HUnit as T
 
 import qualified Data.Elf as E
 import qualified Flexdis86 as D
-import qualified Flexdis86.Assembler as A
 import Hexdump
 
 roundtripTests :: T.TestTree
@@ -144,7 +143,7 @@ mkTest (name, insns) = T.testCase name $ do
           let disInsns = D.disassembleBuffer D.defaultX64Disassembler codeBytes
           T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
           let instances = mapMaybe D.disInstruction disInsns
-              assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe A.assembleInstruction instances)
+              assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe D.assembleInstruction instances)
           T.assertEqual ("Assembled bytes\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
 
 readCodeSegment :: FilePath -> IO B.ByteString
