@@ -547,7 +547,7 @@ disassembleInstruction tr0 = do
               II { iiLockPrefix = pfx^.prLockPrefix
                  , iiAddrSize = prAddrSize pfx
                  , iiOp   = nm
-                 , iiArgs = args
+                 , iiArgs = zipWith typeTagOperand args (view defOperands df)
                  , iiPrefixes = pfx
                  , iiRequiredPrefix = view requiredPrefix df
                  , iiOpcode = view defOpcodes df
@@ -595,11 +595,11 @@ parseReadTable :: ByteReader m
                -> m InstructionInstance
 parseReadTable _ NoParse = fail "Invalid instruction."
 parseReadTable modRM (ReadTable pfx osz nm tps df) =
-  finish <$>  traverse (parseValue pfx osz (Just modRM)) tps
+  finish <$> traverse (parseValue pfx osz (Just modRM)) tps
   where finish args = II { iiLockPrefix = pfx^.prLockPrefix
                          , iiAddrSize = prAddrSize pfx
                          , iiOp = nm
-                         , iiArgs = args
+                         , iiArgs = zipWith typeTagOperand args (view defOperands df)
                          , iiPrefixes = pfx
                          , iiRequiredPrefix = view requiredPrefix df
                          , iiOpcode = view defOpcodes df
@@ -607,6 +607,8 @@ parseReadTable modRM (ReadTable pfx osz nm tps df) =
                          , iiRequiredReg = view requiredReg df
                          , iiRequiredRM = view requiredRM df
                          }
+
+typeTagOperand arg opTyStr = (arg, lookupOperandType "" opTyStr)
 
 -- | Returns the size of a function.
 sizeFn :: SizeConstraint -> OperandSize -> SizeConstraint

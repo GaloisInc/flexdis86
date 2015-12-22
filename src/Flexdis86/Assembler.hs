@@ -9,80 +9,89 @@ module Flexdis86.Assembler (
 import Control.Applicative
 import Control.Arrow ( second )
 import qualified Control.Lens as L
-import Control.Monad ( MonadPlus(..) )
+import Control.Monad ( MonadPlus(..), guard )
 import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Builder as B
+import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import Data.Maybe ( fromMaybe, isJust )
 import Data.Monoid
 
 import Prelude
 
+import Flexdis86.Operand
 import Flexdis86.OpTable
 import Flexdis86.InstructionSet
 import Flexdis86.Prefixes
 import Flexdis86.Register
 
 data AssemblerContext =
-  AssemblerContext { acDefs :: M.Map String [Def]
+  AssemblerContext { acDefs :: M.Map String [(Def, [OperandType])]
                    }
   deriving (Show)
 
 assemblerContext :: [Def] -> AssemblerContext
 assemblerContext = AssemblerContext . foldr addDef M.empty
   where
-    addDef d = M.alter (Just . (maybe [d] (d:))) (L.view defMnemonic d)
+    addDef d =
+      let opTys = map (lookupOperandType "") (L.view defOperands d)
+          val = (d, opTys)
+      in M.alter (Just . (maybe [val] (val:))) (L.view defMnemonic d)
 
-mkInstruction :: (Alternative f)
+mkInstruction :: (MonadPlus m)
               => AssemblerContext
               -> String
               -- ^ Mnemonic
               -> [Value]
               -- ^ Arguments
-              -> f InstructionInstance
+              -> m InstructionInstance
 mkInstruction ctx mnemonic args =
   foldr (<|>) empty (map (findEncoding args) defs)
   where
     defs = fromMaybe [] $ M.lookup mnemonic (acDefs ctx)
 
-findEncoding :: (Alternative f) => [Value] -> Def -> f InstructionInstance
-findEncoding args def
-  | not (argumentsCongruent args def) = empty
-  | otherwise = pure $ II { iiLockPrefix = NoLockPrefix
-                          , iiAddrSize = Size16
-                          , iiOp = L.view defMnemonic def
-                          , iiArgs = args
-                          , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
-                                                  , _prSP = no_seg_prefix
-                                                  , _prREX = REX 0
-                                                  , _prASO = False
-                                                  , _prOSO = False
-                                                  }
-                          , iiRequiredPrefix = L.view requiredPrefix def
-                          , iiOpcode = L.view defOpcodes def
-                          , iiRequiredMod = L.view requiredMod def
-                          , iiRequiredReg = L.view requiredReg def
-                          , iiRequiredRM = L.view requiredRM def
-                          }
+findEncoding :: (MonadPlus m) => [Value] -> (Def, [OperandType]) -> m InstructionInstance
+findEncoding args (def, opTypes) = do
+  guard (length args == length opTypes)
+  let argTypes = zip args opTypes
+  F.forM_ argTypes $ \at -> guard (matchOperandType at)
+  return $ II { iiLockPrefix = NoLockPrefix
+              , iiAddrSize = Size16
+              , iiOp = L.view defMnemonic def
+              , iiArgs = zip args opTypes
+              , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
+                                      , _prSP = no_seg_prefix
+                                      , _prREX = REX 0
+                                      , _prASO = False
+                                      , _prOSO = False
+                                      }
+              , iiRequiredPrefix = L.view requiredPrefix def
+              , iiOpcode = L.view defOpcodes def
+              , iiRequiredMod = L.view requiredMod def
+              , iiRequiredReg = L.view requiredReg def
+              , iiRequiredRM = L.view requiredRM def
+              }
 
 -- Need to build prefixes based on arg sizes...
-
--- | Return True if the value list matches the operand types supported
--- by the given 'Def'.
-argumentsCongruent :: [Value] -> Def -> Bool
-argumentsCongruent args def =
-  length args == length opTypes && all matchOperandType (zip opTypes args)
-  where
-    opTypes = L.view defOperands def
+--
+-- Maybe the checking should occur in a Monad and we can build up any
+-- modifiers to the prefixes on the fly?
+--
+-- ASO and OSO might be painful, since the meaning varies.
+--
+-- Lock would be easy (and probably optional)
+--
+-- REX should be pretty easy, since it just encodes extra bits in
+-- modr/m
 
 -- | Return True if the given 'Value' can be encoded with the operand
 -- type (specified as a String).
-matchOperandType :: (String, Value) -> Bool
+matchOperandType :: (Value, OperandType) -> Bool
 matchOperandType ops =
   case ops of
-    ("Ib", ByteImm _) -> True
-    ("Iw", WordImm _) -> True
+    (ByteImm _, OpType ImmediateSource BSize) -> True
+    ( WordImm _, OpType ImmediateSource WSize) -> True
     _ -> False
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
@@ -90,7 +99,7 @@ assembleInstruction ii = do
   return $ mconcat [ prefixBytes
                    , opcode
                    , fromMaybe mempty (encodeModRMDisp ii)
-                   , mconcat (map encodeImmediate (iiArgs ii))
+                   , mconcat (map encodeImmediate (map fst (iiArgs ii)))
                    ]
   where
     prefixBytes = mconcat [ encodeLockPrefix (L.view prLockPrefix pfxs)
@@ -115,13 +124,24 @@ hasModRM :: InstructionInstance -> Bool
 hasModRM ii = or [ isJust (iiRequiredMod ii)
                  , isJust (iiRequiredReg ii)
                  , isJust (iiRequiredRM ii)
-                 , any isNotImmediate (iiArgs ii)
+                 , isJust (iiRequiredPrefix ii)
+                 , any operandTypeRequiresModRM (map snd (iiArgs ii))
                  ]
+
+operandTypeRequiresModRM :: OperandType -> Bool
+operandTypeRequiresModRM ot =
+  case ot of
+    IM_1 -> False
+    IM_SB -> False
+    IM_SZ -> False
+    OpType ImmediateSource _ -> False
+    OpType (Opcode_reg _) _ -> False
+    _ -> True
 
 -- | Build a ModRM byte based on the operands of the instruction.
 encodeOperandModRM :: (Alternative m) => InstructionInstance -> m B.Builder
 encodeOperandModRM ii =
-  case filter isNotImmediate (iiArgs ii) of
+  case filter isNotImmediate (map fst (iiArgs ii)) of
     [] -> empty
     [op1] ->
       pure $ withMode op1 $ \mode disp ->

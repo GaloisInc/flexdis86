@@ -36,6 +36,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import Prelude
 
+import Flexdis86.Operand
 import Flexdis86.OpTable
 import Flexdis86.Prefixes
 import Flexdis86.Register
@@ -217,7 +218,7 @@ data InstructionInstance
           -- size override)
         , iiAddrSize :: !SizeConstraint
         , iiOp   :: !String
-        , iiArgs :: ![Value]
+        , iiArgs :: ![(Value, OperandType)]
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
         , iiOpcode :: [Word8]
@@ -250,7 +251,7 @@ ppInstruction :: Word64
               -> Doc
 ppInstruction base i = 
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
-      args = iiArgs i
+      args = map fst (iiArgs i)
       op = iiOp i
   in
    case (op, args)
