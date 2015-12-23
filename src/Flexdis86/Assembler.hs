@@ -157,20 +157,45 @@ operandTypeRequiresModRM ot =
 -- | Build a ModRM byte based on the operands of the instruction.
 encodeOperandModRM :: (Alternative m) => InstructionInstance -> Word8 -> m B.Builder
 encodeOperandModRM ii reqModRM =
-  case filter isNotImmediate (map fst (iiArgs ii)) of
+  case filter (isNotImmediate . fst) (iiArgs ii) of
     [] | reqModRM == 0 -> empty
        | otherwise -> pure $ B.word8 reqModRM
-    [op1] ->
+    [(op1, _)] ->
       pure $ withMode op1 $ \mode disp ->
         let rm = encodeValue op1
         in withSIB mode rm op1 $ \sib ->
              mkModRM reqModRM mode 0 rm <> sib <> disp
     [op1, op2] ->
-      pure $ withMode op1 $ \mode disp ->
-        let rm = encodeValue op1
-        in withSIB mode rm op1 $ \sib ->
-             mkModRM reqModRM mode (encodeValue op2) rm <> sib <> disp
+      pure $ withRMFirst op1 op2 $ \vrm vreg -> withMode vrm $ \mode disp ->
+        let rm = encodeValue vrm
+        in withSIB mode rm vrm $ \sib ->
+             mkModRM reqModRM mode (encodeValue vreg) rm <> sib <> disp
     _ -> empty
+
+-- | Re-order the arguments such that the RM operand is the first
+-- argument of the callback.
+--
+-- This makes encoding of the ModR/M byte simpler
+--
+-- The real concern is that, in the case where the second argument is
+-- encoded in R/M, we need to swap the order so that
+-- 'encodeOperandModRM' puts it in the right field.  Otherwise, we
+-- preserve the original order.
+withRMFirst :: (Value, OperandType) -> (Value, OperandType) -> (Value -> Value -> a) -> a
+withRMFirst (v1, _) (v2, v2ty) k =
+  case v2ty of
+    OpType ModRM_rm _ -> k v2 v1
+    OpType ModRM_rm_mod3 _ -> k v2 v1
+    RG_XMM_rm -> k v2 v1
+    RM_XMM -> k v2 v1
+    M_FP -> k v2 v1
+    M -> k v2 v1
+    M_X {} -> k v2 v1
+    M_FloatingPoint {} -> k v2 v1
+    MXRX {} -> k v2 v1
+    RM_MMX -> k v2 v1
+    RG_MMX_rm -> k v2 v1
+    _ -> k v1 v2
 
 -- | Provide the SIB to the callback, if it is required
 withSIB :: Word8 -> Word8 -> Value -> (B.Builder -> a) -> a
@@ -215,6 +240,7 @@ withMode v k =
     WordReg {} -> k directRegister mempty
     DWordReg {} -> k directRegister mempty
     QWordReg {} -> k directRegister mempty
+    MMXReg {} -> k directRegister mempty
 
     Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
@@ -265,6 +291,7 @@ encodeValue v =
     WordReg (Reg16 rno) -> rno
     DWordReg (Reg32 rno) -> rno
     QWordReg (Reg64 rno) -> rno
+    MMXReg (MMXR rno) -> rno
     Mem64 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem32 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem16 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
@@ -349,8 +376,6 @@ encodeImmediate vty =
     (JumpOffset BSize off, OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
     (JumpOffset _ off, OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
     _ -> mempty
-
-
 
 {- Note [x86 Instruction Format]
 
