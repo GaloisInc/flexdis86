@@ -110,6 +110,7 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("mov r8, r8", ["mov %al, %bl"])
                     , ("mov r8, imm8", ["mov $8, %bl"])
                     , ("mov r64, imm64", ["mov $10000000000, %r9"])
+                    , ("Load a value into an mmx register", ["movq (%eax), %mm2"])
                     ]
 
 immediateTests :: T.TestTree
