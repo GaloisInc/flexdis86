@@ -107,6 +107,7 @@ twoOperandOpcodes :: [(String, [String])]
 twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("test reg reg (edx)", ["test %edx, %edx"])
                     , ("test reg reg (ebx, ecx)", ["test %ebx, %ecx"])
+                    , ("test eax imm32", ["test $12, %eax"])
                     , ("mov r8, r8", ["mov %al, %bl"])
                     , ("mov r8, imm8", ["mov $8, %bl"])
                     , ("mov r64, imm64", ["mov $10000000000, %r9"])

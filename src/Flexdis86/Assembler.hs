@@ -152,6 +152,7 @@ operandTypeRequiresModRM ot =
     IM_SZ -> False
     OpType ImmediateSource _ -> False
     OpType (Opcode_reg _) _ -> False
+    OpType (Reg_fixed _) _ -> False
     _ -> True
 
 -- | Build a ModRM byte based on the operands of the instruction.
