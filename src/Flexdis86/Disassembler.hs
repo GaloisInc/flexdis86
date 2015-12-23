@@ -46,7 +46,6 @@ import Prelude
 import Flexdis86.Assembler
 import Flexdis86.ByteReader
 import Flexdis86.InstructionSet
-import Flexdis86.Operand
 import Flexdis86.OpTable
 import Flexdis86.Prefixes
 import Flexdis86.Register
@@ -689,8 +688,8 @@ parseValue p osz mmrm tp = do
       where s = sp `setDefault` ds
             moffset | aso =  Offset_32 s <$> readDWord
                     | otherwise = Offset_64 s <$> readQWord
-    OpType JumpImmediate BSize -> JumpOffset . fromIntegral <$> readSByte
-    OpType JumpImmediate sz -> fmap JumpOffset $
+    OpType JumpImmediate BSize -> JumpOffset BSize . fromIntegral <$> readSByte
+    OpType JumpImmediate sz -> fmap (JumpOffset sz) $
       case sizeFn osz sz of
         Size16 -> fromIntegral <$> readSWord
         Size32 -> fromIntegral <$> readSDWord

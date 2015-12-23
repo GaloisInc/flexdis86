@@ -90,7 +90,22 @@ matchOperandType :: (Value, OperandType) -> Bool
 matchOperandType ops =
   case ops of
     (ByteImm _, OpType ImmediateSource BSize) -> True
-    ( WordImm _, OpType ImmediateSource WSize) -> True
+    (WordImm _, OpType ImmediateSource WSize) -> True
+    (DWordImm _, OpType ImmediateSource DSize) -> True
+    (QWordImm _, OpType ImmediateSource QSize) -> True
+    -- Note, these two will depend on the operand mode...
+--    (WordImm _, OpType ImmediateSource VSize) -> True
+    (DWordImm _, OpType ImmediateSource VSize) -> True
+    (QWordImm _, OpType ImmediateSource VSize) -> True
+--    (WordImm _, OpType ImmediateSource YSize) -> True
+    (DWordImm _, OpType ImmediateSource YSize) -> True
+    (QWordImm _, OpType ImmediateSource YSize) -> True
+    (WordImm _, OpType ImmediateSource ZSize) -> True
+    (DWordImm _, OpType ImmediateSource ZSize) -> True
+    (QWordImm _, OpType ImmediateSource ZSize) -> True
+    (DWordImm _, OpType ImmediateSource RDQSize) -> True
+    (QWordImm _, OpType ImmediateSource RDQSize) -> True
+    (JumpOffset sz1 _, OpType JumpImmediate sz2) -> sz1 == sz2
     _ -> False
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
@@ -98,7 +113,7 @@ assembleInstruction ii = do
   return $ mconcat [ prefixBytes
                    , opcode
                    , fromMaybe mempty (encodeModRMDisp ii)
-                   , mconcat (map encodeImmediate (map fst (iiArgs ii)))
+                   , mconcat (map encodeImmediate (iiArgs ii))
                    ]
   where
     prefixBytes = mconcat [ encodeLockPrefix (L.view prLockPrefix pfxs)
@@ -263,6 +278,7 @@ isNotImmediate val =
     WordImm {} -> False
     DWordImm {} -> False
     QWordImm {} -> False
+    JumpOffset {} -> False
     _ -> True
 
 -- | We represent the high registers (e.g., ah) as 16+regnum.
@@ -327,13 +343,17 @@ encodeREXPrefix :: REX -> B.Builder
 encodeREXPrefix (REX rex) | rex == 0 = mempty
                           | otherwise = B.word8 rex
 
-encodeImmediate :: Value -> B.Builder
-encodeImmediate v =
-  case v of
-    ByteImm imm -> B.word8 imm
-    WordImm imm -> B.word16LE imm
-    DWordImm imm -> B.word32LE imm
-    QWordImm imm -> B.word64LE imm
+encodeImmediate :: (Value, OperandType) -> B.Builder
+encodeImmediate vty =
+  case vty of
+    (ByteImm imm, OpType ImmediateSource BSize) -> B.word8 imm
+    (WordImm imm, OpType ImmediateSource WSize) -> B.word16LE imm
+    -- This depends on context, doesn't it?  It could be 32 or 64
+    (WordImm imm, OpType ImmediateSource ZSize) -> B.word32LE (fromIntegral imm)
+    (DWordImm imm, _) -> B.word32LE imm
+    (QWordImm imm, _) -> B.word64LE imm
+    (JumpOffset BSize off, OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
+    (JumpOffset _ off, OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
     _ -> mempty
 
 

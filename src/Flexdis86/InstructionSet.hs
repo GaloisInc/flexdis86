@@ -11,6 +11,9 @@ module Flexdis86.InstructionSet
   , ppInstruction
   , instructionSize
   , SizeConstraint(..)
+  , OperandSize(..)
+  , OperandType(..)
+  , OperandSource(..)
   , Value(..)
   , ControlReg, controlReg, controlRegNo
   , DebugReg, debugReg, debugRegNo
@@ -160,7 +163,7 @@ data Value
   | WordReg  Reg16
   | DWordReg Reg32
   | QWordReg Reg64
-  | JumpOffset Int64
+  | JumpOffset OperandSize Int64
   deriving (Show, Eq)
 
 ppShowReg :: Show r => r -> Doc
@@ -197,7 +200,7 @@ ppValue base v =
     WordReg      r    -> ppShowReg    r
     DWordReg     r    -> ppShowReg    r
     QWordReg     r    -> ppShowReg    r
-    JumpOffset   off  -> text (showHex (base+fromIntegral off) "")
+    JumpOffset _ off  -> text (showHex (base+fromIntegral off) "")
 
 
 ppImm :: (Integral a, Show a) => a -> Doc
