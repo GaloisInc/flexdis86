@@ -93,6 +93,10 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("increment mem32 via edx+disp32", ["incl 0x1000000(%edx)"])
                        , ("increment mem32 via rdx+disp8", ["incl 0x10(%rdx)"])
                        , ("increment mem32 via rdx+disp32", ["incl 0x1000000(%rdx)"])
+                       , ("Divide (ax) by r8 (bl)", ["div %bl"])
+                       , ("Divide (ax) by r16 (bx)", ["div %bx"])
+                       , ("Divide (ax) by r32 (ebx)", ["div %ebx"])
+                       , ("Divide (ax) by r64 (rbx)", ["div %rbx"])
                        ]
 
 twoOperandTests :: T.TestTree
