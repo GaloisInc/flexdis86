@@ -107,11 +107,18 @@ twoOperandOpcodes :: [(String, [String])]
 twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("test reg reg (edx)", ["test %edx, %edx"])
                     , ("test reg reg (ebx, ecx)", ["test %ebx, %ecx"])
+                    , ("test al imm8", ["test $1, %al"])
+--                    , ("test ax imm16", ["test $12, %ax"])
                     , ("test eax imm32", ["test $12, %eax"])
+--                    , ("test rax imm32", ["test $12, %rax"])
                     , ("mov r8, r8", ["mov %al, %bl"])
                     , ("mov r8, imm8", ["mov $8, %bl"])
                     , ("mov r64, imm64", ["mov $10000000000, %r9"])
+                    , ("mov extended r64, imm64", ["mov $10000000000, %r13"])
                     , ("Load a value into an mmx register", ["movq (%eax), %mm2"])
+                    , ("sqrt xmmreg (reg -> reg)", ["sqrtps %xmm2, %xmm3"])
+                    , ("sqrt xmmreg (mem -> reg)", ["sqrtps (%rax), %xmm4"])
+                    , ("sqrt xmmreg (reg -> reg) (extended regs)", ["sqrtps %xmm12, %xmm11"])
                     ]
 
 immediateTests :: T.TestTree

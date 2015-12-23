@@ -242,34 +242,41 @@ withMode v k =
     DWordReg {} -> k directRegister mempty
     QWordReg {} -> k directRegister mempty
     MMXReg {} -> k directRegister mempty
+    XMMReg {} -> k directRegister mempty
 
+    Mem128 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    Mem128 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
 
+    Mem128 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem64 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem32 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem16 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem8 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    Mem128 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem64 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem32 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem16 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem8 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
 
+    Mem128 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem64 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem32 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem16 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem8 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    Mem128 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem64 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem32 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem16 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem8 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    _ -> error "mkMode: Unsupported mode"
+    _ -> error ("mkMode: Unsupported mode for " ++ show v)
 
 -- | This is the "direct register" addressing method with the value
 -- already shifted appropriately.
@@ -293,10 +300,13 @@ encodeValue v =
     DWordReg (Reg32 rno) -> rno
     QWordReg (Reg64 rno) -> rno
     MMXReg (MMXR rno) -> rno
+    XMMReg (XMMR rno) -> rno
+    Mem128 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem64 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem32 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem16 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
     Mem8 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
+    Mem128 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem64 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem32 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem16 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
