@@ -132,7 +132,9 @@ assembleInstruction ii = do
 encodeModRMDisp :: (Alternative m) => InstructionInstance -> m B.Builder
 encodeModRMDisp ii
   | not (hasModRM ii) = empty
-  | otherwise = encodeRequiredModRM ii <|> encodeOperandModRM ii <|> empty
+  | otherwise = encodeOperandModRM ii req <|> empty
+  where
+    req = encodeRequiredModRM ii
 
 hasModRM :: InstructionInstance -> Bool
 hasModRM ii = or [ isJust (iiRequiredMod ii)
@@ -153,20 +155,21 @@ operandTypeRequiresModRM ot =
     _ -> True
 
 -- | Build a ModRM byte based on the operands of the instruction.
-encodeOperandModRM :: (Alternative m) => InstructionInstance -> m B.Builder
-encodeOperandModRM ii =
+encodeOperandModRM :: (Alternative m) => InstructionInstance -> Word8 -> m B.Builder
+encodeOperandModRM ii reqModRM =
   case filter isNotImmediate (map fst (iiArgs ii)) of
-    [] -> empty
+    [] | reqModRM == 0 -> empty
+       | otherwise -> pure $ B.word8 reqModRM
     [op1] ->
       pure $ withMode op1 $ \mode disp ->
         let rm = encodeValue op1
         in withSIB mode rm op1 $ \sib ->
-             mkModRM mode 0 rm <> sib <> disp
+             mkModRM reqModRM mode 0 rm <> sib <> disp
     [op1, op2] ->
       pure $ withMode op1 $ \mode disp ->
         let rm = encodeValue op1
         in withSIB mode rm op1 $ \sib ->
-             mkModRM mode (encodeValue op2) rm <> sib <> disp
+             mkModRM reqModRM mode (encodeValue op2) rm <> sib <> disp
     _ -> empty
 
 -- | Provide the SIB to the callback, if it is required
@@ -292,8 +295,8 @@ reg8ToRM (Reg8 rno)
 
 -- | From constituent components, construct the ModRM byte with
 -- appropriate shifting.
-mkModRM :: Word8 -> Word8 -> Word8 -> B.Builder
-mkModRM modb regb rmb = B.word8 ((modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb)
+mkModRM :: Word8 -> Word8 -> Word8 -> Word8 -> B.Builder
+mkModRM req modb regb rmb = B.word8 (req .|. (modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb)
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
 -- bits.
@@ -301,22 +304,13 @@ mkModRM modb regb rmb = B.word8 ((modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb
 -- If there are no arguments to the instruction, we can take a partial
 -- set of mod/reg/rm values and compute the byte with zeros for the
 -- missing values.
-encodeRequiredModRM :: (Alternative m) => InstructionInstance -> m B.Builder
+encodeRequiredModRM :: InstructionInstance -> Word8
 encodeRequiredModRM ii =
-  case (fmap ((`shiftL` 6) . modConstraintVal) (iiRequiredMod ii),
-        fmap ((`shiftL` 3) . unFin8) (iiRequiredReg ii),
-        fmap unFin8 (iiRequiredRM ii)) of
-    (Nothing, Nothing, Nothing) -> empty
-    (Just rmod, Just rreg, Just rrm) ->
-      -- FIXME: Does this case require shifting?  I think it might, if
-      -- the values are pulled right from the XML file.  On the other
-      -- hand, the tests with required bytes seem to pass (see the
-      -- mfence tests)
-      pure $ B.word8 (rmod .|. rreg .|. rrm)
-    (mmod, mreg, mrm)
-      | null (iiArgs ii) ->
-          pure $ B.word8 (fromMaybe 0 mmod .|. fromMaybe 0 mreg .|. fromMaybe 0 mrm)
-      | otherwise -> empty
+  fromMaybe 0 rmod .|. fromMaybe 0 reg .|. fromMaybe 0 rm
+  where
+    rmod = fmap ((`shiftL`  6) . modConstraintVal) (iiRequiredMod ii)
+    reg = fmap ((`shiftL` 3) . unFin8) (iiRequiredReg ii)
+    rm  = fmap unFin8 (iiRequiredRM ii)
 
 modConstraintVal :: ModConstraint -> Word8
 modConstraintVal mc =
