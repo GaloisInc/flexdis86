@@ -52,6 +52,7 @@ zeroOperandOpcodeTests = [ ("ret", ["ret"])
                          , ("convert dword to qword", ["cdq"])
                          , ("swapgs", ["swapgs"])
                          , ("xgetbv", ["xgetbv"])
+                         , ("Empty MMX state", ["emms"])
                          ]
 
 singleOperandTests :: T.TestTree
