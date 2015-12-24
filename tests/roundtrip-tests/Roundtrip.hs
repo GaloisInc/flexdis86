@@ -16,7 +16,9 @@ roundtripTests = T.testGroup "Roundtrip Tests" [
   zeroOperandTests,
   immediateTests,
   singleOperandTests,
-  twoOperandTests
+  twoOperandTests,
+  mmxTests,
+  sseTests
   ]
 
 zeroOperandTests :: T.TestTree
@@ -53,6 +55,10 @@ zeroOperandOpcodeTests = [ ("ret", ["ret"])
                          , ("swapgs", ["swapgs"])
                          , ("xgetbv", ["xgetbv"])
                          , ("Empty MMX state", ["emms"])
+                         , ("Read performance counters", ["rdpmc"])
+                         , ("Read model-specific register", ["rdmsr"])
+                         , ("push lower EFLAGS", ["pushf"])
+                         , ("push rflags", ["pushfq"])
                          ]
 
 singleOperandTests :: T.TestTree
@@ -115,10 +121,30 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("mov r8, imm8", ["mov $8, %bl"])
                     , ("mov r64, imm64", ["mov $10000000000, %r9"])
                     , ("mov extended r64, imm64", ["mov $10000000000, %r13"])
-                    , ("Load a value into an mmx register", ["movq (%eax), %mm2"])
-                    , ("sqrt xmmreg (reg -> reg)", ["sqrtps %xmm2, %xmm3"])
+                    ]
+
+mmxTests :: T.TestTree
+mmxTests = T.testGroup "MMXTests" (map mkTest mmxOperandOpcodes)
+
+mmxOperandOpcodes :: [(String, [String])]
+mmxOperandOpcodes = [ ("Load a value into an mmx register", ["movq (%eax), %mm2"])
+                    , ("mmx xor (reg -> reg)", ["pxor %mm3, %mm0"])
+                    , ("mmx xor (mem -> reg)", ["pxor (%rcx), %mm4"])
+                    ]
+
+sseTests :: T.TestTree
+sseTests = T.testGroup "SSETests" (map mkTest sseOperandOpcodes)
+
+sseOperandOpcodes :: [(String, [String])]
+sseOperandOpcodes = [ ("sqrt xmmreg (reg -> reg)", ["sqrtps %xmm2, %xmm3"])
                     , ("sqrt xmmreg (mem -> reg)", ["sqrtps (%rax), %xmm4"])
                     , ("sqrt xmmreg (reg -> reg) (extended regs)", ["sqrtps %xmm12, %xmm11"])
+                    , ("single reciprocal fp (reg -> reg)", ["rcpps %xmm1, %xmm5"])
+                    , ("single reciprocal fp (mem -> reg)", ["rcpps (%eax), %xmm5"])
+                    , ("sse xor (reg -> reg)", ["pxor %xmm3, %xmm0"])
+                    , ("sse xor (mem -> reg)", ["pxor (%rcx), %xmm4"])
+                    , ("shift quad right logical", ["psrldq $0x3, %xmm7"])
+                    , ("shift quad right logical (extended)", ["psrldq $0x3, %xmm12"])
                     ]
 
 immediateTests :: T.TestTree
