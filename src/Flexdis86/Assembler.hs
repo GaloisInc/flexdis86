@@ -119,8 +119,8 @@ assembleInstruction ii = do
     prefixBytes = mconcat [ encodeLockPrefix (L.view prLockPrefix pfxs)
                           , if L.view prASO pfxs then B.word8 0x67 else mempty
                           , if L.view prOSO pfxs then B.word8 0x66 else mempty
-                          , encodeREXPrefix (L.view prREX pfxs)
                           , encodeRequiredPrefix (iiRequiredPrefix ii)
+                          , encodeREXPrefix (L.view prREX pfxs)
                           ]
     opcode = B.byteString (B.pack (iiOpcode ii))
     pfxs = iiPrefixes ii
