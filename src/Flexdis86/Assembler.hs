@@ -217,6 +217,14 @@ withSIB mode rm val k
 mkSIB :: Maybe (Int, Word8)
          -- ^ (optional) (2^Scale, Index)
       -> Maybe Word8
+      Mem32 (Addr_32 _seg mbase midx _) ->
+        let midx' = fmap (second (unReg64 . reg32_reg)) midx
+            mbase' = fmap (unReg64 . reg32_reg) mbase
+        in k (mkSIB midx' mbase')
+      Mem32 (Addr_64 _seg mbase midx _) ->
+        let midx' = fmap (second unReg64) midx
+            mbase' = fmap unReg64 mbase
+        in k (mkSIB midx' mbase')
          -- ^ Register base
       -> B.Builder
 mkSIB mScaleIdx mBase =
