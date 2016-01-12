@@ -116,8 +116,8 @@ assembleInstruction ii = do
                    , mconcat (map encodeImmediate (iiArgs ii))
                    ]
   where
-    prefixBytes = mconcat [ encodeLockPrefix (L.view prLockPrefix pfxs)
-                          , if L.view prASO pfxs then B.word8 0x67 else mempty
+    prefixBytes = mconcat [ if L.view prASO pfxs then B.word8 0x67 else mempty
+                          , encodeLockPrefix (L.view prLockPrefix pfxs)
                           , if L.view prOSO pfxs then B.word8 0x66 else mempty
                           , encodeRequiredPrefix (iiRequiredPrefix ii)
                           , encodeREXPrefix (L.view prREX pfxs)
