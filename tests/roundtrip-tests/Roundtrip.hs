@@ -85,10 +85,11 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                          -- This will make sure we shift the REG field
                          -- correctly.
                        , ("increment edx", ["inc %edx"])
-                       , ("atomic increment edx", ["lock", "inc %edx"])
-                       , ("atomic increment rcx", ["lock", "inc %rcx"])
-                       , ("atomic increment r12", ["lock", "inc %r12"])
-                       , ("atomic increment memory", ["lock", "incb (%eax)"])
+                       , ("atomic increment mem32 via edx", ["lock incl (%edx)"])
+                       , ("atomic increment mem32 via rcx", ["lock incl (%rcx)"])
+                       , ("atomic increment mem32 via r12", ["lock incl (%r12)"])
+                       , ("atomic increment mem32 via r9", ["lock incl (%r9)"])
+                       , ("atomic increment mem8 via eax", ["lock incb (%eax)"])
                          -- This one uses a memory reference through a register
                        , ("increment mem32 via eax", ["incl (%eax)"])
                        , ("increment mem32 via ecx", ["incl (%ecx)"])
