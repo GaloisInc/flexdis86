@@ -117,8 +117,8 @@ assembleInstruction ii = do
                    ]
   where
     prefixBytes = mconcat [ if L.view prASO pfxs then B.word8 0x67 else mempty
-                          , encodeLockPrefix (L.view prLockPrefix pfxs)
                           , if L.view prOSO pfxs then B.word8 0x66 else mempty
+                          , encodeLockPrefix (L.view prLockPrefix pfxs)
                           , encodeRequiredPrefix (iiRequiredPrefix ii)
                           , encodeREXPrefix (L.view prREX pfxs)
                           ]
@@ -209,6 +209,14 @@ withSIB mode rm val k
             mbase' = fmap (unReg64 . reg32_reg) mbase
         in k (mkSIB midx' mbase')
       Mem8 (Addr_64 _seg mbase midx _) ->
+        let midx' = fmap (second unReg64) midx
+            mbase' = fmap unReg64 mbase
+        in k (mkSIB midx' mbase')
+      Mem16 (Addr_32 _seg mbase midx _) ->
+        let midx' = fmap (second (unReg64 . reg32_reg)) midx
+            mbase' = fmap (unReg64 . reg32_reg) mbase
+        in k (mkSIB midx' mbase')
+      Mem16 (Addr_64 _seg mbase midx _) ->
         let midx' = fmap (second unReg64) midx
             mbase' = fmap unReg64 mbase
         in k (mkSIB midx' mbase')
