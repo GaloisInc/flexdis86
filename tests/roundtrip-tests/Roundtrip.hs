@@ -88,6 +88,7 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("atomic increment mem32 via edx", ["lock incl (%edx)"])
                        , ("atomic increment mem32 via rcx", ["lock incl (%rcx)"])
                        , ("atomic increment mem32 via r12", ["lock incl (%r12)"])
+                       , ("atomic increment mem16 via r12", ["lock incw (%r12)"])
                        , ("atomic increment mem32 via r9", ["lock incl (%r9)"])
                        , ("atomic increment mem8 via eax", ["lock incb (%eax)"])
                          -- This one uses a memory reference through a register
