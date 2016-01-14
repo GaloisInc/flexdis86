@@ -183,7 +183,7 @@ encodeOperandModRM ii reqModRM =
 -- 'encodeOperandModRM' puts it in the right field.  Otherwise, we
 -- preserve the original order.
 withRMFirst :: (Value, OperandType) -> (Value, OperandType) -> (Value -> Value -> a) -> a
-withRMFirst (v1, _) (v2, v2ty) k =
+withRMFirst (v1, _v1ty) (v2, v2ty) k =
   case v2ty of
     OpType ModRM_rm _ -> k v2 v1
     OpType ModRM_rm_mod3 _ -> k v2 v1
@@ -204,6 +204,14 @@ withSIB mode rm val k
   | not (requiresSIB rm) || mode == directRegister = k mempty
   | otherwise =
     case val of
+      VoidMem (Addr_32 _seg mbase midx _) ->
+        let midx' = fmap (second (unReg64 . reg32_reg)) midx
+            mbase' = fmap (unReg64 . reg32_reg) mbase
+        in k (mkSIB midx' mbase')
+      VoidMem (Addr_64 _seg mbase midx _) ->
+        let midx' = fmap (second unReg64) midx
+            mbase' = fmap unReg64 mbase
+        in k (mkSIB midx' mbase')
       Mem8 (Addr_32 _seg mbase midx _) ->
         let midx' = fmap (second (unReg64 . reg32_reg)) midx
             mbase' = fmap (unReg64 . reg32_reg) mbase
@@ -265,33 +273,39 @@ withMode v k =
     Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    VoidMem (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem128 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
     Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    VoidMem (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
 
     Mem128 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem64 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem32 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem16 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem8 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    VoidMem (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem128 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem64 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem32 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem16 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
     Mem8 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+    VoidMem (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
 
     Mem128 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem64 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem32 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem16 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem8 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    VoidMem (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem128 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem64 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem32 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem16 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     Mem8 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
+    VoidMem (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
     _ -> error ("mkMode: Unsupported mode for " ++ show v)
 
 -- | This is the "direct register" addressing method with the value
@@ -327,6 +341,9 @@ encodeValue v =
     Mem32 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem16 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
     Mem8 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
+    -- I think that the VoidMems mean that there is no effective
+    -- address and we need a SIB (the -- notation in the manuals)
+    VoidMem _ -> 0x4
 
 isNotImmediate :: Value -> Bool
 isNotImmediate val =
