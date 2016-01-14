@@ -331,19 +331,33 @@ encodeValue v =
     QWordReg (Reg64 rno) -> rno
     MMXReg (MMXR rno) -> rno
     XMMReg (XMMR rno) -> rno
-    Mem128 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
-    Mem64 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
-    Mem32 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
-    Mem16 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
-    Mem8 (Addr_64 _ (Just (Reg64 rno)) _ _) -> 0x7 .&. rno
-    Mem128 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
-    Mem64 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
-    Mem32 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
-    Mem16 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
-    Mem8 (Addr_32 _ (Just (Reg32 rno)) _ _) -> rno
-    -- I think that the VoidMems mean that there is no effective
-    -- address and we need a SIB (the -- notation in the manuals)
-    VoidMem _ -> 0x4
+    Mem128 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
+    Mem64 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
+    Mem32 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
+    Mem16 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
+    Mem8 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
+    VoidMem (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
+    Mem128 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
+    Mem64 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
+    Mem32 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
+    Mem16 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
+    Mem8 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
+    VoidMem (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
+    -- If we have a scaled index (i.e., the third component of Addr_*
+    -- is not Nothing), we have to just return 0x4, which is a signal
+    -- to later phases that we need a SIB.
+    Mem128 (Addr_64 _ _ (Just _) _) -> 0x4
+    Mem64 (Addr_64 _ _ (Just _) _) -> 0x4
+    Mem32 (Addr_64 _ _ (Just _) _) -> 0x4
+    Mem16 (Addr_64 _ _ (Just _) _) -> 0x4
+    Mem8 (Addr_64 _ _ (Just _) _) -> 0x4
+    VoidMem (Addr_64 _ _ (Just _) _) -> 0x4
+    Mem128 (Addr_32 _ _ (Just _) _) -> 0x4
+    Mem64 (Addr_32 _ _ (Just _) _) -> 0x4
+    Mem32 (Addr_32 _ _ (Just _) _) -> 0x4
+    Mem16 (Addr_32 _ _ (Just _) _) -> 0x4
+    Mem8 (Addr_32 _ _ (Just _) _) -> 0x4
+    VoidMem (Addr_32 _ _ (Just _) _) -> 0x4
 
 isNotImmediate :: Value -> Bool
 isNotImmediate val =
