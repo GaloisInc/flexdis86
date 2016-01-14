@@ -7796,7 +7796,7 @@
         <def>
             <pfx>aso oso rexw rexr rexx rexb lock seg</pfx>
             <opc>83 /reg=5</opc>
-            <opr>Ev sIb</opr>
+            <opr>Ev Ib</opr>
         </def>
     </instruction>
 
