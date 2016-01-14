@@ -66,9 +66,17 @@ displacementInt d =
     Disp8 o -> fromIntegral o
 
 data AddrRef
-    -- | @Addr_32 s b i o@ denotes a 32-bit IP address that will
-    -- be zero extended in segment @s@ with base @b@, index @i@, and offset @o@.
   = Addr_32      Segment (Maybe Reg32) (Maybe (Int, Reg32)) Displacement
+  -- ^ @Addr_32 s b i o@ denotes a 32-bit IP address that will be
+  -- zero extended in segment @s@ with base @b@, index @i@, and
+  -- offset @o@.  The index is the offset register along with a
+  -- scalar multiplier.
+  --
+  -- In GNU syntax this is displacement(base register, offset
+  -- register, scalar multiplier).
+  --
+  -- In Intel syntax, this is the much more sensible [base register
+  -- + displacement + offset register * scalar multiplier]
   | IP_Offset_32 Segment Displacement
     -- | Offset relative to segment base.
   | Offset_32    Segment Word32
