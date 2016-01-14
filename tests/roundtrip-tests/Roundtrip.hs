@@ -144,6 +144,7 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("add 1, eax", ["add $0x1, %eax"])
                     , ("movl 0, -0x14(%rbp)", ["movl $0x0,-0x14(%rbp)"])
                     , ("sub    $0x28,%rsp", ["sub $0x28,%rsp"])
+                    , ("lea    (%rax,%rax,1),%ebx", ["lea (%rax,%rax,1),%ebx"])
                     ]
 
 mmxTests :: T.TestTree
