@@ -73,4 +73,4 @@ test-suite roundtrip-tests
                  process >= 1.2 && < 1.5,
                  temporary >= 1 && < 2,
                  pretty-hex,
-                 elf >= 0.28
+                 elf-galois >= 0.28

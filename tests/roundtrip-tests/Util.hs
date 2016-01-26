@@ -2,19 +2,13 @@ module Util ( withAssembledCode ) where
 
 import Data.Bits ( Bits )
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy.Builder as B
-import qualified Data.ByteString.Lazy as LB
-import Data.Maybe ( mapMaybe )
 import qualified System.Exit as IO
 import qualified System.IO as IO
 import qualified System.IO.Temp as IO
 import qualified System.Process as P
-import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import qualified Data.Elf as E
-import qualified Flexdis86 as D
-import Hexdump
 
 -- | Put the given assembly instructions into an assembly file,
 -- assemble it, then extract the bytes from the code segment.  Feed
@@ -47,8 +41,9 @@ readCodeSegment fp = do
     Right (E.Elf32 someElf) -> extractCodeSegment someElf
     Right (E.Elf64 someElf) -> extractCodeSegment someElf
 
-extractCodeSegment :: (Bits w, Integral w, E.ElfWidth w) => E.Elf w -> IO B.ByteString
+extractCodeSegment :: (Bits w, Integral w) => E.Elf w -> IO B.ByteString
 extractCodeSegment e = do
   case E.findSectionByName ".text" e of
-    Nothing -> error "Could not find code segment"
-    Just textSection -> return $ E.elfSectionData textSection
+    [] -> error "extractCodeSegment: Could not find code segment"
+    [textSection] -> return $ E.elfSectionData textSection
+    _ -> error "extractCodeSegment: Too many text segments"
