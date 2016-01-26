@@ -5137,11 +5137,9 @@
 
     <instruction>
         <mnemonic>nop</mnemonic>
-<!--
         <def>
             <opc>90</opc>
         </def>
--->
        <def>
             <pfx>aso seg rexr rexx rexb</pfx>
             <opc>0f 19</opc>
@@ -8188,11 +8186,13 @@
             <opc>87</opc>
             <opr>Ev Gv</opr>
         </def>
+<!--
         <def>
             <pfx>oso rexw rexb</pfx>
             <opc>90</opc>
             <opr>R0v rAX</opr>
         </def>
+-->
         <def>
             <pfx>oso rexw rexb</pfx>
             <opc>91</opc>
