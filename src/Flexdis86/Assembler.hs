@@ -268,45 +268,23 @@ withMode v k =
     MMXReg {} -> k directRegister mempty
     XMMReg {} -> k directRegister mempty
 
-    Mem128 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem64 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem32 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem16 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem8 (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    VoidMem (Addr_64 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem128 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem64 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem32 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem16 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    Mem8 (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
-    VoidMem (Addr_32 _ (Just _) _ NoDisplacement) -> k noDisplacement mempty
+    _ | Just comps <- memRefComponents v ->
+        case comps of
+          Addr_64 _ (Just _) _ NoDisplacement -> k noDisplacement mempty
+          Addr_32 _ (Just _) _ NoDisplacement -> k noDisplacement mempty
 
-    Mem128 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem64 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem32 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem16 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem8 (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    VoidMem (Addr_64 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem128 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem64 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem32 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem16 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    Mem8 (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
-    VoidMem (Addr_32 _ (Just _) _ (Disp32 d)) -> k disp32 (B.int32LE d)
+          Addr_64 _ Nothing Nothing (Disp32 d) -> k noDisplacement (B.int32LE d)
+          Addr_32 _ Nothing Nothing (Disp32 d) -> k noDisplacement (B.int32LE d)
 
-    Mem128 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem64 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem32 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem16 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem8 (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    VoidMem (Addr_64 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem128 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem64 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem32 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem16 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    Mem8 (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    VoidMem (Addr_32 _ (Just _) _ (Disp8 d)) -> k disp8 (B.int8 d)
-    _ -> error ("mkMode: Unsupported mode for " ++ show v)
+          Addr_64 _ (Just _) _ (Disp32 d) -> k disp32 (B.int32LE d)
+          Addr_32 _ (Just _) _ (Disp32 d) -> k disp32 (B.int32LE d)
+
+          Addr_64 _ (Just _) _ (Disp8 d) -> k disp8 (B.int8 d)
+          Addr_32 _ (Just _) _ (Disp8 d) -> k disp8 (B.int8 d)
+
+          _ -> error ("mkMode: Unsupported memory ref type " ++ show v)
+
+      | otherwise -> error ("mkMode: Unsupported mode for " ++ show v)
 
 -- | This is the "direct register" addressing method with the value
 -- already shifted appropriately.
@@ -322,6 +300,26 @@ disp8 = 0x1
 disp32 :: Word8
 disp32 = 0x2
 
+memRefComponents :: Value -> Maybe AddrRef
+memRefComponents v =
+  case v of
+    Mem128 addr@(Addr_64 {}) -> Just addr
+    Mem64 addr@(Addr_64 {}) -> Just addr
+    Mem32 addr@(Addr_64 {}) -> Just addr
+    Mem16 addr@(Addr_64 {}) -> Just addr
+    Mem8 addr@(Addr_64 {}) -> Just addr
+    VoidMem addr@(Addr_64 {}) -> Just addr
+
+    Mem128 addr@(Addr_32 {}) -> Just addr
+    Mem64 addr@(Addr_32 {}) -> Just addr
+    Mem32 addr@(Addr_32 {}) -> Just addr
+    Mem16 addr@(Addr_32 {}) -> Just addr
+    Mem8 addr@(Addr_32 {}) -> Just addr
+    VoidMem addr@(Addr_32 {}) -> Just addr
+
+    _ -> Nothing
+
+-- | Encode a value operand as a three bit RM nibble
 encodeValue :: Value -> Word8
 encodeValue v =
   case v of
@@ -331,33 +329,24 @@ encodeValue v =
     QWordReg (Reg64 rno) -> rno
     MMXReg (MMXR rno) -> rno
     XMMReg (XMMR rno) -> rno
-    Mem128 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
-    Mem64 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
-    Mem32 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
-    Mem16 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
-    Mem8 (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
-    VoidMem (Addr_64 _ (Just (Reg64 rno)) Nothing _) -> 0x7 .&. rno
-    Mem128 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
-    Mem64 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
-    Mem32 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
-    Mem16 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
-    Mem8 (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
-    VoidMem (Addr_32 _ (Just (Reg32 rno)) Nothing _) -> rno
-    -- If we have a scaled index (i.e., the third component of Addr_*
-    -- is not Nothing), we have to just return 0x4, which is a signal
-    -- to later phases that we need a SIB.
-    Mem128 (Addr_64 _ _ (Just _) _) -> 0x4
-    Mem64 (Addr_64 _ _ (Just _) _) -> 0x4
-    Mem32 (Addr_64 _ _ (Just _) _) -> 0x4
-    Mem16 (Addr_64 _ _ (Just _) _) -> 0x4
-    Mem8 (Addr_64 _ _ (Just _) _) -> 0x4
-    VoidMem (Addr_64 _ _ (Just _) _) -> 0x4
-    Mem128 (Addr_32 _ _ (Just _) _) -> 0x4
-    Mem64 (Addr_32 _ _ (Just _) _) -> 0x4
-    Mem32 (Addr_32 _ _ (Just _) _) -> 0x4
-    Mem16 (Addr_32 _ _ (Just _) _) -> 0x4
-    Mem8 (Addr_32 _ _ (Just _) _) -> 0x4
-    VoidMem (Addr_32 _ _ (Just _) _) -> 0x4
+    _ | Just comps <- memRefComponents v ->
+        case comps of
+          -- We just need to mask some bits off of the reg64 numbers
+          Addr_64 _ (Just (Reg64 rno)) Nothing _ -> 0x7 .&. rno
+          Addr_32 _ (Just (Reg32 rno)) Nothing _ -> rno
+
+          -- If there is no base and no index at all, 0x5 indicates
+          -- that ModR/M is followed by a raw displacement.
+          Addr_64 _ Nothing Nothing _ -> 0x5
+          Addr_32 _ Nothing Nothing _ -> 0x5
+
+          -- A scaled index with no base indicates that we need a SIB
+          Addr_64 _ _ (Just _) _ -> 0x4
+          Addr_32 _ _ (Just _) _ -> 0x4
+          _ -> error ("encodeValue: Unsupported memRef type " ++ show v)
+      | otherwise -> error ("encodeValue: Unknown value type " ++ show v)
+
+-- If there is a displacement, I think we need to return 0b101 here.
 
 isNotImmediate :: Value -> Bool
 isNotImmediate val =
