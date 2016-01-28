@@ -8186,13 +8186,11 @@
             <opc>87</opc>
             <opr>Ev Gv</opr>
         </def>
-<!--
         <def>
-            <pfx>oso rexw rexb</pfx>
-            <opc>90</opc>
+            <pfx>oso</pfx>
+            <opc>66 90</opc>
             <opr>R0v rAX</opr>
         </def>
--->
         <def>
             <pfx>oso rexw rexb</pfx>
             <opc>91</opc>
