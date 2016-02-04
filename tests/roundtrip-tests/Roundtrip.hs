@@ -136,7 +136,10 @@ addressingModes = [ ("reg-reg", ["and %ecx, %esi"])
                   , ("[mem+disp8]-reg SIB", ["and (%ecx, %ecx, 1),%ebx"])
                   , ("[mem+disp8]-reg SIB (non-zero offset)", ["and 0x9(%ecx, %ecx, 1),%ebx"])
                   , ("[mem+disp32]-reg", ["and 0x1234(%edx),%ebx"])
-                  , ("[mem+disp32]-reg SIB", ["and 0x1234(%edx, %edx, 2),%ebx"])
+                  , ("[mem+disp32]-reg SIB/2", ["and 0x1234(%edx, %edx, 2),%ebx"])
+                  , ("[mem+disp32]-reg SIB/4", ["and 0x1234(%edx, %edx, 4),%ebx"])
+                  , ("[mem+disp32]-reg SIB/8", ["and 0x1234(%edx, %edx, 8),%ebx"])
+                  , ("rip-relative", ["and %ecx,0x5555(%rip)"])
                   ]
 
 twoOperandTests :: T.TestTree

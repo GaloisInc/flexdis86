@@ -283,6 +283,11 @@ withMode v k =
           Addr_32 _ (Just _) _ (Disp8 d) -> k disp8 (B.int8 d)
 
           _ -> error ("mkMode: Unsupported memory ref type " ++ show v)
+      | Just comps <- ripRefComponents v ->
+        case comps of
+          IP_Offset_32 _ (Disp32 d) -> k noDisplacement (B.int32LE d)
+          IP_Offset_64 _ (Disp32 d) -> k noDisplacement (B.int32LE d)
+          _ -> error ("mkMode: Unsupported rip offset type " ++ show v)
 
       | otherwise -> error ("mkMode: Unsupported mode for " ++ show v)
 
@@ -319,6 +324,25 @@ memRefComponents v =
 
     _ -> Nothing
 
+ripRefComponents :: Value -> Maybe AddrRef
+ripRefComponents v =
+  case v of
+    Mem128 addr@(IP_Offset_64 {}) -> Just addr
+    Mem64 addr@(IP_Offset_64 {}) -> Just addr
+    Mem32 addr@(IP_Offset_64 {}) -> Just addr
+    Mem16 addr@(IP_Offset_64 {}) -> Just addr
+    Mem8 addr@(IP_Offset_64 {}) -> Just addr
+    VoidMem addr@(IP_Offset_64 {}) -> Just addr
+
+    Mem128 addr@(IP_Offset_32 {}) -> Just addr
+    Mem64 addr@(IP_Offset_32 {}) -> Just addr
+    Mem32 addr@(IP_Offset_32 {}) -> Just addr
+    Mem16 addr@(IP_Offset_32 {}) -> Just addr
+    Mem8 addr@(IP_Offset_32 {}) -> Just addr
+    VoidMem addr@(IP_Offset_32 {}) -> Just addr
+
+    _ -> Nothing
+
 -- | Encode a value operand as a three bit RM nibble
 encodeValue :: Value -> Word8
 encodeValue v =
@@ -344,6 +368,11 @@ encodeValue v =
           Addr_64 _ _ (Just _) _ -> 0x4
           Addr_32 _ _ (Just _) _ -> 0x4
           _ -> error ("encodeValue: Unsupported memRef type " ++ show v)
+      | Just comps <- ripRefComponents v ->
+        case comps of
+          IP_Offset_64 {} -> 0x5
+          IP_Offset_32 {} -> 0x5
+          _ -> error ("encodeValue: Unsupported rip offset " ++ show v)
       | otherwise -> error ("encodeValue: Unknown value type " ++ show v)
 
 -- If there is a displacement, I think we need to return 0b101 here.
