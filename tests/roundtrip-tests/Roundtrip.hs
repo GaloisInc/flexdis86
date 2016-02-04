@@ -17,6 +17,7 @@ roundtripTests = T.testGroup "Roundtrip Tests" [
   immediateTests,
   singleOperandTests,
   twoOperandTests,
+  addressingModeTests,
   mmxTests,
   sseTests
   ]
@@ -124,6 +125,19 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("jmp (%ebx)", ["jmp *(%ebx)"])
                        , ("loop rel8", ["loop .+0x8"])
                        ]
+
+addressingModeTests :: T.TestTree
+addressingModeTests = T.testGroup "AddressingModeTests" (map mkTest addressingModes)
+
+addressingModes :: [(String, [String])]
+addressingModes = [ ("reg-reg", ["and %ecx, %esi"])
+                  , ("[mem]-reg", ["and %edx,(%ebp)"])
+                  , ("[mem+disp8]-reg", ["and 0x8(%edx),%ebx"])
+                  , ("[mem+disp8]-reg SIB", ["and (%ecx, %ecx, 1),%ebx"])
+                  , ("[mem+disp8]-reg SIB (non-zero offset)", ["and 0x9(%ecx, %ecx, 1),%ebx"])
+                  , ("[mem+disp32]-reg", ["and 0x1234(%edx),%ebx"])
+                  , ("[mem+disp32]-reg SIB", ["and 0x1234(%edx, %edx, 2),%ebx"])
+                  ]
 
 twoOperandTests :: T.TestTree
 twoOperandTests =
