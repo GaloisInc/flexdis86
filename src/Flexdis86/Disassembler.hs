@@ -97,12 +97,12 @@ no_seg_prefix = SegmentPrefix 0
 
 setDefault :: SegmentPrefix -> Segment -> Segment
 setDefault (SegmentPrefix 0) s = s
-setDefault (SegmentPrefix 0x26) _ = es
-setDefault (SegmentPrefix 0x2e) _ = cs
-setDefault (SegmentPrefix 0x36) _ = ss
-setDefault (SegmentPrefix 0x3e) _ = ds
-setDefault (SegmentPrefix 0x64) _ = fs
-setDefault (SegmentPrefix 0x65) _ = gs
+setDefault (SegmentPrefix 0x26) _ = ES
+setDefault (SegmentPrefix 0x2e) _ = CS
+setDefault (SegmentPrefix 0x36) _ = SS
+setDefault (SegmentPrefix 0x3e) _ = DS
+setDefault (SegmentPrefix 0x64) _ = FS
+setDefault (SegmentPrefix 0x65) _ = GS
 setDefault (SegmentPrefix w) _ = error $ "Unexpected segment prefix: " ++ showHex w ""
 
 
@@ -214,18 +214,18 @@ operandHandlerMap = Map.fromList
   , (,) "CL"  $ OpType (Reg_fixed 1) BSize
   , (,) "DX"  $ OpType (Reg_fixed 2) WSize
 
-  , (,) "MIdb" $ M_Implicit es rdi BSize
-  , (,) "MIdw" $ M_Implicit es rdi WSize
-  , (,) "MIdd" $ M_Implicit es rdi DSize
-  , (,) "MIdq" $ M_Implicit es rdi QSize  
-  , (,) "MIsb" $ M_Implicit ds rsi BSize
-  , (,) "MIsw" $ M_Implicit ds rsi WSize
-  , (,) "MIsd" $ M_Implicit ds rsi DSize
-  , (,) "MIsq" $ M_Implicit ds rsi QSize
-    
+  , (,) "MIdb" $ M_Implicit ES rdi BSize
+  , (,) "MIdw" $ M_Implicit ES rdi WSize
+  , (,) "MIdd" $ M_Implicit ES rdi DSize
+  , (,) "MIdq" $ M_Implicit ES rdi QSize
+  , (,) "MIsb" $ M_Implicit DS rsi BSize
+  , (,) "MIsw" $ M_Implicit DS rsi WSize
+  , (,) "MIsd" $ M_Implicit DS rsi DSize
+  , (,) "MIsq" $ M_Implicit DS rsi QSize
+
     -- Fixed segment registers.
-  , (,) "FS"  $ SEG fs
-  , (,) "GS"  $ SEG gs
+  , (,) "FS"  $ SEG FS
+  , (,) "GS"  $ SEG GS
 
     -- Register values stored in opcode that also depend on REX.b
   , (,) "R0b" $ OpType (Opcode_reg 0) BSize
@@ -837,7 +837,7 @@ disassembleInstruction :: ByteReader m
                        -> m InstructionInstance
 disassembleInstruction tr0 = do
   b <- readByte
-  
+
   case tr0 `trVal` b of
     OpcodeTable tr -> disassembleInstruction tr
     SkipModRM pfx osz nm tps -> finish <$> traverse (parseValue pfx osz Nothing) tps
@@ -971,7 +971,7 @@ parseValue p osz mmrm tp = do
                          Size16 -> Mem16 <$> moffset
                          Size32 -> Mem32 <$> moffset
                          Size64 -> Mem64 <$> moffset
-      where s = sp `setDefault` ds
+      where s = sp `setDefault` DS
             moffset | aso =  Offset_32 s <$> readDWord
                     | otherwise = Offset_64 s <$> readQWord
     OpType JumpImmediate BSize -> JumpOffset . fromIntegral <$> readSByte
@@ -1033,7 +1033,7 @@ parseValue p osz mmrm tp = do
         Size16 ->  WordImm . fromIntegral <$> readSWord
         Size32 -> DWordImm . fromIntegral <$> readDWord
         Size64 -> do dWord <- (fromIntegral <$> readDWord) :: ByteReader m => m Word32
-                     pure $ QWordImm $ 
+                     pure $ QWordImm $
                        if testBit dWord 31
                        then 0xffffffff00000000 .|. fromIntegral dWord
                        else fromIntegral dWord
@@ -1057,18 +1057,18 @@ readNoOffset aso p modRM = do
     let base = sib_base sib
     let si = sib_si index_reg sib
     if base == rbp_idx then do
-      memRef (sp `setDefault` ds) Nothing si <$> read_disp32
-    else do
-      let seg | base == rsp_idx = sp `setDefault` ss
-              | otherwise       = sp `setDefault` ds
+      memRef (sp `setDefault` DS) Nothing si <$> read_disp32
+     else do
+      let seg | base == rsp_idx = sp `setDefault` SS
+              | otherwise       = sp `setDefault` DS
       return $ memRef seg (Just (base_reg base)) si 0
   else if rm == rbp_idx then do
     let ip_offset | aso = IP_Offset_32
                   | otherwise = IP_Offset_64
-    let seg = sp `setDefault` ss
+    let seg = sp `setDefault` SS
     ip_offset seg <$> read_disp32
   else do
-    let seg = sp `setDefault` ds
+    let seg = sp `setDefault` DS
     return $ memRef seg (Just (base_reg rm)) Nothing 0
 
 readWithOffset :: ByteReader m
@@ -1091,9 +1091,9 @@ readWithOffset readDisp aso p modRM = do
         return (sib_base sib, sib_si index_reg sib)
       else
         return (rm, Nothing)
-  let seg | base == rsp_idx = ss
-          | base == rbp_idx = ss
-          | otherwise       = ds
+  let seg | base == rsp_idx = SS
+          | base == rbp_idx = SS
+          | otherwise       = DS
   o <- readDisp
   return $ memRef (sp `setDefault` seg) (Just (base_reg base)) si o
 

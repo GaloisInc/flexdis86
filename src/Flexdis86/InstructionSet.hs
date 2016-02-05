@@ -6,6 +6,7 @@ Maintainer  :  jhendrix@galois.com
 
 This declares the main datatypes for the instruction set.
 -}
+{-# LANGUAGE PatternSynonyms #-}
 module Flexdis86.InstructionSet
   ( InstructionInstance(..)
   , ppInstruction
@@ -16,16 +17,28 @@ module Flexdis86.InstructionSet
   , MMXReg, mmx_reg {- deprecated -}, mmxReg, mmxRegNo, mmxRegIdx
   , XMMReg, xmmReg, xmmRegNo, xmmRegIdx
   , LockPrefix(..), ppLockPrefix
-  , Segment, es, cs, ss, ds, fs, gs, segmentRegisterByIndex, segmentRegNo
+    -- * Segment
+  , Segment
+  , pattern ES
+  , pattern CS
+  , pattern SS
+  , pattern DS
+  , pattern FS
+  , pattern GS
+  , segmentRegisterByIndex
+  , segmentRegNo
+    -- * AddrRef
   , AddrRef(..)
-  , Word8
-  , Word16
-  , Word32
-  , Word64
+    -- * Registers
   , Reg8, low_reg8, high_reg8, al, bl, cl, dl, ah, bh, ch, dh, is_low_reg, is_high_reg
   , Reg16, reg16, ax, bx, cx, dx, reg16_reg
   , Reg32, reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
   , Reg64, reg64, reg64No, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
+    -- * Synonyms
+  , Word8
+  , Word16
+  , Word32
+  , Word64
   , Int64
   ) where
 
@@ -327,23 +340,12 @@ segmentRegisterByIndex r
 segmentRegNo :: Segment -> Word8
 segmentRegNo (Segment r) = r
 
-es :: Segment
-es = Segment 0
-
-cs :: Segment
-cs = Segment 1
-
-ss :: Segment
-ss = Segment 2
-
-ds :: Segment
-ds = Segment 3
-
-fs :: Segment
-fs = Segment 4
-
-gs :: Segment
-gs = Segment 5
+pattern ES = Segment 0
+pattern CS = Segment 1
+pattern SS = Segment 2
+pattern DS = Segment 3
+pattern FS = Segment 4
+pattern GS = Segment 5
 
 ------------------------------------------------------------------------
 -- AddrRef
@@ -373,24 +375,35 @@ ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
   case addr of
     Addr_32 seg base roff off ->
-      (case base 
-         of Just r | isDefaultSeg32 seg r -> id
-                   | seg == fs -> ((text (show seg) <> colon) <+>) 
-                   | seg == gs -> ((text (show seg) <> colon) <+>) 
-                   | otherwise -> id -- ((text (show seg) <> colon) <+>)
-            _ -> id) (ppAddr seg base roff off)
+       case base of
+         Just r | isDefaultSeg32 seg r -> a
+                | seg == FS -> text (show seg) <> colon <+> a
+                | seg == GS -> text (show seg) <> colon <+> a
+                | otherwise -> a -- ((text (show seg) <> colon) <+>)
+         _ -> a
+      where a = ppAddr seg base roff off
                                                           -- or rip? this is 32 bits ...
     IP_Offset_32 seg off      -> brackets $ text "ip+" <> pp0xHex off
     Offset_32 seg off         -> prefix seg off
     Offset_64 seg off         -> prefix seg off
-    Addr_64 seg base roff off -> 
-      (case base 
-         of Just r  | seg == fs -> ((text (show seg) <> colon) <>)
-                    | seg == gs -> ((text (show seg) <> colon) <>)
+    Addr_64 seg base roff off ->
+      case base of
+        Just r  | seg == FS -> text (show seg) <> colon <> a
+                | seg == GS -> text (show seg) <> colon <> a
+                | isDefaultSeg64 seg r -> a
+                | otherwise -> a
+        Nothing | seg == FS -> text (show seg) <> colon <> a
+                | seg == GS -> text (show seg) <> colon <> a
+	        | otherwise -> a
+      where a = ppAddr seg base roff off
+    Addr_64 seg base roff off ->
+      (case base
+         of Just r  | seg == FS -> ((text (show seg) <> colon) <>)
+                    | seg == GS -> ((text (show seg) <> colon) <>)
                     | isDefaultSeg64 seg r -> id
                     | otherwise -> id -- ((text (show seg) <> colon) <+>)
-            Nothing | seg == fs -> ((text (show seg) <> colon) <>)
-                    | seg == gs -> ((text (show seg) <> colon) <>)
+            Nothing | seg == FS -> ((text (show seg) <> colon) <>)
+                    | seg == GS -> ((text (show seg) <> colon) <>)
 	            | otherwise -> id) (ppAddr seg base roff off)
     IP_Offset_64 seg off      -> brackets $ text "rip+"<> pp0xHex off
   where
@@ -554,17 +567,17 @@ ppInstruction :: Word64
                  -- This should be the address of the next instruction.
               -> InstructionInstance
               -> Doc
-ppInstruction base i = 
+ppInstruction base i =
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
       args = iiArgs i
       op = iiOp i
   in
    case (op, args)
         -- special casem for one-bit shift instructions
-     of (_, [dst, ByteImm 1]) 
-          | op `elem` nonHex1Instrs -> 
-                                     (text $ padToWidth 6 op) 
-                                     <+> ppValue base dst  
+     of (_, [dst, ByteImm 1])
+          | op `elem` nonHex1Instrs ->
+                                     (text $ padToWidth 6 op)
+                                     <+> ppValue base dst
                                      <> comma <> text "1"
         -- objdump prints as nop
         ("xchg", [DWordReg (Reg32 0), DWordReg (Reg32 0)]) -> text "nop"
