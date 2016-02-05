@@ -198,10 +198,21 @@ withRMFirst (v1, _v1ty) (v2, v2ty) k =
     RG_MMX_rm -> k v2 v1
     _ -> k v1 v2
 
+hasScaledIndex :: Value -> Bool
+hasScaledIndex v
+  | Just addrRef <- memRefComponents v =
+    case addrRef of
+      Addr_32 _ _ (Just _) _ -> True
+      Addr_64 _ _ (Just _) _ -> True
+      _ -> False
+  | otherwise = False
+
 -- | Provide the SIB to the callback, if it is required
+--
+-- FIXME: Use 'memRefComponents' to remove duplication
 withSIB :: Word8 -> Word8 -> Value -> (B.Builder -> a) -> a
 withSIB mode rm val k
-  | not (requiresSIB rm) || mode == directRegister = k mempty
+  | not (hasScaledIndex val) && (not (requiresSIB rm) || mode == directRegister) = k mempty
   | otherwise =
     case val of
       VoidMem (Addr_32 _seg mbase midx _) ->
@@ -233,6 +244,14 @@ withSIB mode rm val k
             mbase' = fmap (unReg64 . reg32_reg) mbase
         in k (mkSIB midx' mbase')
       Mem32 (Addr_64 _seg mbase midx _) ->
+        let midx' = fmap (second unReg64) midx
+            mbase' = fmap unReg64 mbase
+        in k (mkSIB midx' mbase')
+      Mem64 (Addr_32 _seg mbase midx _) ->
+        let midx' = fmap (second (unReg64 . reg32_reg)) midx
+            mbase' = fmap (unReg64 . reg32_reg) mbase
+        in k (mkSIB midx' mbase')
+      Mem64 (Addr_64 _seg mbase midx _) ->
         let midx' = fmap (second unReg64) midx
             mbase' = fmap unReg64 mbase
         in k (mkSIB midx' mbase')
