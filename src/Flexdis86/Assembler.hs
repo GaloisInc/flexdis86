@@ -208,54 +208,21 @@ hasScaledIndex v
   | otherwise = False
 
 -- | Provide the SIB to the callback, if it is required
---
--- FIXME: Use 'memRefComponents' to remove duplication
 withSIB :: Word8 -> Word8 -> Value -> (B.Builder -> a) -> a
 withSIB mode rm val k
   | not (hasScaledIndex val) && (not (requiresSIB rm) || mode == directRegister) = k mempty
-  | otherwise =
-    case val of
-      VoidMem (Addr_32 _seg mbase midx _) ->
+  | Just addrRef <- memRefComponents val =
+    case addrRef of
+      Addr_32 _seg mbase midx _ ->
         let midx' = fmap (second (unReg64 . reg32_reg)) midx
             mbase' = fmap (unReg64 . reg32_reg) mbase
         in k (mkSIB midx' mbase')
-      VoidMem (Addr_64 _seg mbase midx _) ->
-        let midx' = fmap (second unReg64) midx
-            mbase' = fmap unReg64 mbase
-        in k (mkSIB midx' mbase')
-      Mem8 (Addr_32 _seg mbase midx _) ->
-        let midx' = fmap (second (unReg64 . reg32_reg)) midx
-            mbase' = fmap (unReg64 . reg32_reg) mbase
-        in k (mkSIB midx' mbase')
-      Mem8 (Addr_64 _seg mbase midx _) ->
-        let midx' = fmap (second unReg64) midx
-            mbase' = fmap unReg64 mbase
-        in k (mkSIB midx' mbase')
-      Mem16 (Addr_32 _seg mbase midx _) ->
-        let midx' = fmap (second (unReg64 . reg32_reg)) midx
-            mbase' = fmap (unReg64 . reg32_reg) mbase
-        in k (mkSIB midx' mbase')
-      Mem16 (Addr_64 _seg mbase midx _) ->
-        let midx' = fmap (second unReg64) midx
-            mbase' = fmap unReg64 mbase
-        in k (mkSIB midx' mbase')
-      Mem32 (Addr_32 _seg mbase midx _) ->
-        let midx' = fmap (second (unReg64 . reg32_reg)) midx
-            mbase' = fmap (unReg64 . reg32_reg) mbase
-        in k (mkSIB midx' mbase')
-      Mem32 (Addr_64 _seg mbase midx _) ->
-        let midx' = fmap (second unReg64) midx
-            mbase' = fmap unReg64 mbase
-        in k (mkSIB midx' mbase')
-      Mem64 (Addr_32 _seg mbase midx _) ->
-        let midx' = fmap (second (unReg64 . reg32_reg)) midx
-            mbase' = fmap (unReg64 . reg32_reg) mbase
-        in k (mkSIB midx' mbase')
-      Mem64 (Addr_64 _seg mbase midx _) ->
+      Addr_64 _seg mbase midx _ ->
         let midx' = fmap (second unReg64) midx
             mbase' = fmap unReg64 mbase
         in k (mkSIB midx' mbase')
       _ -> k mempty
+  | otherwise = k mempty
 
 mkSIB :: Maybe (Int, Word8)
          -- ^ (optional) (2^Scale, Index)
