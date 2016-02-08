@@ -106,6 +106,14 @@ matchOperandType ops =
     (DWordImm _, OpType ImmediateSource RDQSize) -> True
     (QWordImm _, OpType ImmediateSource RDQSize) -> True
     (JumpOffset sz1 _, OpType JumpImmediate sz2) -> sz1 == sz2
+    (QWordReg _, OpType ModRM_rm QSize) -> True
+    (QWordReg _, OpType ModRM_rm VSize) -> True
+    (QWordReg _, OpType ModRM_rm YSize) -> True
+    (QWordReg _, OpType ModRM_rm RDQSize) -> True
+    (QWordReg _, OpType ModRM_reg QSize) -> True
+    (QWordReg _, OpType ModRM_reg VSize) -> True
+    (QWordReg _, OpType ModRM_reg YSize) -> True
+    (QWordReg _, OpType ModRM_reg RDQSize) -> True
     _ -> False
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
