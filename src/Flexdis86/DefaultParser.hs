@@ -11,20 +11,42 @@ module Flexdis86.DefaultParser
   , defaultX64Disassembler
   ) where
 
+import Control.Monad (when)
 import qualified Data.ByteString as BS
 import Language.Haskell.TH.Syntax
 import Data.ByteString.Unsafe (unsafePackAddressLen)
+import qualified System.FilePath as F
+import qualified System.Directory as D
 import System.IO.Unsafe (unsafePerformIO)
 
 import Flexdis86.Disassembler
 
-import qualified Paths_flexdis86 as P
-
 {-# NOINLINE optableData #-}
 
+-- | Read the XML optable specification from disk.
 optableData :: BS.ByteString
 optableData = 
- ($(do path <- qRunIO $ P.getDataFileName "data/optable.xml"
+ -- The @getPathToOptableXML@ computes an absolute path to the XML
+ -- file. This is helpful in case our current working directory is not
+ -- the directory containing the @flexdis86.cabal@ file. This happens,
+ -- e.g., when we build flexdis86 as a dependency of another package
+ -- in Emacs @haskell-mode@.
+ ($(do let getPathToOptableXML :: IO FilePath
+           getPathToOptableXML = do
+             let relativePath = "data/optable.xml"
+             absPathToThisFile <- D.makeAbsolute __FILE__
+             let absolutePath =
+                   -- Remove 'src/Flexdis86/DefaultParser.hs' and add
+                   -- 'data/optable.xml'.
+                   (F.takeDirectory . F.takeDirectory . F.takeDirectory $
+                    absPathToThisFile) F.</> relativePath
+             exists <- D.doesFileExist absolutePath
+             when (not exists) $
+               error $ "Can't find \"data/optable.xml\"! Tried " ++
+                       absolutePath
+             return absolutePath
+
+       path <- qRunIO getPathToOptableXML
        qAddDependentFile path
        contents <- qRunIO $ BS.readFile path
        let blen :: Int

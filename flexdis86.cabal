@@ -6,8 +6,6 @@ Build-type:    Simple
 Cabal-version: >= 1.9
 Synopsis: A flexible disassembler or x86
 
-data-files: data/optable.xml
-
 library
   build-depends:
     base >= 4,
@@ -15,6 +13,8 @@ library
     binary,
     bytestring,
     containers,
+    directory,
+    filepath,
     lens,
     mtl,
     template-haskell,
@@ -22,7 +22,6 @@ library
     xml
 
   hs-source-dirs: src
-  other-modules: Paths_flexdis86
   exposed-modules:
     Flexdis86
     Flexdis86.ByteReader
