@@ -184,6 +184,8 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("movl   $0x0,-0x4(%rbp)", ["movl   $0x0,-0x4(%rbp)"])
                     , ("mov    -0x4(%rbp),%eax", ["mov    -0x4(%rbp),%eax"])
                     , ("sub    $0x41,(%rdx, %rax, 3)", ["sub    $0x41,(%rdx, %rax, 2)"])
+                    , ("lea    0xe0(%rsp),%rax", ["lea    0xe0(%rsp),%rax"])
+                    , ("test %al,%al", ["test %al,%al"])
                     ]
 
 mmxTests :: T.TestTree
@@ -193,6 +195,7 @@ mmxOperandOpcodes :: [(String, [String])]
 mmxOperandOpcodes = [ ("Load a value into an mmx register", ["movq (%eax), %mm2"])
                     , ("mmx xor (reg -> reg)", ["pxor %mm3, %mm0"])
                     , ("mmx xor (mem -> reg)", ["pxor (%rcx), %mm4"])
+                    , ("movaps %xmm4,0x90(%rsp)", ["movaps %xmm4,0x90(%rsp)"])
                     ]
 
 sseTests :: T.TestTree
