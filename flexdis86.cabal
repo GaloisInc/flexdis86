@@ -6,8 +6,6 @@ Build-type:    Simple
 Cabal-version: >= 1.10
 Synopsis: A flexible disassembler or x86
 
-data-files: data/optable.xml
-
 library
   default-language: Haskell2010
   build-depends:
@@ -23,7 +21,7 @@ library
     xml
 
   hs-source-dirs: src
-  other-modules: Paths_flexdis86
+
   exposed-modules:
     Flexdis86
     Flexdis86.Assembler
