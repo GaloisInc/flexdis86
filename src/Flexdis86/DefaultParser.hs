@@ -20,11 +20,13 @@ import System.IO.Unsafe (unsafePerformIO)
 import Flexdis86.Assembler
 import Flexdis86.Disassembler
 
+import qualified Paths_flexdis86 as P
+
 {-# NOINLINE optableData #-}
 
 optableData :: BS.ByteString
 optableData = 
- ($(do let path = "data/optable.xml"
+ ($(do path <- qRunIO $ P.getDataFileName "data/optable.xml"
        qAddDependentFile path
        contents <- qRunIO $ BS.readFile path
        let blen :: Int
