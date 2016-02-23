@@ -743,14 +743,13 @@ parseValue p osz mmrm tp = do
         Size32 -> pure $ DWordImm $ fromIntegral b
         Size64 -> pure $ QWordImm $ fromIntegral b
     IM_SZ ->
+      -- IM_SZ is 16 or 32 bits, and at run-time sign extended to the
+      -- register size when it is deposited into a register.
       case osz of
         Size16 ->  WordImm . fromIntegral <$> readSWord
         Size32 -> DWordImm . fromIntegral <$> readDWord
         Size64 -> do dWord <- (fromIntegral <$> readDWord) :: ByteReader m => m Word32
-                     pure $ QWordImm $ 
-                       if testBit dWord 31
-                       then 0xffffffff00000000 .|. fromIntegral dWord
-                       else fromIntegral dWord
+                     pure $ DWordImm $ fromIntegral dWord
 
 -- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m
