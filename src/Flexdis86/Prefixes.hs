@@ -1,6 +1,7 @@
 module Flexdis86.Prefixes (
   Prefixes(..),
   REX(..),
+  testREXw,
   SegmentPrefix(..),
   prLockPrefix,
   prSP,
@@ -15,6 +16,7 @@ module Flexdis86.Prefixes (
   ) where
 
 import Control.Lens
+import qualified Data.Bits as B
 import Data.Word ( Word8 )
 import Numeric ( showHex )
 import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
@@ -35,6 +37,9 @@ data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
 -- | REX value for 64-bit mode.
 newtype REX = REX { unREX :: Word8 }
   deriving (Eq)
+
+testREXw :: REX -> Bool
+testREXw (REX r) = B.testBit r 3
 
 instance Show REX where
   showsPrec _ (REX rex) = showHex rex

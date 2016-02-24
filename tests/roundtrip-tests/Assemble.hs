@@ -1,11 +1,13 @@
 module Assemble ( assembleTests ) where
 
+import qualified Control.Lens as L
 import qualified Data.ByteString.Lazy.Builder as B
 import qualified Data.ByteString.Lazy as LB
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
+import Flexdis86.Prefixes ( prOSO )
 import Hexdump
 
 import Util ( withAssembledCode )
@@ -18,7 +20,7 @@ testCases :: [(String, Maybe D.InstructionInstance)]
 testCases = [ ("ret", mkI "ret" [])
             , ("int $0x3", mkI "int3" [])
             , ("push $0x8", mkI "push" [D.ByteImm 8])
-            , ("push $0xfff", mkI "push" [D.WordImm 0xfff])
+            , ("pushw $0xfff", fmap setOSO $ mkI "push" [D.WordImm 0xfff])
             , ("push $0x2000000", mkI "push" [D.DWordImm 0x2000000])
               -- The subtraction here is gross, but required because
               -- the jump is relative to the IP, which is incremented
@@ -30,6 +32,9 @@ testCases = [ ("ret", mkI "ret" [])
             , ("jmp .+20", mkI "jmp" [D.JumpOffset D.BSize (20 - 2)])
             , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.ZSize (2000 - 5)])
             ]
+
+setOSO :: D.InstructionInstance -> D.InstructionInstance
+setOSO ii = ii { D.iiPrefixes = L.over prOSO (const True) (D.iiPrefixes ii) }
 
 mkI :: String -> [D.Value] -> Maybe D.InstructionInstance
 mkI = D.mkInstruction D.defaultX64Assembler

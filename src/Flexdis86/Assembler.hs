@@ -121,17 +121,25 @@ assembleInstruction ii = do
   return $ mconcat [ prefixBytes
                    , opcode
                    , fromMaybe mempty (encodeModRMDisp ii)
-                   , mconcat (map encodeImmediate (iiArgs ii))
+                   , mconcat (map (encodeImmediate rex oso) (iiArgs ii))
                    ]
   where
+    rex = L.view prREX pfxs
+    oso = L.view prOSO pfxs
     prefixBytes = mconcat [ if L.view prASO pfxs then B.word8 0x67 else mempty
-                          , if L.view prOSO pfxs then B.word8 0x66 else mempty
+                          , if oso then B.word8 0x66 else mempty
                           , encodeLockPrefix (L.view prLockPrefix pfxs)
                           , encodeRequiredPrefix (iiRequiredPrefix ii)
-                          , encodeREXPrefix (L.view prREX pfxs)
+                          , encodeREXPrefix rex
                           ]
     opcode = B.byteString (B.pack (iiOpcode ii))
     pfxs = iiPrefixes ii
+
+{-
+
+If a REX prefix is set, we are in 64 bit mode.
+
+-}
 
 -- | Construct the ModR/M, SIB, and Displacement bytes
 --
@@ -434,20 +442,48 @@ encodeREXPrefix :: REX -> B.Builder
 encodeREXPrefix (REX rex) | rex == 0 = mempty
                           | otherwise = B.word8 rex
 
-encodeImmediate :: (Value, OperandType) -> B.Builder
-encodeImmediate vty =
+encodeImmediate :: REX -> Bool -> (Value, OperandType) -> B.Builder
+encodeImmediate rex oso vty =
   case vty of
-    (ByteImm imm, OpType ImmediateSource BSize) -> B.word8 imm
-    (WordImm imm, OpType ImmediateSource WSize) -> B.word16LE imm
-    -- This depends on context, doesn't it?  It could be 32 or 64
-    (WordImm imm, OpType ImmediateSource ZSize) -> B.word32LE (fromIntegral imm)
-    (WordImm imm, IM_SZ) -> B.word16LE (fromIntegral imm)
-    (WordImm _, _) -> error ("Unhandled immediate type: " ++ show vty)
-    (DWordImm imm, _) -> B.word32LE imm
-    (QWordImm imm, _) -> B.word64LE imm
+    (ByteImm imm, ty) -> encodeByteImmediate rex oso imm ty
+    (WordImm imm, ty) -> encodeWordImmediate rex oso imm ty
+    (DWordImm imm, ty) -> encodeDWordImmediate rex oso imm ty
+    (QWordImm imm, ty) -> encodeQWordImmediate rex oso imm ty
     (JumpOffset BSize off, OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
     (JumpOffset _ off, OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
+    (JumpOffset _ _, _) -> error ("Unhandled jump offset immediate: " ++ show vty)
     _ -> mempty
+
+encodeByteImmediate :: REX -> Bool -> Word8 -> OperandType -> B.Builder
+encodeByteImmediate rex oso b ty =
+  case ty of
+    OpType ImmediateSource BSize -> B.word8 b
+    _ -> error ("Unhandled byte immediate encoding: " ++ show (ty, rex, oso))
+
+encodeWordImmediate :: REX -> Bool -> Word16 -> OperandType -> B.Builder
+encodeWordImmediate rex oso w ty =
+  case ty of
+    OpType ImmediateSource WSize -> B.word16LE w
+    OpType ImmediateSource ZSize -> B.word16LE w
+    IM_SZ | testREXw rex -> B.word32LE (fromIntegral w)
+          | otherwise -> B.word16LE w
+    _ -> error ("Unhandled word immediate encoding: " ++ show (ty, rex, oso))
+
+encodeDWordImmediate :: REX -> Bool -> Word32 -> OperandType -> B.Builder
+encodeDWordImmediate rex oso dw ty =
+  case ty of
+    OpType ImmediateSource DSize -> B.word32LE dw
+    OpType ImmediateSource VSize -> B.word32LE dw
+    OpType ImmediateSource ZSize -> B.word32LE dw
+    IM_SZ -> B.word32LE dw
+    _ -> error ("Unhandled dword immediate encoding: " ++ show (ty, rex, oso))
+
+encodeQWordImmediate :: REX -> Bool -> Word64 -> OperandType -> B.Builder
+encodeQWordImmediate rex oso qw ty =
+  case ty of
+    OpType ImmediateSource QSize -> B.word64LE qw
+    OpType ImmediateSource VSize -> B.word64LE qw
+    _ -> error ("Unhandled qword immediate encoding: " ++ show (ty, rex, oso))
 
 {- Note [x86 Instruction Format]
 

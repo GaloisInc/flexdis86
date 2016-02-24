@@ -73,6 +73,7 @@ test-suite roundtrip-tests
                  tasty >= 0.10 && < 0.12,
                  tasty-hunit,
                  process >= 1.2 && < 1.5,
+                 lens,
                  temporary >= 1 && < 2,
                  pretty-hex,
                  elf-galois >= 0.28
