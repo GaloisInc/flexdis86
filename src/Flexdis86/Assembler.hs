@@ -441,6 +441,8 @@ encodeImmediate vty =
     (WordImm imm, OpType ImmediateSource WSize) -> B.word16LE imm
     -- This depends on context, doesn't it?  It could be 32 or 64
     (WordImm imm, OpType ImmediateSource ZSize) -> B.word32LE (fromIntegral imm)
+    (WordImm imm, IM_SZ) -> B.word16LE (fromIntegral imm)
+    (WordImm _, _) -> error ("Unhandled immediate type: " ++ show vty)
     (DWordImm imm, _) -> B.word32LE imm
     (QWordImm imm, _) -> B.word64LE imm
     (JumpOffset BSize off, OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
