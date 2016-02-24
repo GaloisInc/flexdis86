@@ -7,6 +7,7 @@ import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
+import qualified Flexdis86.Register as D
 import Flexdis86.Prefixes ( prOSO )
 import Hexdump
 
@@ -31,6 +32,10 @@ testCases = [ ("ret", mkI "ret" [])
               -- to as well)
             , ("jmp .+20", mkI "jmp" [D.JumpOffset D.BSize (20 - 2)])
             , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.ZSize (2000 - 5)])
+            , ("xor %rdx, %rdx", mkI "xor" [D.QWordReg D.rdx, D.QWordReg D.rdx])
+            , ("xor %rbx, %rbx", mkI "xor" [D.QWordReg D.rbx, D.QWordReg D.rbx])
+            , ("xor %rcx, %rcx", mkI "xor" [D.QWordReg D.rcx, D.QWordReg D.rcx])
+            , ("xor %r8, %r8", mkI "xor" [D.QWordReg (D.reg64 8), D.QWordReg (D.reg64 8)])
             ]
 
 setOSO :: D.InstructionInstance -> D.InstructionInstance
