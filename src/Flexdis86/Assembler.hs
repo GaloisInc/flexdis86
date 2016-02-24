@@ -440,7 +440,7 @@ encodeLockPrefix pfx =
 -- seems to work okay.
 encodeREXPrefix :: REX -> B.Builder
 encodeREXPrefix (REX rex) | rex == 0 = mempty
-                          | otherwise = B.word8 rex
+                          | otherwise = B.word8 (setBit rex 6)
 
 encodeImmediate :: REX -> Bool -> (Value, OperandType) -> B.Builder
 encodeImmediate rex oso vty =
