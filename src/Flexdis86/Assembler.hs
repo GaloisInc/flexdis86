@@ -55,13 +55,14 @@ findEncoding args def = do
   guard (length args == length opTypes)
   let argTypes = zip args opTypes
   F.forM_ argTypes $ \at -> guard (matchOperandType at)
+  let rex = mkREX args
   return $ II { iiLockPrefix = NoLockPrefix
               , iiAddrSize = Size16
               , iiOp = L.view defMnemonic def
               , iiArgs = zip args opTypes
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
                                       , _prSP = no_seg_prefix
-                                      , _prREX = REX 0
+                                      , _prREX = rex
                                       , _prASO = False
                                       , _prOSO = False
                                       }
@@ -71,6 +72,47 @@ findEncoding args def = do
               , iiRequiredReg = L.view requiredReg def
               , iiRequiredRM = L.view requiredRM def
               }
+
+-- | The REX prefix modifies instructions to operate over 64 bit operands.
+--
+-- The format of the byte is:
+--
+-- > 0100WRXB
+--
+-- W is 1 if the operands are 64 bit sized.  We set that with a fold
+-- over all of the arguments; if any argument is 64 bits, we set W.
+--
+-- R is an extension to the reg field, so we set that if the reg is
+-- a reference to a register requiring the extra bit (r8 or higher).
+--
+-- X is an extension to the SIB field, and isn't supported yet... FIXME
+--
+-- B is an extension to the r/m field, so we set that if the r/m
+-- refers to r8 or greater.
+--
+-- FIXME: Knowing what is r/m and what is reg is kind of difficult.
+-- What we have here mostly works for now, but it will be more
+-- complicated in the limit.
+mkREX :: [Value] -> REX
+mkREX vs =
+  case vs of
+    [] -> REX 0
+    [QWordReg rno] -> setREXFlagIf rexR rno rx0
+    [QWordReg r1, QWordReg r2] -> setREXFlagIf rexB r2 $ setREXFlagIf rexR r1 rx0
+    _ -> rx0
+  where
+    rx0 = foldr addREXwFlag (REX 0) vs
+
+setREXFlagIf :: L.ASetter t t a Bool -> Reg64 -> t -> t
+setREXFlagIf flg (Reg64 rno) rex
+  | rno >= 8 = L.set flg True rex
+  | otherwise = rex
+
+addREXwFlag :: Value -> REX -> REX
+addREXwFlag v r =
+  case v of
+    QWordReg {} -> L.set rexW True r
+    _ -> r
 
 -- Need to build prefixes based on arg sizes...
 --
