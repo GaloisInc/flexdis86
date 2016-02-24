@@ -125,6 +125,7 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("jmp (%ebx)", ["jmp *(%ebx)"])
                        , ("loop rel8", ["loop .+0x8"])
                        , ("pop %rbp", ["pop %rbp"])
+                       , ("push %rbp", ["push %rbp"])
                        ]
 
 addressingModeTests :: T.TestTree
@@ -191,8 +192,16 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("mov %rsp,%rbp", ["mov %rsp,%rbp"])
                     , ("movzbl -0x1(%rbp),%eax", ["movzbl -0x1(%rbp),%eax"])
                     , ("movsbl -0x1(%rbp),%eax", ["movsbl -0x1(%rbp),%eax"])
+                    , ("movq   $0xffffffffffffffff,-0x10(%rbp)", ["movq   $0xffffffffffffffff,-0x10(%rbp)"])
+                    , ("movl   $0xffffffff,-0xc(%rbp)", ["movl   $0xffffffff,-0xc(%rbp)"])
+                    , ("mov    -0xc(%rbp),%eax", ["mov    -0xc(%rbp),%eax"])
                     , ("mov %al,-0x1(%rbp)", ["mov %al,-0x1(%rbp)"])
                     , ("cmpl $0x1fe,-0x8(%rbp)", ["cmpl $0x1fe,-0x8(%rbp)"])
+                    , ("add $0x3,%eax", ["add $0x3,%eax"])
+                    , ("mov %rsp,%rbp", ["mov %rsp,%rbp"])
+                    , ("mov %edx,%eax", ["mov %edx,%eax"])
+                    , ("movw   $0xffff,-0x4(%rbp)", ["movw   $0xffff,-0x4(%rbp)"])
+                    , ("movb   $0xff,-0x1(%rbp)", ["movb   $0xff,-0x1(%rbp)"])
                     ]
 
 mmxTests :: T.TestTree
