@@ -352,7 +352,7 @@ encodeValue v =
     ByteReg r8 -> reg8ToRM r8
     WordReg (Reg16 rno) -> rno
     DWordReg (Reg32 rno) -> rno
-    QWordReg (Reg64 rno) -> rno
+    QWordReg (Reg64 rno) -> 0x7 .&. rno
     MMXReg (MMXR rno) -> rno
     XMMReg (XMMR rno) -> rno
     _ | Just comps <- memRefComponents v ->
