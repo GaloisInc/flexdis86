@@ -465,7 +465,7 @@ encodeWordImmediate rex oso w ty =
   case ty of
     OpType ImmediateSource WSize -> B.word16LE w
     OpType ImmediateSource ZSize -> B.word16LE w
-    IM_SZ | testREXw rex -> B.word32LE (fromIntegral w)
+    IM_SZ | L.view rexW rex -> B.word32LE (fromIntegral w)
           | otherwise -> B.word16LE w
     _ -> error ("Unhandled word immediate encoding: " ++ show (ty, rex, oso))
 

@@ -1,7 +1,10 @@
 module Flexdis86.Prefixes (
   Prefixes(..),
   REX(..),
-  testREXw,
+  rexW,
+  rexR,
+  rexB,
+  rexX,
   SegmentPrefix(..),
   prLockPrefix,
   prSP,
@@ -38,8 +41,22 @@ data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
 newtype REX = REX { unREX :: Word8 }
   deriving (Eq)
 
-testREXw :: REX -> Bool
-testREXw (REX r) = B.testBit r 3
+setBitTo :: (B.Bits b) => b -> Int -> Bool -> b
+setBitTo bits bitNo val
+  | val = B.setBit bits bitNo
+  | otherwise = B.clearBit bits bitNo
+
+rexW :: Simple Lens REX Bool
+rexW = lens ((`B.testBit` 3) . unREX) (\(REX r) v -> REX (setBitTo r 3 v))
+
+rexR :: Simple Lens REX Bool
+rexR = lens ((`B.testBit` 2) . unREX) (\(REX r) v -> REX (setBitTo r 2 v))
+
+rexX :: Simple Lens REX Bool
+rexX = lens ((`B.testBit` 1) . unREX) (\(REX r) v -> REX (setBitTo r 1 v))
+
+rexB :: Simple Lens REX Bool
+rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
 
 instance Show REX where
   showsPrec _ (REX rex) = showHex rex
