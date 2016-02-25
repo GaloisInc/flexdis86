@@ -36,6 +36,7 @@ testCases = [ ("ret", mkI "ret" [])
             , ("xor %rbx, %rbx", mkI "xor" [D.QWordReg D.rbx, D.QWordReg D.rbx])
             , ("xor %rcx, %rcx", mkI "xor" [D.QWordReg D.rcx, D.QWordReg D.rcx])
             , ("xor %r8, %r8", mkI "xor" [D.QWordReg (D.reg64 8), D.QWordReg (D.reg64 8)])
+            , ("movq $0x190000000,%r11", mkI "mov" [D.QWordReg (D.reg64 11), D.QWordImm 0x190000000])
             ]
 
 setOSO :: D.InstructionInstance -> D.InstructionInstance

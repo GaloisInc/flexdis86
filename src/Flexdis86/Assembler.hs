@@ -97,8 +97,9 @@ mkREX :: [Value] -> REX
 mkREX vs =
   case vs of
     [] -> REX 0
-    [QWordReg rno] -> setREXFlagIf rexR rno rx0
+    [QWordReg rno] -> setREXFlagIf rexB rno rx0
     [QWordReg r1, QWordReg r2] -> setREXFlagIf rexB r2 $ setREXFlagIf rexR r1 rx0
+    [QWordReg rno, _] -> setREXFlagIf rexB rno rx0
     _ -> rx0
   where
     rx0 = foldr addREXwFlag (REX 0) vs
@@ -156,6 +157,7 @@ matchOperandType ops =
     (QWordReg _, OpType ModRM_reg VSize) -> True
     (QWordReg _, OpType ModRM_reg YSize) -> True
     (QWordReg _, OpType ModRM_reg RDQSize) -> True
+    (QWordReg (Reg64 rno), OpType (Opcode_reg rcode) VSize) -> rno - 8 == rcode
     _ -> False
 
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
