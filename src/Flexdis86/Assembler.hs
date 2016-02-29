@@ -33,9 +33,13 @@ data AssemblerContext =
   deriving (Show)
 
 assemblerContext :: [Def] -> AssemblerContext
-assemblerContext = AssemblerContext . foldr addDef M.empty
+assemblerContext = AssemblerContext . F.foldl' addDef M.empty
   where
-    addDef d = M.alter (Just . (maybe [d] (d:))) (L.view defMnemonic d)
+    -- Add def once under every mnemonic, including synonyms.
+    m `addDef` d = F.foldl' add m keys
+      where
+      m' `add` key = M.alter (Just . (maybe [d] (d:))) key m'
+      keys = L.view defMnemonic d : L.view defMnemonicSynonyms d
 
 mkInstruction :: (MonadPlus m)
               => AssemblerContext

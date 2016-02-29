@@ -8,6 +8,12 @@
       CDATA element consisting of blank-separated words.  Upper and lower
       case are equivalent.
 
+      mnemonic is a blank-separated sequence of mnemonic synonyms.
+      For example, the jump mnemonics jnb, jae, and jnc correspond to
+      the same instruction (relative jump if the carry flag is zero).
+      See http://unixwiz.net/techtips/x86-jumps.html for a concise
+      summary of the jump instruction mnemonic synonyms.
+
       pfx describes the prefixes that can precede the main opcode without
       turning it into a different instruction.  These may be:
       aso - accepts address size override
@@ -3953,7 +3959,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jb</mnemonic>
+        <mnemonic>jb jnae jc</mnemonic>
         <def>
             <opc>72</opc>
             <opr>Jb</opr>
@@ -3967,7 +3973,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jae</mnemonic>
+        <mnemonic>jnb jae jnc</mnemonic>
         <def>
             <opc>73</opc>
             <opr>Jb</opr>
@@ -3981,7 +3987,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>je</mnemonic>
+        <mnemonic>je jz</mnemonic>
         <def>
             <opc>74</opc>
             <opr>Jb</opr>
@@ -3995,7 +4001,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jne</mnemonic>
+        <mnemonic>jne jnz</mnemonic>
         <def>
             <opc>75</opc>
             <opr>Jb</opr>
@@ -4009,7 +4015,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jbe</mnemonic>
+        <mnemonic>jbe jna</mnemonic>
         <def>
             <opc>76</opc>
             <opr>Jb</opr>
@@ -4023,7 +4029,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>ja</mnemonic>
+        <mnemonic>ja jnbe</mnemonic>
         <def>
             <opc>77</opc>
             <opr>Jb</opr>
@@ -4065,7 +4071,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jp</mnemonic>
+        <mnemonic>jp jpe</mnemonic>
         <def>
             <opc>7a</opc>
             <opr>Jb</opr>
@@ -4079,7 +4085,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jnp</mnemonic>
+        <mnemonic>jnp jpo</mnemonic>
         <def>
             <opc>7b</opc>
             <opr>Jb</opr>
@@ -4093,7 +4099,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jl</mnemonic>
+        <mnemonic>jl jnge</mnemonic>
         <def>
             <opc>7c</opc>
             <opr>Jb</opr>
@@ -4107,7 +4113,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jge</mnemonic>
+        <mnemonic>jge jnl</mnemonic>
         <def>
             <opc>7d</opc>
             <opr>Jb</opr>
@@ -4121,7 +4127,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jle</mnemonic>
+        <mnemonic>jle jng</mnemonic>
         <def>
             <opc>7e</opc>
             <opr>Jb</opr>
@@ -4135,7 +4141,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jg</mnemonic>
+        <mnemonic>jg jnle</mnemonic>
         <def>
             <opc>7f</opc>
             <opr>Jb</opr>
