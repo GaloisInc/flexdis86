@@ -32,10 +32,17 @@ data AssemblerContext =
                    }
   deriving (Show)
 
+-- Warning: some instructions, e.g. @xor <64-bit reg> <64-bit reg>@,
+-- have multiple encodings. The order we fold defs here, i.e. 'foldr'
+-- vs 'foldl', determines which of several encodings we get.
 assemblerContext :: [Def] -> AssemblerContext
 assemblerContext = AssemblerContext . foldr addDef M.empty
   where
-    addDef d = M.alter (Just . (maybe [d] (d:))) (L.view defMnemonic d)
+    -- Add def once under every mnemonic, including synonyms.
+    def `addDef` map' = foldr add map' keys
+      where
+      key `add` map'' = M.alter (Just . (maybe [def] (def:))) key map''
+      keys = L.view defMnemonic def : L.view defMnemonicSynonyms def
 
 mkInstruction :: (MonadPlus m)
               => AssemblerContext

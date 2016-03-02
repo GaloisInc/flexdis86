@@ -32,11 +32,27 @@ testCases = [ ("ret", mkI "ret" [])
               -- to as well)
             , ("jmp .+20", mkI "jmp" [D.JumpOffset D.BSize (20 - 2)])
             , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.ZSize (2000 - 5)])
+
+            -- Warning (64-bit) xors here have multiple encodings --
+            -- e.g. @xor %rdx, %rdx@ can be encoded as both 0x4831d2
+            -- and 0x4833d2 -- and so these tests depend on flexdis
+            -- choosing the same encoding as gcc.
             , ("xor %rdx, %rdx", mkI "xor" [D.QWordReg D.rdx, D.QWordReg D.rdx])
             , ("xor %rbx, %rbx", mkI "xor" [D.QWordReg D.rbx, D.QWordReg D.rbx])
             , ("xor %rcx, %rcx", mkI "xor" [D.QWordReg D.rcx, D.QWordReg D.rcx])
             , ("xor %r8, %r8", mkI "xor" [D.QWordReg (D.reg64 8), D.QWordReg (D.reg64 8)])
             , ("movq $0x190000000,%r11", mkI "mov" [D.QWordReg (D.reg64 11), D.QWordImm 0x190000000])
+
+            -- Instructions with mnemonic synonyms.
+            , ("jnb .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jnb .+20", mkI "jae" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jnb .+20", mkI "jnc" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jae .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jae .+20", mkI "jae" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jae .+20", mkI "jnc" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jnc .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jnc .+20", mkI "jae" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jnc .+20", mkI "jnc" [D.JumpOffset D.BSize (20 - 2)])
             ]
 
 setOSO :: D.InstructionInstance -> D.InstructionInstance

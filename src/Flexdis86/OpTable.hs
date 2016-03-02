@@ -19,6 +19,7 @@ module Flexdis86.OpTable
     -- * Def
   , Def
   , defMnemonic
+  , defMnemonicSynonyms
   , defVendor
   , defCPUReq
   , modeLimit
@@ -282,6 +283,11 @@ valid64 m = m == AnyMode || m == Only64
 
 -- | The definition of an instruction.
 data Def = Def  { _defMnemonic :: String
+                  -- ^ Canonical mnemonic
+                , _defMnemonicSynonyms :: [String]
+                  -- ^ Additional mnemonics, not including
+                  -- the canonical mnemonic. Used e.g. by
+                  -- jump instructions.
                 , _defCPUReq :: CPURequirement
                 , _defVendor :: Maybe Vendor
                 , _modeLimit :: ModeLimit
@@ -298,9 +304,16 @@ data Def = Def  { _defMnemonic :: String
                 , _defOperands  :: [OperandType]
                 } deriving (Eq, Show)
 
--- | Mnemonic for definition.
+-- | Canonical mnemonic for definition.
 defMnemonic :: Simple Lens Def String
 defMnemonic = lens _defMnemonic (\s v -> s { _defMnemonic = v })
+
+-- | Additional mnemonics, not including the canonical mnemonic.
+--
+-- Used e.g. by jump instructions.
+defMnemonicSynonyms :: Simple Lens Def [String]
+defMnemonicSynonyms =
+  lens _defMnemonicSynonyms (\s v -> s { _defMnemonicSynonyms = v })
 
 -- | CPU requirements on the definition.
 defCPUReq :: Simple Lens Def CPURequirement
@@ -362,8 +375,9 @@ defOperands :: Simple Lens Def [OperandType]
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 
 -- | Parse a definition.
-parse_def :: String -> CPURequirement -> Maybe Vendor -> ElemParser Def
-parse_def nm creq v = do
+parse_def ::
+  String -> [String] -> CPURequirement -> Maybe Vendor -> ElemParser Def
+parse_def nm syns creq v = do
   checkTag "def"
   let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText
   prefix <- parse_prefix
@@ -374,6 +388,7 @@ parse_def nm creq v = do
   v' <- parse_vendor v
   checkEnd
   let d0 = Def { _defMnemonic = nm
+               , _defMnemonicSynonyms = syns
                , _defCPUReq = creq'
                , _defVendor = v'
                , _modeLimit = AnyMode
@@ -468,7 +483,7 @@ x64Compatible d =
     [b] | b .&. 0xF0 == 0x40 -> False
     _ -> valid64 (d^.modeLimit)
 
--- | Recognizes form for mnemoics
+-- | Recognizes form for mnemonics
 isMnemonic :: String -> Bool
 isMnemonic (h:r) = (isLower h || h == '_') && all isLowerOrDigit r
 isMnemonic [] = False
@@ -479,12 +494,20 @@ isLowerOrDigit c = isLower c || isDigit c || (c == '_')
 parse_instruction :: ElemParser [Def]
 parse_instruction = do
   checkTag "instruction"
-  mnem <- required_text "mnemonic"
-  unless (isMnemonic mnem) $ do
-    fail $ "Invalid mnemonic: " ++ show mnem
+  (mnem, syns) <- parse_mnemonics
   cpuReq <- parse_CPURequirement Base
   v <- parse_vendor Nothing
-  remainingElts (parse_def mnem cpuReq v)
+  remainingElts (parse_def mnem syns cpuReq v)
+
+parse_mnemonics :: ElemParser (String, [String])
+parse_mnemonics = do
+  mnems <- words <$> required_text "mnemonic"
+  when (null mnems) $
+    fail "Empty mnemonic element!"
+  forM_ mnems $ \mnem -> do
+    unless (isMnemonic mnem) $
+      fail $ "Invalid mnemonic: " ++ show mnem
+  return (head mnems, tail mnems)
 
 parse_x86_optable :: ElemParser [Def]
 parse_x86_optable = do
