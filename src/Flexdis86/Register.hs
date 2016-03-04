@@ -18,7 +18,7 @@ showReg p v = "%" ++ p ++ show v
 
 -- | There are 16 control registers CR0 through CR15.
 newtype ControlReg = CR Word8
-  deriving Eq
+  deriving (Eq, Ord)
 
 instance Show ControlReg where
   show (CR w) = "cr" ++ show w
@@ -32,7 +32,7 @@ controlRegNo (CR w) = w
 -- | There are 8 32-bit debug registers in ia32, and 16 64-bit
 -- debug registers in ia64.
 newtype DebugReg = DR Word8
-  deriving (Eq)
+  deriving (Eq, Ord)
 
 instance Show DebugReg where
   show (DR w) = "dr" ++ show w
@@ -45,7 +45,7 @@ debugRegNo (DR w) = w
 
 -- | There are 8 64-bit MMX registers
 newtype MMXReg = MMXR Word8
-  deriving (Eq)
+  deriving (Eq, Ord)
 
 instance Show MMXReg where
   show (MMXR w) = "mm" ++ show w
@@ -65,7 +65,7 @@ mmxRegIdx = fromIntegral . mmxRegNo
 
 -- | There are 16 128-bit XMM registers
 newtype XMMReg = XMMR Word8
-  deriving (Eq)
+  deriving (Eq, Ord)
 
 instance Show XMMReg where
   show (XMMR w) = "xmm" ++ show w

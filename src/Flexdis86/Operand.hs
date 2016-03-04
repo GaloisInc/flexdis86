@@ -34,7 +34,7 @@ data OperandSource
      -- ^ A jump location that is read in from instruction stream, and
      -- offset from current instruction pointer.
    | JumpImmediate
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 data OperandSize
    = BSize -- ^ Operand is always 8-bits.
@@ -45,7 +45,7 @@ data OperandSize
    | YSize -- ^ Operand size is 64-bits if operand size is 64 bits, and 32-bits otherwise.
    | ZSize -- ^ Operand size is 16-bits if operand size is 16 bits, and 32-bits otherwise.
    | RDQSize -- ^ Operand size is 64-bits on x64 and 32-bits on ia32.
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 data OperandType
      -- | Operand that comes from a source and size.
@@ -108,4 +108,4 @@ data OperandType
      -- and 16bits if operand size is 16bits.
      -- The value can be sign exected to match operator size.
    | IM_SZ
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)

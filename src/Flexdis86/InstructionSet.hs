@@ -84,7 +84,7 @@ data AddrRef
   | Offset_64    Segment Word64
   | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
   | IP_Offset_64 Segment Displacement
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 pp0xHex :: (Integral a, Show a) => a -> Doc
 pp0xHex n = text "0x" <> text (showHex n' "")
@@ -172,7 +172,7 @@ data Value
   | DWordReg Reg32
   | QWordReg Reg64
   | JumpOffset OperandSize Int64
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)
