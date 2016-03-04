@@ -301,6 +301,8 @@ mkSIB mScaleIdx mBase =
     (Nothing, Just rno) -> B.word8 ((4 `shiftL` 3) .|. (rno .&. 0x7))
     (Just (scale, ix), Just rno) ->
       B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. (rno .&. 0x7))
+    (Just (scale, ix), Nothing) ->
+      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3))
     other -> error ("Unexpected inputs to mkSIB: " ++ show other)
 
 requiresSIB :: Word8 -> Bool
@@ -329,11 +331,11 @@ withMode v k =
           Addr_64 _ Nothing Nothing (Disp32 d) -> k noDisplacement (B.int32LE d)
           Addr_32 _ Nothing Nothing (Disp32 d) -> k noDisplacement (B.int32LE d)
 
-          Addr_64 _ (Just _) _ (Disp32 d) -> k disp32 (B.int32LE d)
-          Addr_32 _ (Just _) _ (Disp32 d) -> k disp32 (B.int32LE d)
+          Addr_64 _ _ _ (Disp32 d) -> k disp32 (B.int32LE d)
+          Addr_32 _ _ _ (Disp32 d) -> k disp32 (B.int32LE d)
 
-          Addr_64 _ (Just _) _ (Disp8 d) -> k disp8 (B.int8 d)
-          Addr_32 _ (Just _) _ (Disp8 d) -> k disp8 (B.int8 d)
+          Addr_64 _ _ _ (Disp8 d) -> k disp8 (B.int8 d)
+          Addr_32 _ _ _ (Disp8 d) -> k disp8 (B.int8 d)
 
           _ -> error ("mkMode: Unsupported memory ref type " ++ show v)
       | Just comps <- ripRefComponents v ->
@@ -527,6 +529,7 @@ encodeDWordImmediate rex oso dw ty =
     OpType ImmediateSource VSize -> B.word32LE dw
     OpType ImmediateSource ZSize -> B.word32LE dw
     IM_SZ -> B.word32LE dw
+    IM_SB -> B.word8 (fromIntegral dw)
     _ -> error ("Unhandled dword immediate encoding: " ++ show (ty, rex, oso))
 
 encodeQWordImmediate :: REX -> Bool -> Word64 -> OperandType -> B.Builder
@@ -534,6 +537,7 @@ encodeQWordImmediate rex oso qw ty =
   case ty of
     OpType ImmediateSource QSize -> B.word64LE qw
     OpType ImmediateSource VSize -> B.word64LE qw
+    IM_SB -> B.word8 (fromIntegral qw)
     _ -> error ("Unhandled qword immediate encoding: " ++ show (ty, rex, oso))
 
 {- Note [x86 Instruction Format]
