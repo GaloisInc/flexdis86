@@ -511,6 +511,7 @@ encodeByteImmediate :: REX -> Bool -> Word8 -> OperandType -> B.Builder
 encodeByteImmediate rex oso b ty =
   case ty of
     OpType ImmediateSource BSize -> B.word8 b
+    IM_1 -> mempty
     _ -> error ("Unhandled byte immediate encoding: " ++ show (ty, rex, oso))
 
 encodeWordImmediate :: REX -> Bool -> Word16 -> OperandType -> B.Builder
@@ -520,6 +521,7 @@ encodeWordImmediate rex oso w ty =
     OpType ImmediateSource ZSize -> B.word16LE w
     IM_SZ | L.view rexW rex -> B.word32LE (fromIntegral w)
           | otherwise -> B.word16LE w
+    IM_1 -> mempty
     _ -> error ("Unhandled word immediate encoding: " ++ show (ty, rex, oso))
 
 encodeDWordImmediate :: REX -> Bool -> Word32 -> OperandType -> B.Builder
@@ -530,6 +532,7 @@ encodeDWordImmediate rex oso dw ty =
     OpType ImmediateSource ZSize -> B.word32LE dw
     IM_SZ -> B.word32LE dw
     IM_SB -> B.word8 (fromIntegral dw)
+    IM_1 -> mempty
     _ -> error ("Unhandled dword immediate encoding: " ++ show (ty, rex, oso))
 
 encodeQWordImmediate :: REX -> Bool -> Word64 -> OperandType -> B.Builder
@@ -538,7 +541,16 @@ encodeQWordImmediate rex oso qw ty =
     OpType ImmediateSource QSize -> B.word64LE qw
     OpType ImmediateSource VSize -> B.word64LE qw
     IM_SB -> B.word8 (fromIntegral qw)
+    IM_1 -> mempty
     _ -> error ("Unhandled qword immediate encoding: " ++ show (ty, rex, oso))
+
+{- Note [IM_1]
+
+The IM_1 operand type denotes a constant 1.  This seems to be always
+encoded as part of the opcode, and does not need to be rendered as an
+argument.
+
+-}
 
 {- Note [x86 Instruction Format]
 
