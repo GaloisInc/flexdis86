@@ -210,6 +210,7 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("cmp $0x0,(%rsi,%rax,8)", ["cmp $0x0,(%rsi,%rax,8)"])
                     , ("movabs $0xaaaaaaaaaaaaaaa9,%rdx", ["movabs $0xaaaaaaaaaaaaaaa9,%rdx"])
                     , ("test %rdi,%rdi", ["test %rdi,%rdi"])
+                    , ("mov %fs:0x28,%rax", ["mov %fs:0x28,%rax"])
                     ]
 
 mmxTests :: T.TestTree

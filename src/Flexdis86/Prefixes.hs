@@ -62,7 +62,7 @@ instance Show REX where
   showsPrec _ (REX rex) = showHex rex
 
 -- | Includes segment prefix and branch override hints.
-newtype SegmentPrefix = SegmentPrefix Word8
+newtype SegmentPrefix = SegmentPrefix { unwrapSegmentPrefix :: Word8 }
   deriving (Eq, Show)
 
 prLockPrefix :: Simple Lens Prefixes LockPrefix

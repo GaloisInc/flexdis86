@@ -177,7 +177,9 @@ assembleInstruction ii = do
   where
     rex = L.view prREX pfxs
     oso = L.view prOSO pfxs
-    prefixBytes = mconcat [ if L.view prASO pfxs then B.word8 0x67 else mempty
+    spfx = L.view prSP pfxs
+    prefixBytes = mconcat [ if spfx == no_seg_prefix then mempty else B.word8 (unwrapSegmentPrefix spfx)
+                          , if L.view prASO pfxs then B.word8 0x67 else mempty
                           , if oso then B.word8 0x66 else mempty
                           , encodeLockPrefix (L.view prLockPrefix pfxs)
                           , encodeRequiredPrefix (iiRequiredPrefix ii)
@@ -280,29 +282,32 @@ withSIB mode rm val k
   | not (hasScaledIndex val) && (not (requiresSIB rm) || mode == directRegister) = k mempty
   | Just addrRef <- memRefComponents val =
     case addrRef of
-      Addr_32 _seg mbase midx _ ->
+      Addr_32 seg mbase midx _ ->
         let midx' = fmap (second (unReg64 . reg32_reg)) midx
             mbase' = fmap (unReg64 . reg32_reg) mbase
-        in k (mkSIB midx' mbase')
-      Addr_64 _seg mbase midx _ ->
+        in k (mkSIB seg midx' mbase')
+      Addr_64 seg mbase midx _ ->
         let midx' = fmap (second unReg64) midx
             mbase' = fmap unReg64 mbase
-        in k (mkSIB midx' mbase')
+        in k (mkSIB seg midx' mbase')
       _ -> k mempty
   | otherwise = k mempty
 
-mkSIB :: Maybe (Int, Word8)
+mkSIB :: Segment
+         -- ^ The segment
+      -> Maybe (Int, Word8)
          -- ^ (optional) (2^Scale, Index)
       -> Maybe Word8
          -- ^ Register base
       -> B.Builder
-mkSIB mScaleIdx mBase =
+mkSIB seg mScaleIdx mBase =
   case (mScaleIdx, mBase) of
     (Nothing, Just rno) -> B.word8 ((4 `shiftL` 3) .|. (rno .&. 0x7))
     (Just (scale, ix), Just rno) ->
       B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. (rno .&. 0x7))
     (Just (scale, ix), Nothing) ->
       B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3))
+    (Nothing, Nothing) | seg `elem` [fs, gs] -> B.word8 0x25
     other -> error ("Unexpected inputs to mkSIB: " ++ show other)
 
 requiresSIB :: Word8 -> Bool
@@ -414,14 +419,21 @@ encodeValue v =
           Addr_64 _ (Just (Reg64 rno)) Nothing _ -> 0x7 .&. rno
           Addr_32 _ (Just (Reg32 rno)) Nothing _ -> rno
 
+          -- A scaled index with no base indicates that we need a SIB
+          Addr_64 _ _ (Just _) _ -> 0x4
+          Addr_32 _ _ (Just _) _ -> 0x4
+
+          -- There is another type of scaled index that is less
+          -- apparent: if the segment is fs or gs, the displacement is
+          -- used as a scaled index from that register.
+          Addr_64 seg Nothing Nothing _ | seg `elem` [fs, gs] -> 0x04
+          Addr_32 seg Nothing Nothing _ | seg `elem` [fs, gs] -> 0x04
+
           -- If there is no base and no index at all, 0x5 indicates
           -- that ModR/M is followed by a raw displacement.
           Addr_64 _ Nothing Nothing _ -> 0x5
           Addr_32 _ Nothing Nothing _ -> 0x5
 
-          -- A scaled index with no base indicates that we need a SIB
-          Addr_64 _ _ (Just _) _ -> 0x4
-          Addr_32 _ _ (Just _) _ -> 0x4
           _ -> error ("encodeValue: Unsupported memRef type " ++ show v)
       | Just comps <- ripRefComponents v ->
         case comps of
