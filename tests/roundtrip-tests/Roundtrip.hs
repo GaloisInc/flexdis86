@@ -132,6 +132,7 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("nopw %cs:0x0(%rax,%rax,1)", ["nopw %cs:0x0(%rax,%rax,1)"])
                        , ("rep stos %rax,%es:(%rdi)", ["rep stos %rax,%es:(%rdi)"])
                        , ("jmpq   *0x4096a0(,%rax,8)", ["jmpq   *0x4096a0(,%rax,8)"])
+                       , ("nopl (%rax)", ["nopl (%rax)"])
                        ]
 
 addressingModeTests :: T.TestTree
@@ -217,6 +218,15 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("mov $0x1,%esi", ["mov $0x1,%esi"])
                     , ("repz cmpsb %es:(%rdi),%ds:(%rsi)", ["repz cmpsb %es:(%rdi),%ds:(%rsi)"])
                     , ("cmp    %dil,%sil", ["cmp    %dil,%sil"])
+                    , ("xchg %ax, %ax", ["xchg %ax,%ax"])
+                    , ("mov    %al,(%r14,%rbx,1)", ["mov    %al,(%r14,%rbx,1)"])
+                    , ("cmpb   $0x0,(%rax,%rbp,1)", ["cmpb   $0x0,(%rax,%rbp,1)"])
+                    , ("mov    0x98(%rsp),%rsi", ["mov    0x98(%rsp),%rsi"])
+                    , ("movabs $0x7000a38200000000,%rsi", ["movabs $0x7000a38200000000,%rsi"])
+                    , ("bt %rcx,%rsi", ["bt %rcx,%rsi"])
+                    , ("movzbl 0x8(%rsp),%r9d", ["movzbl 0x8(%rsp),%r9d"])
+                    , ("movzwl (%rcx,%rdx,2),%eax", ["movzwl (%rcx,%rdx,2),%eax"])
+                    , ("mov    %al,(%r14,%rbx,1)", ["mov    %al,(%r14,%rbx,1)"])
                     ]
 
 mmxTests :: T.TestTree
