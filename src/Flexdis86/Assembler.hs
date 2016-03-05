@@ -224,12 +224,24 @@ operandTypeRequiresModRM ot =
     OpType (Reg_fixed _) _ -> False
     _ -> True
 
+isImplicitRegister :: OperandType -> Bool
+isImplicitRegister t =
+  case t of
+    OpType (Reg_fixed _) _ -> True
+    _ -> False
+
 -- | Build a ModRM byte based on the operands of the instruction.
 encodeOperandModRM :: (Alternative m) => InstructionInstance -> Word8 -> m B.Builder
 encodeOperandModRM ii reqModRM =
   case filter (isNotImmediate . fst) (iiArgs ii) of
     [] | reqModRM == 0 -> empty
        | otherwise -> pure $ B.word8 reqModRM
+    [(_, M_Implicit {}), (_, M_Implicit {})] -> empty
+    [(_, M_Implicit {})] -> empty
+    [(_, M_Implicit {}), (_, ot)]
+      | isImplicitRegister ot -> empty
+    [(_, M_Implicit {}), _] -> error ("Unexpected implicit " ++ show ii)
+    [_, (_, M_Implicit {})] -> error ("Unexpected implicit " ++ show ii)
     [(op1, _)] ->
       pure $ withMode op1 $ \mode disp ->
         let rm = encodeValue op1
@@ -305,8 +317,9 @@ mkSIB seg mScaleIdx mBase =
     (Nothing, Just rno) -> B.word8 ((4 `shiftL` 3) .|. (rno .&. 0x7))
     (Just (scale, ix), Just rno) ->
       B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. (rno .&. 0x7))
+    -- With no base, the base part of the SIB is 0x5, according to the table (the [*] column).
     (Just (scale, ix), Nothing) ->
-      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3))
+      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. 0x5)
     (Nothing, Nothing) | seg `elem` [fs, gs] -> B.word8 0x25
     other -> error ("Unexpected inputs to mkSIB: " ++ show other)
 
@@ -333,8 +346,8 @@ withMode v k =
           Addr_64 _ (Just _) _ NoDisplacement -> k noDisplacement mempty
           Addr_32 _ (Just _) _ NoDisplacement -> k noDisplacement mempty
 
-          Addr_64 _ Nothing Nothing (Disp32 d) -> k noDisplacement (B.int32LE d)
-          Addr_32 _ Nothing Nothing (Disp32 d) -> k noDisplacement (B.int32LE d)
+          Addr_64 _ Nothing _ (Disp32 d) -> k noDisplacement (B.int32LE d)
+          Addr_32 _ Nothing _ (Disp32 d) -> k noDisplacement (B.int32LE d)
 
           Addr_64 _ _ _ (Disp32 d) -> k disp32 (B.int32LE d)
           Addr_32 _ _ _ (Disp32 d) -> k disp32 (B.int32LE d)
