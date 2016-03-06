@@ -240,6 +240,8 @@ encodeOperandModRM ii reqModRM =
     [(_, M_Implicit {})] -> empty
     [(_, M_Implicit {}), (_, ot)]
       | isImplicitRegister ot -> empty
+    [(_, ot), (_, M_Implicit {})]
+      | isImplicitRegister ot -> empty
     [(_, M_Implicit {}), _] -> error ("Unexpected implicit " ++ show ii)
     [_, (_, M_Implicit {})] -> error ("Unexpected implicit " ++ show ii)
     [(op1, _)] ->
