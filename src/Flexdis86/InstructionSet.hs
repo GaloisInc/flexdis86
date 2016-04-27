@@ -7,7 +7,8 @@ Maintainer  :  jhendrix@galois.com
 This declares the main datatypes for the instruction set.
 -}
 module Flexdis86.InstructionSet
-  ( InstructionInstance(..)
+  ( InstructionInstance
+  , InstructionInstanceF(..)
   , ppInstruction
   , instructionSize
   , SizeConstraint(..)
@@ -217,9 +218,10 @@ ppImm i = text"0x" <> text (showHex i "")
 ------------------------------------------------------------------------
 -- InstructionInstance
 
+type InstructionInstance = InstructionInstanceF (Value, OperandType)
 
 -- | Instruction instance with name and operands.
-data InstructionInstance
+data InstructionInstanceF a
    = II { iiLockPrefix :: !LockPrefix
           -- | Whether the address size is 16,32, or 64 bits.
           -- Among other things, this is used to determine whether
@@ -229,7 +231,7 @@ data InstructionInstance
           -- size override)
         , iiAddrSize :: !SizeConstraint
         , iiOp   :: !String
-        , iiArgs :: ![(Value, OperandType)]
+        , iiArgs :: ![a]
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
         , iiOpcode :: [Word8]
@@ -238,6 +240,9 @@ data InstructionInstance
         , iiRequiredRM :: Maybe Fin8
         }
   deriving (Show, Eq)
+
+instance Functor InstructionInstanceF where
+  fmap f ii = ii { iiArgs = fmap f (iiArgs ii) }
 
 -- | Compute the size of an instruction in bytes
 instructionSize :: InstructionInstance -> Word8
