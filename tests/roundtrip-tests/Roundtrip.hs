@@ -228,6 +228,7 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     , ("movzbl 0x8(%rsp),%r9d", ["movzbl 0x8(%rsp),%r9d"])
                     , ("movzwl (%rcx,%rdx,2),%eax", ["movzwl (%rcx,%rdx,2),%eax"])
                     , ("mov    %al,(%r14,%rbx,1)", ["mov    %al,(%r14,%rbx,1)"])
+                    , ("xor %r14d,%r14d", ["xor %r14d,%r14d"])
                     ]
 
 mmxTests :: T.TestTree
