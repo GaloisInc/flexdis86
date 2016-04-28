@@ -342,6 +342,7 @@ withMode v k =
     QWordReg {} -> k directRegister mempty
     MMXReg {} -> k directRegister mempty
     XMMReg {} -> k directRegister mempty
+    X87Register {} -> k directRegister mempty
 
     _ | Just comps <- memRefComponents v ->
         case comps of
@@ -389,6 +390,9 @@ memRefComponents v =
     Mem16 addr@(Addr_64 {}) -> Just addr
     Mem8 addr@(Addr_64 {}) -> Just addr
     VoidMem addr@(Addr_64 {}) -> Just addr
+    FPMem32 addr@(Addr_64 {}) -> Just addr
+    FPMem64 addr@(Addr_64 {}) -> Just addr
+    FPMem80 addr@(Addr_64 {}) -> Just addr
 
     Mem128 addr@(Addr_32 {}) -> Just addr
     Mem64 addr@(Addr_32 {}) -> Just addr
@@ -396,6 +400,9 @@ memRefComponents v =
     Mem16 addr@(Addr_32 {}) -> Just addr
     Mem8 addr@(Addr_32 {}) -> Just addr
     VoidMem addr@(Addr_32 {}) -> Just addr
+    FPMem32 addr@(Addr_32 {}) -> Just addr
+    FPMem64 addr@(Addr_32 {}) -> Just addr
+    FPMem80 addr@(Addr_32 {}) -> Just addr
 
     _ -> Nothing
 
@@ -408,6 +415,9 @@ ripRefComponents v =
     Mem16 addr@(IP_Offset_64 {}) -> Just addr
     Mem8 addr@(IP_Offset_64 {}) -> Just addr
     VoidMem addr@(IP_Offset_64 {}) -> Just addr
+    FPMem32 addr@(IP_Offset_64 {}) -> Just addr
+    FPMem64 addr@(IP_Offset_64 {}) -> Just addr
+    FPMem80 addr@(IP_Offset_64 {}) -> Just addr
 
     Mem128 addr@(IP_Offset_32 {}) -> Just addr
     Mem64 addr@(IP_Offset_32 {}) -> Just addr
@@ -415,6 +425,9 @@ ripRefComponents v =
     Mem16 addr@(IP_Offset_32 {}) -> Just addr
     Mem8 addr@(IP_Offset_32 {}) -> Just addr
     VoidMem addr@(IP_Offset_32 {}) -> Just addr
+    FPMem32 addr@(IP_Offset_32 {}) -> Just addr
+    FPMem64 addr@(IP_Offset_32 {}) -> Just addr
+    FPMem80 addr@(IP_Offset_32 {}) -> Just addr
 
     _ -> Nothing
 
@@ -426,6 +439,7 @@ encodeValue v =
     WordReg (Reg16 rno) -> 0x7 .&. rno
     DWordReg (Reg32 rno) -> 0x7 .&. rno
     QWordReg (Reg64 rno) -> 0x7 .&. rno
+    X87Register rno -> 0x7 .&. fromIntegral rno
     MMXReg (MMXR rno) -> rno
     XMMReg (XMMR rno) -> rno
     _ | Just comps <- memRefComponents v ->
@@ -546,6 +560,9 @@ encodeWordImmediate rex oso w ty =
   case ty of
     OpType ImmediateSource WSize -> B.word16LE w
     OpType ImmediateSource ZSize -> B.word16LE w
+    OpType ImmediateSource VSize -> B.word16LE w
+    IM_SB | L.view rexW rex -> B.word32LE (fromIntegral w)
+          | otherwise -> B.word16LE w
     IM_SZ | L.view rexW rex -> B.word32LE (fromIntegral w)
           | otherwise -> B.word16LE w
     IM_1 -> mempty
