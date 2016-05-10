@@ -18,6 +18,7 @@ This defines a disassembler based on optable definitions.
 module Flexdis86.Disassembler
   ( InstructionParser
   , mkX64Disassembler
+  , mkX64Assembler
   , TableRef
   , disassembleInstruction
   , DisassembledAddr(..)
@@ -28,346 +29,41 @@ module Flexdis86.Disassembler
 import Control.Applicative
 import Control.Exception
 import Control.Lens
-import Control.Monad.Error
 import Control.Monad.State
 import Data.Binary.Get (Decoder(..), runGetIncremental)
 import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Int
 import Data.List (subsequences, permutations)
-import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import Data.Word
-import Numeric (showHex)
 
-import Debug.Trace
+import Prelude
 
+import Flexdis86.Assembler
 import Flexdis86.ByteReader
 import Flexdis86.InstructionSet
 import Flexdis86.OpTable
-
--- | Prefixes for an instruction.
-data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
-                         , _prSP  :: SegmentPrefix
-                         , _prREX :: REX
-                         , _prASO :: Bool
-                         , _prOSO :: Bool
-                         }
-                deriving (Show)
-
--- | REX value for 64-bit mode.
-newtype REX = REX { unREX :: Word8 }
-  deriving (Eq)
-
-instance Show REX where
-  showsPrec _ (REX rex) = showHex rex
-
--- | Includes segment prefix and branch override hints.
-newtype SegmentPrefix = SegmentPrefix Word8
-  deriving (Show)
-
-prLockPrefix :: Simple Lens Prefixes LockPrefix
-prLockPrefix = lens _prLockPrefix (\s v -> s { _prLockPrefix = v })
-
-prSP :: Simple Lens Prefixes SegmentPrefix
-prSP = lens _prSP (\s v -> s { _prSP = v})
-
-prREX :: Simple Lens Prefixes REX
-prREX = lens _prREX (\s v -> s { _prREX = v })
-
-prASO :: Simple Lens Prefixes Bool
-prASO = lens _prASO (\s v -> s { _prASO = v })
-
-prOSO :: Simple Lens Prefixes Bool
-prOSO = lens _prOSO (\s v -> s { _prOSO = v })
-
-prAddrSize :: Prefixes -> SizeConstraint
-prAddrSize pfx | pfx^.prASO = Size32
-               | otherwise  = Size64
-
-
-------------------------------------------------------------------------
--- SegmentPrefix
-
-no_seg_prefix :: SegmentPrefix
-no_seg_prefix = SegmentPrefix 0
-
-setDefault :: SegmentPrefix -> Segment -> Segment
-setDefault (SegmentPrefix 0) s = s
-setDefault (SegmentPrefix 0x26) _ = ES
-setDefault (SegmentPrefix 0x2e) _ = CS
-setDefault (SegmentPrefix 0x36) _ = SS
-setDefault (SegmentPrefix 0x3e) _ = DS
-setDefault (SegmentPrefix 0x64) _ = FS
-setDefault (SegmentPrefix 0x65) _ = GS
-setDefault (SegmentPrefix w) _ = error $ "Unexpected segment prefix: " ++ showHex w ""
-
-
-------------------------------------------------------------------------
--- OperandType
-
-data OperandSource
-     -- | Register or memory operand from ModRM.rm
-   = ModRM_rm
-     -- | Register operand stored with ModRM.rm (ModRM.mod must equal 3)
-   | ModRM_rm_mod3
-   | ModRM_reg -- ^ Register from ModRM.reg
-     -- ^ Register whose index is derived from opcode.
-     -- The word denote the index (0..7).
-     -- rex.b is ored with this value to get the index of the
-     -- Reg8.
-   | Opcode_reg Word8
-     -- ^ A fixed register that is not affected by REX.
-   | Reg_fixed Word8
-     -- ^ An immediate value read in from the instruction stream.
-   | ImmediateSource
-     -- ^ An offset value read in from the instruction stream.
-   | OffsetSource
-     -- ^ A jump location that is read in from instruction stream, and
-     -- offset from current instruction pointer.
-   | JumpImmediate
-  deriving (Eq, Show)
-
-data OperandSize
-   = BSize -- ^ Operand is always 8-bits.
-   | WSize -- ^ Operand is always 16-bits.
-   | DSize -- ^ Operand is always 32-bits.
-   | QSize -- ^ Operand is always 64-bits.
-   | VSize -- ^ Operand size equals operand mode (16,32 or 64 bits)
-   | YSize -- ^ Operand size is 64-bits if operand size is 64 bits, and 32-bits otherwise.
-   | ZSize -- ^ Operand size is 16-bits if operand size is 16 bits, and 32-bits otherwise.
-   | RDQSize -- ^ Operand size is 64-bits on x64 and 32-bits on ia32.
-  deriving (Eq, Show)
-
-data OperandType
-     -- | Operand that comes from a source and size.
-   = OpType OperandSource OperandSize
-     -- | A control register from ModRM.reg
-   | RG_C
-     -- | A debug register from ModRM.reg
-   | RG_dbg
-     -- | A segment register from ModRM.reg
-   | RG_S
-     -- | A floating point register index
-   | RG_ST Int
-     -- | An MMX register from ModRM.reg
-   | RG_MMX_reg
-     -- | A SSE XMM register from ModRM.reg
-   | RG_XMM_reg
-     -- | A SSE XMM register from ModRM.rm
-   | RG_XMM_rm
-     -- | A SSE XMM register or 64 bit address from ModRM.rm
-   | RM_XMM
-     -- | A specific segment
-   | SEG Segment
-
-     -- | Operand points to a far pointer in memory that may be 16,32,or 64 bits
-     -- depending on operand size.
-     -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
-   | M_FP
-
-     -- | An address in memory with no defined target.
-     -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
-   | M
-     -- | A 64-bit integer memory location.
-     -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
-   | M_X SizeConstraint
-
-     -- | A 64-bit floating point memory location.
-     -- Decoded as for M_X
-   | M_FloatingPoint FPSizeConstraint
-
-     -- | A register or memory location.
-     -- As a register has size X-Size, and as memory has size X-Size.
-     -- Stored in ModRM.rm
-   | MXRX OperandSize OperandSize -- FIXME, should prob. be SizeConstraint
-
-     -- | An MMX register or 64bit memory operand.
-     -- Stored in ModRM.rm.
-   | RM_MMX
-     -- | An MMX register from ModRM.rm
-   | RG_MMX_rm
-
-     -- | An implicit memory location based upon the given register.
-     -- Altered by ASO.
-   | M_Implicit Segment Reg64 OperandSize
-
-     -- | The constant one.
-   | IM_1
-    -- | An immediate with 8 bits that is sign extended to match operand size.
-   | IM_SB
-     -- | An immediate that is 32bits if REX.w set or operand size is 32 bits,
-     -- and 16bits if operand size is 16bits.
-     -- The value can be sign exected to match operator size.
-   | IM_SZ
-  deriving (Eq, Show)
-
-operandHandlerMap :: Map.Map String OperandType
-operandHandlerMap = Map.fromList
-  [ -- Fixed values implicitly derived from opcode.
-    (,) "AL"  $ OpType (Reg_fixed 0) BSize
-  , (,) "eAX" $ OpType (Reg_fixed 0) ZSize
-  , (,) "rAX" $ OpType (Reg_fixed 0) VSize
-  , (,) "CL"  $ OpType (Reg_fixed 1) BSize
-  , (,) "DX"  $ OpType (Reg_fixed 2) WSize
-
-  , (,) "MIdb" $ M_Implicit ES rdi BSize
-  , (,) "MIdw" $ M_Implicit ES rdi WSize
-  , (,) "MIdd" $ M_Implicit ES rdi DSize
-  , (,) "MIdq" $ M_Implicit ES rdi QSize
-  , (,) "MIsb" $ M_Implicit DS rsi BSize
-  , (,) "MIsw" $ M_Implicit DS rsi WSize
-  , (,) "MIsd" $ M_Implicit DS rsi DSize
-  , (,) "MIsq" $ M_Implicit DS rsi QSize
-
-    -- Fixed segment registers.
-  , (,) "FS"  $ SEG FS
-  , (,) "GS"  $ SEG GS
-
-    -- Register values stored in opcode that also depend on REX.b
-  , (,) "R0b" $ OpType (Opcode_reg 0) BSize
-  , (,) "R1b" $ OpType (Opcode_reg 1) BSize
-  , (,) "R2b" $ OpType (Opcode_reg 2) BSize
-  , (,) "R3b" $ OpType (Opcode_reg 3) BSize
-  , (,) "R4b" $ OpType (Opcode_reg 4) BSize
-  , (,) "R5b" $ OpType (Opcode_reg 5) BSize
-  , (,) "R6b" $ OpType (Opcode_reg 6) BSize
-  , (,) "R7b" $ OpType (Opcode_reg 7) BSize
-  , (,) "R0v" $ OpType (Opcode_reg 0) VSize
-  , (,) "R1v" $ OpType (Opcode_reg 1) VSize
-  , (,) "R2v" $ OpType (Opcode_reg 2) VSize
-  , (,) "R3v" $ OpType (Opcode_reg 3) VSize
-  , (,) "R4v" $ OpType (Opcode_reg 4) VSize
-  , (,) "R5v" $ OpType (Opcode_reg 5) VSize
-  , (,) "R6v" $ OpType (Opcode_reg 6) VSize
-  , (,) "R7v" $ OpType (Opcode_reg 7) VSize
-  , (,) "R0y" $ OpType (Opcode_reg 0) YSize
-  , (,) "R1y" $ OpType (Opcode_reg 1) YSize
-  , (,) "R2y" $ OpType (Opcode_reg 2) YSize
-  , (,) "R3y" $ OpType (Opcode_reg 3) YSize
-  , (,) "R4y" $ OpType (Opcode_reg 4) YSize
-  , (,) "R5y" $ OpType (Opcode_reg 5) YSize
-  , (,) "R6y" $ OpType (Opcode_reg 6) YSize
-  , (,) "R7y" $ OpType (Opcode_reg 7) YSize
-
-    -- Register values stored in ModRM.reg.
-  , (,) "Gb"  $ OpType ModRM_reg BSize
-  , (,) "Gd"  $ OpType ModRM_reg DSize
-  , (,) "Gq"  $ OpType ModRM_reg QSize
-  , (,) "Gv"  $ OpType ModRM_reg VSize
-  , (,) "Gy"  $ OpType ModRM_reg YSize
-
-    -- Control register read from ModRM.reg.
-  , (,) "C"   $ RG_C
-    -- Debug register read from ModRM.reg.
-  , (,) "D"   $ RG_dbg
-
-    -- MMX register stored in ModRM.reg
-  , (,) "P"    $ RG_MMX_reg
-
-    -- MMX register stored in ModRM.rm
-    -- (ModRM.mod must equal 3).
-  , (,) "N"    $ RG_MMX_rm
-   -- Register operand stored in ModRM.rm (ModRM.mod must equal 3)
-  , (,) "R"    $ OpType ModRM_rm_mod3 RDQSize
-
-    -- RM fields are read from ModRM.rm
-  , (,) "Eb"  $ OpType ModRM_rm BSize
-  , (,) "Ew"  $ OpType ModRM_rm WSize
-  , (,) "Ed"  $ OpType ModRM_rm DSize
-  , (,) "Eq"  $ OpType ModRM_rm QSize
-  , (,) "Ev"  $ OpType ModRM_rm VSize
-  , (,) "Ey"  $ OpType ModRM_rm YSize
-
-    -- Memory or register value stored in ModRM.rm
-    -- As a  register has size VSize, and as memory has size WSize.
-  , (,) "MwRv" $ MXRX VSize WSize
-    -- As a  register has size DSize, and as memory has size BSize.
-  , (,) "MbRd" $ MXRX BSize DSize
-  , (,) "MwRy" $ MXRX WSize YSize
-
-    -- Far Pointer (which is an address) stored in ModRM.rm
-    -- (ModRM.mod must not equal 3)
-  , (,) "Fv"   $ M_FP
-    -- Memory value stored in ModRM.rm
-    -- (ModRM.mod must not equal 3)
-  , (,) "M"    $ M
-
-    -- Memory value pointing to floating point value
-  , (,) "M32fp" $ M_FloatingPoint FPSize32
-  , (,) "M64fp" $ M_FloatingPoint FPSize64
-  , (,) "M80fp" $ M_FloatingPoint FPSize80
-
-
-    -- FP Register indicies
-  , (,) "ST0"   $ RG_ST 0
-  , (,) "ST1"   $ RG_ST 1
-  , (,) "ST2"   $ RG_ST 2
-  , (,) "ST3"   $ RG_ST 3
-  , (,) "ST4"   $ RG_ST 4
-  , (,) "ST5"   $ RG_ST 5
-  , (,) "ST6"   $ RG_ST 6
-  , (,) "ST7"   $ RG_ST 7
-
-    -- Memory value pointing to 64-bit integer stored in ModRM.rm
-    -- (ModRM.mod must not equal 3).
-  , (,) "Mq"  $ M_X Size64
-  , (,) "Md"  $ M_X Size32
-  , (,) "Mw"  $ M_X Size16
-
-  , (,) "S"   $ RG_S
-
-  , (,) "Q"    $ RM_MMX
-
-    -- Immediate values with different sizes.
-    -- An immediate byte that does not need to be extended.
-  , (,) "Ib"  $ OpType ImmediateSource BSize
-    -- An immediate word that does not need to be extended.
-  , (,) "Iw"  $ OpType ImmediateSource WSize
-    -- A size v value that does not need to be extended.
-  , (,) "Iv"  $ OpType ImmediateSource VSize
-    -- A size z value that does not need to be extended.
-  , (,) "Iz"  $ OpType ImmediateSource ZSize
-
-    -- Constant one
-  , (,) "I1"  $ IM_1
-
-  , (,) "Jb"   $ OpType JumpImmediate  BSize
-  , (,) "Jz"   $ OpType JumpImmediate  ZSize
-
-  , (,) "Ob"   $ OpType OffsetSource BSize
-  , (,) "Ov"   $ OpType OffsetSource VSize
-
-    -- An immediate byte that is sign extended to an operator size.
-  , (,) "sIb" $ IM_SB
-    -- An immediate ZSize value that is sign extended to the operator
-    -- size.
-  , (,) "sIz" $ IM_SZ
-
-    -- XMM
-  , (,) "U"   $ RG_XMM_rm
-  , (,) "V"   $ RG_XMM_reg
-  , (,) "W"   $ RM_XMM
-  ]
-
-lookupOperandType :: String -> String -> OperandType
-lookupOperandType i nm =
-  case Map.lookup nm operandHandlerMap of
-    Just h -> h
-    Nothing -> error $ "Unknown operand: " ++ i ++ " " ++ show nm
+import Flexdis86.Prefixes
+import Flexdis86.Register
+import Flexdis86.Sizes
 
 -- | Create an instruction parser from the given udis86 parser.
 -- This is currently restricted to x64 base operations.
 mkX64Disassembler :: BS.ByteString -> Either String InstructionParser
-mkX64Disassembler bs = mkParser . filter ifilter <$> parseOpTable bs
-  where -- Filter out unsupported operations
-        ifilter d = d^.reqAddrSize /= Just Size16
+mkX64Disassembler bs = mkParser . filter defSupported <$> parseOpTable bs
+  where mkParser defs = fst $ runParserGen $ parseTable defs
+
+defSupported :: Def -> Bool
+defSupported d = d^.reqAddrSize /= Just Size16
                  && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
                  && x64Compatible d
-        mkParser defs = fst $ runParserGen $ parseTable defs
+
+mkX64Assembler :: BS.ByteString -> Either String AssemblerContext
+mkX64Assembler bs = (assemblerContext . filter defSupported) <$> parseOpTable bs
 
 ------------------------------------------------------------------------
 -- REX
@@ -437,7 +133,7 @@ sib_base s = unSIB s .&. 0x7
 ------------------------------------------------------------------------
 -- Misc
 
-type AddrOpts = Segment -> Maybe Word8 -> Maybe (Int,Word8) -> Int32 -> AddrRef
+type AddrOpts = Segment -> Maybe Word8 -> Maybe (Int,Word8) -> Displacement -> AddrRef
 
 memRef_32 :: AddrOpts
 memRef_32 s b si o = Addr_32 s (reg32 <$> b) (over _2 reg32 <$> si) o
@@ -516,6 +212,7 @@ data IParser a where
             -> SizeConstraint
             -> String
             -> [OperandType]
+            -> Def
             -> IParser (InstructionInstance)
   ReadModRM :: RegTable (ModTable RMTable)
             -> IParser (InstructionInstance)
@@ -541,9 +238,9 @@ expectsModRM d
   || any modRMOperand (d^.defOperands)
 
 -- | Returns true if operand has a modRMOperand.
-modRMOperand :: String -> Bool
+modRMOperand :: OperandType -> Bool
 modRMOperand nm =
-  case lookupOperandType "" nm of
+  case nm of
     OpType sc _ ->
       case sc of
         ModRM_rm        -> True
@@ -705,8 +402,8 @@ mkOpcodeTable f defs = go [] (concatMap allPrefixedOpcodes defs)
                 _ | all (expectsModRM.snd.snd) l -> do
                      ReadModRM <$> f (snd <$> l)
                 [([],(pfx, d))] -> assert (not (expectsModRM d)) $
-                    return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps
-                  where tps = lookupOperandType "" <$> view defOperands d
+                    return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps d
+                  where tps = view defOperands d
                 _ -> error $ "mkOpcodeTable: ambiguous operators " ++ show (map snd l)
             -- If we still have opcodes to parse, check that all definitions
             -- expect at least one more opcode, and generate table for next
@@ -728,6 +425,10 @@ data ModTable a
 requireModCheck :: Def -> Bool
 requireModCheck d = isJust (d^.requiredMod)
 
+mkModTable :: (Applicative f)
+           => ([(a, Def)] -> f b)
+           -> [(a, Def)]
+           -> f (ModTable b)
 mkModTable f pfxdefs
   | any (requireModCheck . snd) pfxdefs = do
     let memDef d =
@@ -735,7 +436,7 @@ mkModTable f pfxdefs
             Just OnlyReg -> False
             _ -> none modRMRegOperand (d^.defOperands)
         modRMRegOperand nm =
-          case lookupOperandType "" nm of
+          case nm of
             OpType sc _ ->
               case sc of
                 ModRM_rm_mod3 -> True
@@ -750,7 +451,7 @@ mkModTable f pfxdefs
             Just OnlyMem -> False
             _ -> none modRMMemOperand (d^.defOperands)
         modRMMemOperand nm =
-          case lookupOperandType "" nm of
+          case nm of
             OpType sc _ ->
               case sc of
                 ModRM_rm -> True
@@ -786,7 +487,7 @@ type RMTable = RegTable ReadTable
 
 -- | Return parsed instruction.
 data ReadTable
-   = ReadTable Prefixes SizeConstraint String [OperandType]
+   = ReadTable Prefixes SizeConstraint String [OperandType] Def
    | NoParse
   deriving (Show)
 
@@ -807,9 +508,9 @@ parseTable = fmap asOpcodeTable . makeTables finished
 
       finished []         = return NoParse
       finished [(pfx, d)] = let nm = d^.defMnemonic
-                                tps = lookupOperandType "" <$> view defOperands d
+                                tps = view defOperands d
                             in
-                             return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps
+                             return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps d
       finished pfxdefs = fail $ "parseTable ambiguous" ++ show (map snd pfxdefs)
 
 ------------------------------------------------------------------------
@@ -824,12 +525,12 @@ readSIB :: ByteReader m => m SIB
 readSIB = SIB <$> readByte
 
 -- | Read 32bit value
-read_disp32 :: ByteReader m => m Int32
-read_disp32 = readSDWord
+read_disp32 :: ByteReader m => m Displacement
+read_disp32 = Disp32 <$> readSDWord
 
 -- | Read an 8bit value and sign extend to 32-bits.
-read_disp8 :: ByteReader m => m Int32
-read_disp8 = fromIntegral <$> readSByte
+read_disp8 :: ByteReader m => m Displacement
+read_disp8 = Disp8 <$> readSByte
 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
@@ -840,12 +541,18 @@ disassembleInstruction tr0 = do
 
   case tr0 `trVal` b of
     OpcodeTable tr -> disassembleInstruction tr
-    SkipModRM pfx osz nm tps -> finish <$> traverse (parseValue pfx osz Nothing) tps
+    SkipModRM pfx osz nm tps df -> finish <$> traverse (parseValue pfx osz Nothing) tps
       where finish args =
               II { iiLockPrefix = pfx^.prLockPrefix
                  , iiAddrSize = prAddrSize pfx
                  , iiOp   = nm
-                 , iiArgs = args
+                 , iiArgs = zipWith (,) args (view defOperands df)
+                 , iiPrefixes = pfx
+                 , iiRequiredPrefix = view requiredPrefix df
+                 , iiOpcode = view defOpcodes df
+                 , iiRequiredMod = view requiredMod df
+                 , iiRequiredReg = view requiredReg df
+                 , iiRequiredRM = view requiredRM df
                  }
     ReadModRM t -> flip parseRegTable t =<< readModRM
 
@@ -857,7 +564,7 @@ parseGenRegTable :: ByteReader m
               -> m InstructionInstance
 parseGenRegTable f g modRM (RegTable v) = f modRM mtable
   where mtable = v `regIdx` g modRM
-parseGenRegTable f g modRM (RegUnchecked m) = f modRM m
+parseGenRegTable f _g modRM (RegUnchecked m) = f modRM m
 
 parseRegTable :: ByteReader m
               => ModRM
@@ -886,12 +593,18 @@ parseReadTable :: ByteReader m
                -> ReadTable
                -> m InstructionInstance
 parseReadTable _ NoParse = fail "Invalid instruction."
-parseReadTable modRM (ReadTable pfx osz nm tps) =
-  finish <$>  traverse (parseValue pfx osz (Just modRM)) tps
+parseReadTable modRM (ReadTable pfx osz nm tps df) =
+  finish <$> traverse (parseValue pfx osz (Just modRM)) tps
   where finish args = II { iiLockPrefix = pfx^.prLockPrefix
                          , iiAddrSize = prAddrSize pfx
                          , iiOp = nm
-                         , iiArgs = args
+                         , iiArgs = zipWith (,) args (view defOperands df)
+                         , iiPrefixes = pfx
+                         , iiRequiredPrefix = view requiredPrefix df
+                         , iiOpcode = view defOpcodes df
+                         , iiRequiredMod = view requiredMod df
+                         , iiRequiredReg = view requiredReg df
+                         , iiRequiredRM = view requiredRM df
                          }
 
 -- | Returns the size of a function.
@@ -974,8 +687,8 @@ parseValue p osz mmrm tp = do
       where s = sp `setDefault` DS
             moffset | aso =  Offset_32 s <$> readDWord
                     | otherwise = Offset_64 s <$> readQWord
-    OpType JumpImmediate BSize -> JumpOffset . fromIntegral <$> readSByte
-    OpType JumpImmediate sz -> fmap JumpOffset $
+    OpType JumpImmediate BSize -> JumpOffset BSize . fromIntegral <$> readSByte
+    OpType JumpImmediate sz -> fmap (JumpOffset sz) $
       case sizeFn osz sz of
         Size16 -> fromIntegral <$> readSWord
         Size32 -> fromIntegral <$> readSDWord
@@ -1017,7 +730,7 @@ parseValue p osz mmrm tp = do
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
       pure $ MMXReg $ mmxReg $ modRM_rm modRM
     M_Implicit seg r sz ->
-      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing 0
+      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing NoDisplacement
       where
         mkaddr | aso = memRef_32
                | otherwise = memRef_64
@@ -1029,14 +742,13 @@ parseValue p osz mmrm tp = do
         Size32 -> pure $ DWordImm $ fromIntegral b
         Size64 -> pure $ QWordImm $ fromIntegral b
     IM_SZ ->
+      -- IM_SZ is 16 or 32 bits, and at run-time sign extended to the
+      -- register size when it is deposited into a register.
+      -- TODO: Chekc this is actual done correctly.
       case osz of
         Size16 ->  WordImm . fromIntegral <$> readSWord
         Size32 -> DWordImm . fromIntegral <$> readDWord
-        Size64 -> do dWord <- (fromIntegral <$> readDWord) :: ByteReader m => m Word32
-                     pure $ QWordImm $
-                       if testBit dWord 31
-                       then 0xffffffff00000000 .|. fromIntegral dWord
-                       else fromIntegral dWord
+        Size64 -> QWordImm . fromIntegral <$> readSDWord
 
 -- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m
@@ -1061,7 +773,7 @@ readNoOffset aso p modRM = do
      else do
       let seg | base == rsp_idx = sp `setDefault` SS
               | otherwise       = sp `setDefault` DS
-      return $ memRef seg (Just (base_reg base)) si 0
+      return $ memRef seg (Just (base_reg base)) si NoDisplacement
   else if rm == rbp_idx then do
     let ip_offset | aso = IP_Offset_32
                   | otherwise = IP_Offset_64
@@ -1069,10 +781,10 @@ readNoOffset aso p modRM = do
     ip_offset seg <$> read_disp32
   else do
     let seg = sp `setDefault` DS
-    return $ memRef seg (Just (base_reg rm)) Nothing 0
+    return $ memRef seg (Just (base_reg rm)) Nothing NoDisplacement
 
 readWithOffset :: ByteReader m
-               => m Int32
+               => m Displacement
                -> Bool -- ^ Address size override
                -> Prefixes
                -> ModRM

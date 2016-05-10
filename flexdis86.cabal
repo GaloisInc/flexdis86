@@ -3,15 +3,16 @@ Version:       0.1.1
 Author:        Galois Inc.
 Maintainer:    jhendrix@galois.com
 Build-type:    Simple
-Cabal-version: >= 1.9
+Cabal-version: >= 1.10
 Synopsis: A flexible disassembler or x86
 
 library
+  default-language: Haskell2010
   build-depends:
     base >= 4,
     ansi-wl-pprint,
     binary,
-    bytestring,
+    bytestring >= 0.10 && < 0.11,
     containers,
     directory,
     filepath,
@@ -24,15 +25,22 @@ library
   hs-source-dirs: src
   exposed-modules:
     Flexdis86
+    Flexdis86.Assembler
     Flexdis86.ByteReader
     Flexdis86.DefaultParser
     Flexdis86.Disassembler
     Flexdis86.InstructionSet
+    Flexdis86.Operand
     Flexdis86.OpTable
+    Flexdis86.Prefixes
+    Flexdis86.Register
+    Flexdis86.Segment
+    Flexdis86.Sizes
 
   GHC-options: -Wall -fno-ignore-asserts -O2
 
 executable DumpInstr
+  default-language: Haskell2010
   build-depends:
     base >= 4,
     ansi-wl-pprint,
@@ -48,3 +56,23 @@ executable DumpInstr
 
   hs-source-dirs: utils
   main-is: DumpInstr.hs
+
+test-suite roundtrip-tests
+  type: exitcode-stdio-1.0
+  default-language: Haskell2010
+  main-is: Main.hs
+  hs-source-dirs: tests/roundtrip-tests
+  other-modules: Assemble
+                 Roundtrip
+                 Util
+  ghc-options: -Wall
+  build-depends: flexdis86,
+                 base,
+                 bytestring,
+                 tasty >= 0.10 && < 0.12,
+                 tasty-hunit,
+                 process >= 1.2 && < 1.5,
+                 lens,
+                 temporary >= 1 && < 2,
+                 pretty-hex,
+                 elf-galois >= 0.28

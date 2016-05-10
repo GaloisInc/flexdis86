@@ -21,6 +21,8 @@ import Data.Bits
 import Data.Int
 import Data.Word
 
+import Prelude
+
 -- | A reader monad for reading values from a stream.
 class (Applicative m, Monad m) => ByteReader m where
   -- | Read a byte.

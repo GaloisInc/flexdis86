@@ -7,8 +7,9 @@ Maintainer  :  jhendrix@galois.com
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Flexdis86.DefaultParser
-  ( optableData 
+  ( optableData
   , defaultX64Disassembler
+  , defaultX64Assembler
   ) where
 
 import Control.Monad (when)
@@ -19,13 +20,14 @@ import qualified System.FilePath as F
 import qualified System.Directory as D
 import System.IO.Unsafe (unsafePerformIO)
 
+import Flexdis86.Assembler
 import Flexdis86.Disassembler
 
 {-# NOINLINE optableData #-}
 
 -- | Read the XML optable specification from disk.
 optableData :: BS.ByteString
-optableData = 
+optableData =
  -- The @getPathToOptableXML@ computes an absolute path to the XML
  -- file. This is helpful in case our current working directory is not
  -- the directory containing the @flexdis86.cabal@ file. This happens,
@@ -64,3 +66,9 @@ defaultX64Disassembler = p
   where p = case mkX64Disassembler optableData of
               Right v -> v
               Left  s -> error ("defaultX64Diassembler: " ++ s)
+
+defaultX64Assembler :: AssemblerContext
+defaultX64Assembler =
+  case mkX64Assembler optableData of
+    Right c -> c
+    Left err -> error ("defaultX64Assembler: " ++ err)
