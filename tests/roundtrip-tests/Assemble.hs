@@ -7,11 +7,11 @@ import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
+import           Flexdis86.Prefixes ( prOSO )
 import qualified Flexdis86.Register as D
-import Flexdis86.Prefixes ( prOSO )
-import Hexdump
 
-import Util ( withAssembledCode )
+import           Hexdump
+import           Util ( withAssembledCode )
 
 assembleTests :: T.TestTree
 assembleTests =
@@ -59,7 +59,7 @@ setOSO :: D.InstructionInstance -> D.InstructionInstance
 setOSO ii = ii { D.iiPrefixes = L.over prOSO (const True) (D.iiPrefixes ii) }
 
 mkI :: String -> [D.Value] -> Maybe D.InstructionInstance
-mkI = D.mkInstruction D.defaultX64Assembler
+mkI = D.mkInstruction
 
 mkTest :: (String, Maybe D.InstructionInstance) -> T.TestTree
 mkTest (asm, Nothing) = T.testCase asm $ T.assertFailure ("Could not assemble " ++ asm)

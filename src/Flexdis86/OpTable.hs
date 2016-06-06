@@ -1,10 +1,10 @@
 {- |
 Module      :  $Header$
-Description :  Declares parser for optable.xml file.
-Copyright   :  (c) Galois, Inc 2013
+Copyright   :  (c) Galois, Inc 2013-2016
 Maintainer  :  jhendrix@galois.com
 
-This declares the parser for optable.xml file.
+This declares the parser for optable.xml file, which is used to define the
+instruction set.
 -}
 
 {-# LANGUAGE FlexibleContexts #-}
@@ -23,6 +23,7 @@ module Flexdis86.OpTable
   , defVendor
   , defCPUReq
   , modeLimit
+  , defSupported
   , Mode(..)
   , defMode
   , reqAddrSize
@@ -40,26 +41,25 @@ module Flexdis86.OpTable
   , parseOpTable
   ) where
 
-import Control.Applicative
-import Control.Lens
-import Control.Monad.State
-import Data.Bits ((.&.), shiftR)
+import           Control.Applicative
+import           Control.Lens
+import           Control.Monad.State
+import           Data.Bits ((.&.), shiftR)
 import qualified Data.ByteString as BS
-import Data.Char
-import Data.List
+import           Data.Char
+import           Data.List
 import qualified Data.Map as Map
-import Data.Maybe
-import Data.Word
+import           Data.Maybe
+import           Data.Word
+import           Numeric (readDec, readHex)
+import           Text.XML.Light
 
-import Prelude
+import           Prelude
 
-import Numeric (readDec, readHex)
-import Text.XML.Light
-
-import Flexdis86.Operand
-import Flexdis86.Register
-import Flexdis86.Segment
-import Flexdis86.Sizes
+import           Flexdis86.Operand
+import           Flexdis86.Register
+import           Flexdis86.Segment
+import           Flexdis86.Sizes
 
 qname :: String -> QName
 qname nm = QName { qName = nm, qURI = Nothing, qPrefix = Nothing }
@@ -374,6 +374,12 @@ x87ModRM = lens _x87ModRM (\s v -> s { _x87ModRM = v })
 defOperands :: Simple Lens Def [OperandType]
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 
+-- | Return true if this definition is one supported by flexdis86.
+defSupported :: Def -> Bool
+defSupported d = d^.reqAddrSize /= Just Size16
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
+                 && x64Compatible d
+
 -- | Parse a definition.
 parse_def ::
   String -> [String] -> CPURequirement -> Maybe Vendor -> ElemParser Def
@@ -448,12 +454,12 @@ parse_opcode nm = do
 
     _ | Just r <- stripPrefix "/reg=" nm
       , [(b,"")] <- readHex r
-      , 0 <= b && b < 8
-      -> requiredReg ?= Fin8 b
+      , Just v <- asFin8 b
+      -> requiredReg ?= v
     _ | Just r <- stripPrefix "/rm=" nm
       , [(b,"")] <- readHex r
-      , 0 <= b && b < 8
-      -> requiredRM ?= Fin8 b
+      , Just v <- asFin8 b
+      -> requiredRM ?= v
     _ | Just r <- stripPrefix "/3dnow=" nm
       , [(b,"")] <- readHex r
       -> do setDefCPUReq AMD_3DNOW
@@ -464,13 +470,13 @@ parse_opcode nm = do
             requiredPrefix ?= b
     _ | Just r <- stripPrefix "/x87=" nm
       , [(b,"")] <- readHex r
-      , 0 <= b && b < 64
+      , Just modRM <- asFin64 b
       -> do setDefCPUReq X87
-            x87ModRM ?= Fin64 b
+            x87ModRM ?= modRM
             -- FIXME: sjw: HACK to avoid making the parser more complex.  Basically, we
             -- pretend we want both Reg and R/M
-            requiredRM  ?= Fin8 (b .&. 0x7) -- bottom 3 bits
-            requiredReg ?= Fin8 ((b `shiftR` 3) .&. 0x7)
+            requiredRM  ?= maskFin8 b -- bottom 3 bits
+            requiredReg ?= maskFin8 (b `shiftR` 3)
     _  ->  fail $ "Unexpected opcode: " ++ show nm
 
 ------------------------------------------------------------------------

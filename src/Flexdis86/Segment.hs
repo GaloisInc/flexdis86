@@ -1,4 +1,12 @@
+{- |
+Module      : $Header$
+Copyright   : (c) Galois, Inc, 2014-2016
+Maintainer  : jhendrix@galois.com
+
+Defines a datatype for segments and supporting operations.
+-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE Safe #-}
 module Flexdis86.Segment
   ( Segment
   , pattern ES

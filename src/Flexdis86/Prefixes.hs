@@ -1,32 +1,40 @@
-module Flexdis86.Prefixes (
-  Prefixes(..),
-  REX(..),
-  rexW,
-  rexR,
-  rexB,
-  rexX,
-  SegmentPrefix(..),
-  prLockPrefix,
-  prSP,
-  prREX,
-  prASO,
-  prOSO,
-  prAddrSize,
-  no_seg_prefix,
-  setDefault,
-  LockPrefix(..),
-  ppLockPrefix
+{- |
+Module      : $Header$
+Copyright   : (c) Galois, Inc, 2014-2016
+Maintainer  : jhendrix@galois.com
+
+Defines prefix operations.
+-}
+{-# LANGUAGE Trustworthy #-}
+module Flexdis86.Prefixes
+  ( Prefixes(..)
+  , REX(..)
+  , rexW
+  , rexR
+  , rexB
+  , rexX
+  , SegmentPrefix(..)
+  , prLockPrefix
+  , prSP
+  , prREX
+  , prASO
+  , prOSO
+  , prAddrSize
+  , no_seg_prefix
+  , setDefault
+  , LockPrefix(..)
+  , ppLockPrefix
   ) where
 
-import Control.Lens
+import           Control.Lens
 import qualified Data.Bits as B
-import Data.Word ( Word8 )
-import Numeric ( showHex )
-import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
+import           Data.Word ( Word8 )
+import           Numeric ( showHex )
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 
-import Flexdis86.Segment
-import Flexdis86.Sizes
+import           Flexdis86.Segment
+import           Flexdis86.Sizes
 
 -- | Prefixes for an instruction.
 data Prefixes = Prefixes { _prLockPrefix :: LockPrefix

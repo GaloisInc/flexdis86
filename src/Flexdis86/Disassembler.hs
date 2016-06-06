@@ -1,6 +1,5 @@
 {- |
 Module      :  $Header$
-Description :  Defines functions for disassembling instructions from optable ast.
 Copyright   :  (c) Galois, Inc
 Maintainer  :  jhendrix@galois.com
 
@@ -11,14 +10,13 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TupleSections #-}
-
 module Flexdis86.Disassembler
-  ( InstructionParser
+  ( DisassemblerContext
   , mkX64Disassembler
-  , mkX64Assembler
   , TableRef
   , disassembleInstruction
   , DisassembledAddr(..)
@@ -26,44 +24,37 @@ module Flexdis86.Disassembler
   , disassembleBuffer
   ) where
 
-import Control.Applicative
-import Control.Exception
-import Control.Lens
-import Control.Monad.State
-import Data.Binary.Get (Decoder(..), runGetIncremental)
-import Data.Bits
+import           Control.Applicative
+import           Control.Exception
+import           Control.Lens
+import           Control.Monad.State
+import           Data.Binary.Get (Decoder(..), runGetIncremental)
+import           Data.Bits
 import qualified Data.ByteString as BS
-import Data.Int
-import Data.List (subsequences, permutations)
-import Data.Maybe
+import           Data.Int
+import           Data.List (subsequences, permutations)
+import           Data.Maybe
 import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
-import Data.Word
+import           Data.Word
 
-import Prelude
+import           Prelude
 
-import Flexdis86.Assembler
-import Flexdis86.ByteReader
-import Flexdis86.InstructionSet
-import Flexdis86.OpTable
-import Flexdis86.Prefixes
-import Flexdis86.Register
-import Flexdis86.Sizes
+import           Flexdis86.ByteReader
+import           Flexdis86.InstructionSet
+import           Flexdis86.OpTable
+import           Flexdis86.Operand
+import           Flexdis86.Prefixes
+import           Flexdis86.Register
+import           Flexdis86.Segment
+import           Flexdis86.Sizes
 
 -- | Create an instruction parser from the given udis86 parser.
 -- This is currently restricted to x64 base operations.
-mkX64Disassembler :: BS.ByteString -> Either String InstructionParser
-mkX64Disassembler bs = mkParser . filter defSupported <$> parseOpTable bs
-  where mkParser defs = fst $ runParserGen $ parseTable defs
-
-defSupported :: Def -> Bool
-defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
-                 && x64Compatible d
-
-mkX64Assembler :: BS.ByteString -> Either String AssemblerContext
-mkX64Assembler bs = (assemblerContext . filter defSupported) <$> parseOpTable bs
+mkX64Disassembler :: BS.ByteString -> Either String DisassemblerContext
+mkX64Disassembler bs = mkContext . filter defSupported <$> parseOpTable bs
+  where mkContext defs = fst $ runParserGen $ parseTable defs
 
 ------------------------------------------------------------------------
 -- REX
@@ -203,7 +194,7 @@ startTableRef = mkTableRef "startTable" startTables
 type TableFn t    = [Def]             -> ParserGen t
 type PfxTableFn t = [(Prefixes, Def)] -> ParserGen t
 
-type InstructionParser = TableRef InstructionInstance
+type DisassemblerContext = TableRef InstructionInstance
 
 data IParser a where
   OpcodeTable :: TableRef (InstructionInstance)
@@ -493,11 +484,11 @@ data ReadTable
 
 -- | Create a vector of entries by matching an opcode table.
 asOpcodeTable :: IParser  (InstructionInstance)
-              -> InstructionParser
+              -> DisassemblerContext
 asOpcodeTable (OpcodeTable v) = v
 asOpcodeTable _ = error "asOpcodeTable expected OpcodeTable"
 
-parseTable :: [Def] -> ParserGen InstructionParser
+parseTable :: [Def] -> ParserGen DisassemblerContext
 parseTable = fmap asOpcodeTable . makeTables finished
   --TODO: Handle rep and repz prefix filters.
     where
@@ -534,7 +525,7 @@ read_disp8 = Disp8 <$> readSByte
 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
-                       => InstructionParser
+                       => DisassemblerContext
                        -> m InstructionInstance
 disassembleInstruction tr0 = do
   b <- readByte
@@ -624,9 +615,9 @@ regSizeFn :: SizeConstraint -> REX -> OperandSize -> Word8 -> Value
 regSizeFn _ rex BSize = ByteReg . reg8 rex
 regSizeFn osz _ sz =
   case sizeFn osz sz of
-    Size16 -> WordReg  . reg16
-    Size32 -> DWordReg . reg32
-    Size64 -> QWordReg . reg64
+    Size16  -> WordReg  . reg16
+    Size32  -> DWordReg . reg32
+    Size64  -> QWordReg . reg64
 
 memSizeFn :: SizeConstraint -> OperandSize -> AddrRef -> Value
 memSizeFn _ BSize = Mem8
@@ -635,7 +626,6 @@ memSizeFn osz sz =
     Size16 -> Mem16
     Size32 -> Mem32
     Size64 -> Mem64
-    Size128 -> Mem128
 
 parseValue :: ByteReader m
            => Prefixes
@@ -672,12 +662,12 @@ parseValue p osz mmrm tp = do
     OpType ModRM_reg sz -> pure $ regSizeFn osz rex sz reg_with_rex
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
-    OpType ImmediateSource BSize -> ByteImm <$> readByte
+    OpType ImmediateSource BSize -> ByteImm <$> readSByte
     OpType ImmediateSource sz ->
       case sizeFn osz sz of
-        Size16 ->  WordImm <$> readWord
-        Size32 -> DWordImm <$> readDWord
-        Size64 -> QWordImm <$> readQWord
+        Size16 ->  WordImm <$> readSWord
+        Size32 -> DWordImm <$> readSDWord
+        Size64 -> QWordImm <$> readSQWord
     OpType OffsetSource sz
         | BSize <- sz -> Mem8 <$> moffset
         | otherwise -> case sizeFn osz sz of
@@ -712,10 +702,11 @@ parseValue p osz mmrm tp = do
                 Size16 -> Mem16 <$> addr
                 Size32 -> Mem32 <$> addr
                 Size64 -> Mem64 <$> addr
-    M_FloatingPoint sz -> case sz of
-                FPSize32 -> FPMem32 <$> addr
-                FPSize64 -> FPMem64 <$> addr
-                FPSize80 -> FPMem80 <$> addr
+    M_FloatingPoint sz ->
+      case sz of
+        FPSize32 -> FPMem32 <$> addr
+        FPSize64 -> FPMem64 <$> addr
+        FPSize80 -> FPMem80 <$> addr
     MXRX msz _rsz
       | modRM_mod modRM == 3 ->
         case osz of
@@ -735,16 +726,11 @@ parseValue p osz mmrm tp = do
         mkaddr | aso = memRef_32
                | otherwise = memRef_64
     IM_1 -> pure $ ByteImm 1
-    IM_SB -> do
-      b <- readSByte
-      case osz of
-        Size16 -> pure $  WordImm $ fromIntegral b
-        Size32 -> pure $ DWordImm $ fromIntegral b
-        Size64 -> pure $ QWordImm $ fromIntegral b
+    IM_SB -> ByteImm <$> readSByte
     IM_SZ ->
       -- IM_SZ is 16 or 32 bits, and at run-time sign extended to the
       -- register size when it is deposited into a register.
-      -- TODO: Chekc this is actual done correctly.
+      -- TODO: Check this is actual done correctly.
       case osz of
         Size16 ->  WordImm . fromIntegral <$> readSWord
         Size32 -> DWordImm . fromIntegral <$> readDWord
@@ -816,8 +802,8 @@ data DisassembledAddr = DAddr { disOffset :: Int
                               }
                               deriving Show
 
--- | Try disassemble returns the numbers of bytes read and an instrction instance.
-tryDisassemble :: InstructionParser -> BS.ByteString -> (Int, Maybe InstructionInstance)
+-- | Try disassemble returns the numbers of bytes read and an instruction instance.
+tryDisassemble :: DisassemblerContext -> BS.ByteString -> (Int, Maybe InstructionInstance)
 tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
   where bytesRead bs = BS.length bs0 - BS.length bs
 
@@ -830,9 +816,10 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
         decode bs (Partial f) = decode BS.empty (f (Just bs))
         decode _ (Done bs' _ i) = (bytesRead bs', Just i)
 
--- | Parse the buffer as a list of instructions.  Returns a list containing
--- offsets,
-disassembleBuffer :: InstructionParser
+-- | Parse the buffer as a list of instructions.
+--
+-- Returns a list containing offsets,
+disassembleBuffer :: DisassemblerContext
                   -> BS.ByteString
                      -- ^ Buffer to decompose
                   -> [DisassembledAddr]

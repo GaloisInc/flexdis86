@@ -1,9 +1,21 @@
+{- |
+Module      : $Header$
+Copyright   : (c) Galois, Inc, 2014-2016
+Maintainer  : jhendrix@galois.com
+
+Defines types for x86 registers.
+-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE Trustworthy #-}
 module Flexdis86.Register (
+    -- * 8-bit General Purpose registers
     Reg8(..), low_reg8, high_reg8, al, bl, cl, dl, ah, bh, ch, dh, is_low_reg, is_high_reg
+    -- * 16-bit General Purpose registers
   , Reg16(..), reg16, ax, bx, cx, dx, reg16_reg
+    -- * 32-bit General Purpose registers
   , Reg32(..), reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
 
+    -- * 64-bit General Purpose registers
   , Reg64(..), reg64, reg64No, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
   , pattern RAX
   , pattern RBX
@@ -21,21 +33,19 @@ module Flexdis86.Register (
   , pattern R13
   , pattern R14
   , pattern R15
-
+    -- * Control registers
   , ControlReg(..), controlReg, controlRegNo
+    -- * Debug registers
   , DebugReg(..), debugReg, debugRegNo
+    -- * MMX registers
   , MMXReg(..), mmxReg, mmxRegNo, mmxRegIdx
+    -- * XMM registers
   , XMMReg(..), xmmReg, xmmRegNo, xmmRegIdx
   ) where
 
-import Control.Exception ( assert )
+import           Control.Exception ( assert )
 import qualified Data.Vector as V
-import Data.Word ( Word8 )
-
-{-
-showReg :: Show a => String -> a -> String
-showReg p v = "%" ++ p ++ show v
--}
+import           Data.Word ( Word8 )
 
 -- | There are 16 control registers CR0 through CR15.
 newtype ControlReg = CR Word8

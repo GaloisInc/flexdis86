@@ -8,7 +8,7 @@ import qualified System.IO.Temp as IO
 import qualified System.Process as P
 import qualified Test.Tasty.HUnit as T
 
-import qualified Data.Elf as E
+import qualified Data.ElfEdit as E
 
 -- | Put the given assembly instructions into an assembly file,
 -- assemble it, then extract the bytes from the code segment.  Feed

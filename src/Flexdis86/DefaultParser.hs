@@ -1,31 +1,32 @@
 {- |
 Module      :  $Header$
-Description :  Defines the default parser from optable.xml as compiled in.
-Copyright   :  (c) Galois, Inc
+Copyright   :  (c) 2013-2016 Galois, Inc
 Maintainer  :  jhendrix@galois.com
+
+Defines the default parser from optable.xml as compiled in.
 -}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE Trustworthy#-}
 module Flexdis86.DefaultParser
-  ( optableData
-  , defaultX64Disassembler
+  ( defaultX64Disassembler
   , defaultX64Assembler
   ) where
 
-import Control.Monad (when)
+import           Control.Monad (when)
 import qualified Data.ByteString as BS
-import Language.Haskell.TH.Syntax
-import Data.ByteString.Unsafe (unsafePackAddressLen)
-import qualified System.FilePath as F
+import           Data.ByteString.Unsafe (unsafePackAddressLen)
+import           Language.Haskell.TH.Syntax
 import qualified System.Directory as D
-import System.IO.Unsafe (unsafePerformIO)
+import qualified System.FilePath as F
+import           System.IO.Unsafe (unsafePerformIO)
 
-import Flexdis86.Assembler
-import Flexdis86.Disassembler
+import           Flexdis86.Assembler
+import           Flexdis86.Disassembler
 
 {-# NOINLINE optableData #-}
 
--- | Read the XML optable specification from disk.
+-- | A bytestring containing the compiled XML optable specification.
 optableData :: BS.ByteString
 optableData =
  -- The @getPathToOptableXML@ computes an absolute path to the XML
@@ -61,7 +62,7 @@ optableData =
        [| unsafePerformIO $ unsafePackAddressLen blen $(return addr) |]))
 
 
-defaultX64Disassembler :: InstructionParser
+defaultX64Disassembler :: DisassemblerContext
 defaultX64Disassembler = p
   where p = case mkX64Disassembler optableData of
               Right v -> v

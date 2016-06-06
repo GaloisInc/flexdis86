@@ -1,8 +1,16 @@
+{- |
+Module      : $Header$
+Copyright   : (c) Galois, Inc, 2014-2016
+Maintainer  : jhendrix@galois.com
+
+This defines constants used for low-level operand layout information.
+-}
+{-# LANGUAGE Safe #-}
 {-# LANGUAGE TupleSections #-}
-module Flexdis86.Operand (
-  OperandType(..),
-  OperandSize(..),
-  OperandSource(..)
+module Flexdis86.Operand
+  ( OperandType(..)
+  , OperandSize(..)
+  , OperandSource(..)
   ) where
 
 import Data.Word ( Word8 )
@@ -30,12 +38,16 @@ data OperandSource
      -- ^ An immediate value read in from the instruction stream.
    | ImmediateSource
      -- ^ An offset value read in from the instruction stream.
+     --
+     -- Values with the immedite source are not sign-extended like
+     -- the IM_SB/IM_SZ type.
    | OffsetSource
      -- ^ A jump location that is read in from instruction stream, and
      -- offset from current instruction pointer.
    | JumpImmediate
   deriving (Eq, Show, Ord)
 
+-- | The size of an operand in the udis86 file.
 data OperandSize
    = BSize -- ^ Operand is always 8-bits.
    | WSize -- ^ Operand is always 16-bits.

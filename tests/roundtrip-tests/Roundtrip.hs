@@ -271,9 +271,8 @@ immediateOperandOpcodes = [ ("push imm8", ["push $3"])
 mkTest :: (String, [String]) -> T.TestTree
 mkTest (name, insns) = T.testCase name $ do
   withAssembledCode insns $ \codeBytes -> do
-    let disInsns = D.disassembleBuffer D.defaultX64Disassembler codeBytes
+    let disInsns = D.disassembleBuffer codeBytes
 --    T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
     let instances = mapMaybe D.disInstruction disInsns
         assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe D.assembleInstruction instances)
     T.assertEqual ("Assembled bytes\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
-

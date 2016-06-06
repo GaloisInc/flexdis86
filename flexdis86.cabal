@@ -1,10 +1,10 @@
 Name:          flexdis86
 Version:       0.1.1
 Author:        Galois Inc.
-Maintainer:    jhendrix@galois.com
+Maintainer:    jhendrix@galois.com, tristan@galois.com
 Build-type:    Simple
 Cabal-version: >= 1.10
-Synopsis: A flexible disassembler or x86
+Synopsis: A disassembler and assembler for x86
 
 library
   default-language: Haskell2010
@@ -12,7 +12,7 @@ library
     base >= 4,
     ansi-wl-pprint,
     binary,
-    bytestring >= 0.10 && < 0.11,
+    bytestring,
     containers,
     directory,
     filepath,
@@ -25,18 +25,19 @@ library
   hs-source-dirs: src
   exposed-modules:
     Flexdis86
-    Flexdis86.Assembler
     Flexdis86.ByteReader
-    Flexdis86.DefaultParser
-    Flexdis86.Disassembler
     Flexdis86.InstructionSet
     Flexdis86.Operand
-    Flexdis86.OpTable
     Flexdis86.Prefixes
     Flexdis86.Register
     Flexdis86.Segment
     Flexdis86.Sizes
 
+  other-modules:
+    Flexdis86.Assembler
+    Flexdis86.DefaultParser
+    Flexdis86.Disassembler
+    Flexdis86.OpTable
   GHC-options: -Wall -fno-ignore-asserts -O2
 
 executable DumpInstr
@@ -74,5 +75,5 @@ test-suite roundtrip-tests
                  process >= 1.2 && < 1.5,
                  lens,
                  temporary >= 1 && < 2,
-                 pretty-hex,
-                 elf-galois >= 0.28
+                 elf-edit,
+                 pretty-hex

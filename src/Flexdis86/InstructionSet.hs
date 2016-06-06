@@ -1,60 +1,53 @@
 {- |
 Module      :  $Header$
-Description :  Declares datatypes for the instruction set.
-Copyright   :  (c) Galois, Inc 2013
+Copyright   :  (c) Galois, Inc 2013-2016
 Maintainer  :  jhendrix@galois.com
 
 This declares the main datatypes for the instruction set.
 -}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE Safe #-}
 module Flexdis86.InstructionSet
-  ( InstructionInstance
+  ( -- * Instruction information
+    InstructionInstance
   , InstructionInstanceF(..)
   , ppInstruction
-  , instructionSize
-  , SizeConstraint(..)
-  , OperandSize(..)
-  , OperandType(..)
-  , OperandSource(..)
   , Value(..)
-  , ControlReg, controlReg, controlRegNo
-  , DebugReg, debugReg, debugRegNo
-  , MMXReg, mmxReg, mmxRegNo, mmxRegIdx
-  , XMMReg, xmmReg, xmmRegNo, xmmRegIdx
-  , LockPrefix(..), ppLockPrefix
-    -- * Synonyms
-  , Segment
-  , pattern ES
-  , pattern CS
-  , pattern SS
-  , pattern DS
-  , pattern FS
-  , pattern GS
-  , segmentRegisterByIndex
-  , segmentRegNo
   , Displacement(..)
+  , displacementInt
   , AddrRef(..)
-  , Word8
-  , Word16
-  , Word32
-  , Word64
-  , Int64
+{-
+  , Flexdis86.Register.ControlReg, controlReg, controlRegNo
+  , Flexdis86.Register.DebugReg, debugReg, debugRegNo
+  , Flexdis86.Register.MMXReg, mmxReg, mmxRegNo, mmxRegIdx
+  , Flexdis86.Register.XMMReg, xmmReg, xmmRegNo, xmmRegIdx
+  , LockPrefix(..), ppLockPrefix
+-}
   ) where
 
-import Control.Applicative
-import Data.Int
-import Data.Word
-import Numeric (showHex)
-import Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
+import           Control.Applicative
+import           Data.Int
+import           Data.Word
+import           Numeric (showHex)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 
-import Prelude
+import           Prelude
 
-import Flexdis86.Operand
-import Flexdis86.Sizes
-import Flexdis86.Prefixes
-import Flexdis86.Register
-import Flexdis86.Segment
+import           Flexdis86.Operand
+import           Flexdis86.Sizes
+import           Flexdis86.Prefixes
+import           Flexdis86.Register
+import           Flexdis86.Segment
+
+padToWidth :: Int -> String -> String
+padToWidth n s = if l > 0 then s ++ (replicate (n - l) ' ') else s
+  where l = length s
+
+ppPunctuate :: Doc -> [Doc] -> Doc
+ppPunctuate p (d1:d2:ds) = d1 <> p <> ppPunctuate p (d2 : ds)
+ppPunctuate _ (d:[]) = d
+ppPunctuate _ [] = PP.empty
 
 ------------------------------------------------------------------------
 -- AddrRef
@@ -65,15 +58,50 @@ import Flexdis86.Segment
 data Displacement = Disp32 Int32
                   | Disp8 Int8
                   | NoDisplacement
-                  deriving (Eq, Ord, Show)
+                  deriving (Show)
 
-displacementInt :: Displacement -> Int
+-- | Convert a displacement to an int32.
+displacementInt :: Displacement -> Int32
 displacementInt d =
   case d of
     NoDisplacement -> 0
-    Disp32 o -> fromIntegral o
+    Disp32 o -> o
     Disp8 o -> fromIntegral o
 
+instance Eq Displacement where
+  x == y = displacementInt x == displacementInt y
+
+instance Ord Displacement where
+  compare x y = compare (displacementInt x) (displacementInt y)
+
+instance Num Displacement where
+  negate = fromInteger . negate . toInteger
+  x + y = fromInteger (toInteger x + toInteger y)
+  x - y = fromInteger (toInteger x - toInteger y)
+  x * y = fromInteger (toInteger x * toInteger y)
+  abs    = fromInteger . abs    . toInteger
+  signum = fromInteger . signum . toInteger
+  fromInteger i
+    | i == 0                    = NoDisplacement
+    | toInteger (minBound::Int8 ) <= i && i < toInteger (maxBound::Int8)  =
+        Disp8 (fromInteger i)
+    | toInteger (minBound::Int32) <= i && i < toInteger (maxBound::Int32) =
+        Disp32 (fromInteger i)
+    | otherwise                 = error "Displacement out of range."
+
+instance Real Displacement where
+  toRational = toRational . displacementInt
+
+instance Enum Displacement where
+  toEnum = fromIntegral
+  fromEnum = fromIntegral . displacementInt
+
+instance Integral Displacement where
+  x `quotRem` y = (fromInteger q, fromInteger r)
+    where (q,r) = toInteger x `quotRem` toInteger y
+  toInteger = toInteger . displacementInt
+
+-- | A references to an address in memory.
 data AddrRef
   = Addr_32      Segment (Maybe Reg32) (Maybe (Int, Reg32)) Displacement
   -- ^ @Addr_32 s b i o@ denotes a 32-bit IP address that will be
@@ -87,10 +115,10 @@ data AddrRef
   -- In Intel syntax, this is the much more sensible [base register
   -- + displacement + offset register * scalar multiplier]
   | IP_Offset_32 Segment Displacement
-    -- | Offset relative to segment base.
   | Offset_32    Segment Word32
-    -- | Offset relative to segment base.
+    -- ^ A 32bit ofset relative to a segment.
   | Offset_64    Segment Word64
+    -- ^ A 64bit ofset relative to a segment.
   | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
   | IP_Offset_64 Segment Displacement
   deriving (Show, Eq, Ord)
@@ -98,10 +126,6 @@ data AddrRef
 pp0xHex :: (Integral a, Show a) => a -> Doc
 pp0xHex n = text "0x" <> text (showHex n' "")
   where n' = fromIntegral (fromIntegral n :: Int64) :: Word64
-
-ppSigned0xHex :: (Integral a, Show a) => a -> Doc
-ppSigned0xHex n = sign_ <> pp0xHex (abs n)
-  where sign_ = if n >= 0 then PP.empty else text "-"
 
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
@@ -115,7 +139,7 @@ ppAddrRef addr =
          _ -> a
       where a = ppAddr seg base roff off
                                                           -- or rip? this is 32 bits ...
-    IP_Offset_32 seg off      -> brackets $ text "ip+" <> pp0xHex (displacementInt off)
+    IP_Offset_32 _seg off     -> brackets $ text "ip+" <> pp0xHex (displacementInt off)
     Offset_32 seg off         -> prefix seg off
     Offset_64 seg off         -> prefix seg off
     Addr_64 seg base roff off ->
@@ -126,44 +150,31 @@ ppAddrRef addr =
                 | otherwise -> a
         Nothing | seg == FS -> text (show seg) <> colon <> a
                 | seg == GS -> text (show seg) <> colon <> a
-	        | otherwise -> a
+                | otherwise -> a
       where a = ppAddr seg base roff off
-    Addr_64 seg base roff off ->
-      (case base
-         of Just r  | seg == FS -> ((text (show seg) <> colon) <>)
-                    | seg == GS -> ((text (show seg) <> colon) <>)
-                    | isDefaultSeg64 seg r -> id
-                    | otherwise -> id -- ((text (show seg) <> colon) <+>)
-            Nothing | seg == FS -> ((text (show seg) <> colon) <>)
-                    | seg == GS -> ((text (show seg) <> colon) <>)
-	            | otherwise -> id) (ppAddr seg base roff off)
-    IP_Offset_64 seg off      -> brackets $ text "rip+"<> pp0xHex (displacementInt off)
+    IP_Offset_64 _seg off -> brackets $ text "rip+"<> pp0xHex (displacementInt off)
   where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
     addOrSub n = text $ if n >= 0 then "+" else "-"
-    ppAddr seg base roff off =
+    ppAddr :: Show r => Segment -> Maybe r -> Maybe (Int, r) -> Displacement -> Doc
+    ppAddr _seg base roff off =
       case (base, roff, displacementInt off) of
          (Nothing, Nothing, 0)      -> text "0x0" -- happens with fs and gs segments
-         (Nothing, Just (n, r), 0)  -> brackets (ppShowReg r <> text "*" <> int n)
+         (Nothing, Just (n, r), 0) -> brackets (ppShowReg r <> text "*" <> int n)
          (Just r, Nothing, 0)      -> brackets (ppShowReg r)
-         (Just r, Just (n, r'), 0)  -> brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
+         (Just r, Just (n, r'), 0) ->
+           brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
          (Nothing, Nothing, n')     -> pp0xHex n'
          (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <>  pp0xHex (abs n'))
          (Nothing, Just (n, r), n') ->
            brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
          (Just r, Just (n, r'), n') ->
-           brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub (fromIntegral n') <> pp0xHex (abs n'))
+           brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
 
 
 
 ------------------------------------------------------------------------
 -- Value
-
-{-
-data ValueClass = Address
-                | Immediate
-                | GPR
--}
 
 -- | The value of an operand in an instruction instance.
 data Value
@@ -176,17 +187,27 @@ data Value
   | FarPointer AddrRef
   | VoidMem AddrRef
   | Mem8  AddrRef
+    -- ^ An address to a one byte value.
   | Mem16 AddrRef
+    -- ^ An address to a two byte value.
   | Mem32 AddrRef
+    -- ^ An address to a four byte value.
   | Mem64 AddrRef
+    -- ^ An address to a eight byte value.
   | Mem128 AddrRef
   | FPMem32 AddrRef
   | FPMem64 AddrRef
   | FPMem80 AddrRef
-  | ByteImm  Word8
-  | WordImm  Word16
-  | DWordImm Word32
-  | QWordImm Word64
+
+  | ByteImm  Int8
+    -- ^ A 8-bit constant which may need to be sign extended to the appropriate
+    -- size.
+  | WordImm  Int16
+    -- ^ A 16-bit intermediate that can be sign extended to the appropriate size.
+  | DWordImm Int32
+    -- ^ A 32-bit intermediate that can be sign extended to the appropriate size.
+  | QWordImm Int64
+    -- ^ A 64-bit intermediate that can be sign extended to the appropriate size.
   | ByteReg  Reg8
   | WordReg  Reg16
   | DWordReg Reg32
@@ -231,8 +252,9 @@ ppValue base v =
     JumpOffset _ off  -> text (showHex (base+fromIntegral off) "")
 
 
-ppImm :: (Integral a, Show a) => a -> Doc
-ppImm i = text"0x" <> text (showHex i "")
+ppImm :: (Integral w, Show w) => w -> Doc
+ppImm i | i >= 0 = text"0x" <> text (showHex i "")
+        | otherwise = text"-0x" <> text (showHex (negate i) "")
 
 ------------------------------------------------------------------------
 -- InstructionInstance
@@ -263,18 +285,11 @@ data InstructionInstanceF a
 instance Functor InstructionInstanceF where
   fmap f ii = ii { iiArgs = fmap f (iiArgs ii) }
 
+{-
 -- | Compute the size of an instruction in bytes
 instructionSize :: InstructionInstance -> Word8
 instructionSize = undefined
-
-padToWidth :: Int -> String -> String
-padToWidth n s = if l > 0 then s ++ (replicate (n - l) ' ') else s
-  where l = length s
-
-ppPunctuate :: Doc -> [Doc] -> Doc
-ppPunctuate p (d1:d2:ds) = d1 <> p <> ppPunctuate p (d2 : ds)
-ppPunctuate p (d:[]) = d
-ppPunctuate p [] = PP.empty
+-}
 
 nonHex1Instrs :: [String]
 nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]

@@ -1,7 +1,6 @@
 {- |
 Module      :  $Header$
-Description :  Typeclass for reading binary data.
-Copyright   :  (c) Galois, Inc 2013
+Copyright   :  (c) Galois, Inc 2013-2016
 Maintainer  :  jhendrix@galois.com
 
 This declares a typeclass and utility functions for reading binary data
@@ -60,7 +59,6 @@ readSDWord = fromIntegral <$> readDWord
 
 readSQWord :: ByteReader m => m Int64
 readSQWord = fromIntegral <$> readQWord
-
 
 instance ByteReader Get where
   readByte = getWord8

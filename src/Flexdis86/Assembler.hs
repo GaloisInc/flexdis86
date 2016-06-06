@@ -1,36 +1,50 @@
+{- |
+Module      : $Header$
+Copyright   : (c) Galois, Inc, 2015-2016
+Maintainer  : tristan@galois.com
+
+The Flexdis assembler.
+-}
+{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
-module Flexdis86.Assembler (
-  AssemblerContext,
-  assemblerContext,
-  mkInstruction,
-  assembleInstruction
+module Flexdis86.Assembler
+  ( AssemblerContext
+  , mkX64Assembler
+  , assemblerContext
+  , mkInstruction
+  , assembleInstruction
   ) where
 
-import Control.Applicative
-import Control.Arrow ( second )
+import           Control.Applicative
+import           Control.Arrow ( second )
 import qualified Control.Lens as L
-import Control.Monad ( MonadPlus(..), guard )
-import Data.Bits
+import           Control.Monad ( MonadPlus(..), guard )
+import           Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Builder as B
 import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
-import Data.Maybe ( fromMaybe, isJust )
-import Data.Monoid
+import           Data.Maybe ( fromMaybe, isJust )
+import           Data.Monoid
+import           Data.Word
 
-import Prelude
+import           Prelude
 
-import Flexdis86.Operand
-import Flexdis86.OpTable
-import Flexdis86.InstructionSet
-import Flexdis86.Prefixes
-import Flexdis86.Register
-import Flexdis86.Sizes
+import           Flexdis86.Operand
+import           Flexdis86.OpTable
+import           Flexdis86.InstructionSet
+import           Flexdis86.Prefixes
+import           Flexdis86.Register
+import           Flexdis86.Segment
+import           Flexdis86.Sizes
 
 data AssemblerContext =
   AssemblerContext { acDefs :: M.Map String [Def]
                    }
   deriving (Show)
+
+mkX64Assembler :: B.ByteString -> Either String AssemblerContext
+mkX64Assembler bs = (assemblerContext . filter defSupported) <$> parseOpTable bs
 
 -- Warning: some instructions, e.g. @xor <64-bit reg> <64-bit reg>@,
 -- have multiple encodings. The order we fold defs here, i.e. 'foldr'
@@ -167,6 +181,7 @@ matchOperandType ops =
     (QWordReg (Reg64 rno), OpType (Opcode_reg rcode) VSize) -> rno - 8 == rcode
     _ -> False
 
+-- | Create a bytestring builder from an instruction instance.
 assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
   return $ mconcat [ prefixBytes
@@ -539,10 +554,10 @@ encodeREXPrefix (REX rex) | rex == 0 = mempty
 encodeImmediate :: REX -> Bool -> (Value, OperandType) -> B.Builder
 encodeImmediate rex oso vty =
   case vty of
-    (ByteImm imm, ty) -> encodeByteImmediate rex oso imm ty
-    (WordImm imm, ty) -> encodeWordImmediate rex oso imm ty
-    (DWordImm imm, ty) -> encodeDWordImmediate rex oso imm ty
-    (QWordImm imm, ty) -> encodeQWordImmediate rex oso imm ty
+    (ByteImm imm, ty) -> encodeByteImmediate rex oso (fromIntegral imm) ty
+    (WordImm imm, ty) -> encodeWordImmediate rex oso (fromIntegral imm) ty
+    (DWordImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
+    (QWordImm imm, ty) -> encodeQWordImmediate rex oso (fromIntegral imm) ty
     (JumpOffset BSize off, OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
     (JumpOffset _ off, OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
     (JumpOffset _ _, _) -> error ("Unhandled jump offset immediate: " ++ show vty)
