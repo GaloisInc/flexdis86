@@ -728,13 +728,11 @@ parseValue p osz mmrm tp = do
     IM_1 -> pure $ ByteImm 1
     IM_SB -> ByteImm <$> readSByte
     IM_SZ ->
-      -- IM_SZ is 16 or 32 bits, and at run-time sign extended to the
-      -- register size when it is deposited into a register.
-      -- TODO: Check this is actual done correctly.
+      -- This reads 16-bits if operand size is 16bits and 32-bits otherwise.
       case osz of
-        Size16 ->  WordImm . fromIntegral <$> readSWord
-        Size32 -> DWordImm . fromIntegral <$> readDWord
-        Size64 -> QWordImm . fromIntegral <$> readSDWord
+        Size16 ->  WordImm <$> readSWord
+        Size32 -> DWordImm <$> readSDWord
+        Size64 -> DWordImm <$> readSDWord
 
 -- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m
