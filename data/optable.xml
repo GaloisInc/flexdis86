@@ -12,7 +12,8 @@
       For example, the jump mnemonics jnb, jae, and jnc correspond to
       the same instruction (relative jump if the carry flag is zero).
       See http://unixwiz.net/techtips/x86-jumps.html for a concise
-      summary of the jump instruction mnemonic synonyms.
+      summary of the jump instruction mnemonic synonyms.  Order is
+      important --- place new synonyms after the existing mnemonic.
 
       pfx describes the prefixes that can precede the main opcode without
       turning it into a different instruction.  These may be:
@@ -3973,7 +3974,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>jnb jae jnc</mnemonic>
+        <mnemonic>jae jnb jnc</mnemonic>
         <def>
             <opc>73</opc>
             <opr>Jb</opr>
