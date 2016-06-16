@@ -2,24 +2,24 @@ module Roundtrip ( roundtripTests ) where
 
 import qualified Data.ByteString.Lazy.Builder as B
 import qualified Data.ByteString.Lazy as LB
-import Data.Maybe ( mapMaybe )
+import           Data.Maybe ( mapMaybe )
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
-import Hexdump
+import           Hexdump
 
-import Util ( withAssembledCode )
+import           Util ( withAssembledCode )
 
 roundtripTests :: T.TestTree
-roundtripTests = T.testGroup "Roundtrip Tests" [
-  zeroOperandTests,
-  immediateTests,
-  singleOperandTests,
-  twoOperandTests,
-  addressingModeTests,
-  mmxTests,
-  sseTests
+roundtripTests = T.testGroup "Roundtrip Tests"
+  [ zeroOperandTests
+  , immediateTests
+  , singleOperandTests
+  , twoOperandTests
+  , addressingModeTests
+  , mmxTests
+  , sseTests
   ]
 
 zeroOperandTests :: T.TestTree

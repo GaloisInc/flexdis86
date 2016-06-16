@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Util ( withAssembledCode ) where
 
 import Data.Bits ( Bits )
@@ -10,28 +11,10 @@ import qualified Test.Tasty.HUnit as T
 
 import qualified Data.ElfEdit as E
 
--- | Put the given assembly instructions into an assembly file,
--- assemble it, then extract the bytes from the code segment.  Feed
--- those bytes to a callback.
-withAssembledCode :: [String] -> (B.ByteString -> IO ()) -> IO ()
-withAssembledCode insns k = do
-  IO.withSystemTempFile "asm.s" $ \fname h -> do
-    mapM_ (IO.hPutStrLn h) [ "  .global _start"
-                           , "  .text"
-                           , "_start:"
-                           ]
-    mapM_ (IO.hPutStrLn h) (map ("  "++) insns)
-    IO.hFlush h
-    IO.withSystemTempFile "asm.exe" $ \outfile exeH -> do
-      IO.hClose exeH
-      let p = P.proc "gcc" ["-nostdlib", "-o", outfile, fname]
-      (_, _, _, ph) <- P.createProcess p
-      ec <- P.waitForProcess ph
-      case ec of
-        IO.ExitFailure code -> T.assertFailure ("Assembler failed with exit status " ++ show code)
-        IO.ExitSuccess -> do
-          codeBytes <- readCodeSegment outfile
-          k codeBytes
+
+#ifdef OS_Linux
+start_sym_name :: String
+start_sym_name = "_start"
 
 readCodeSegment :: FilePath -> IO B.ByteString
 readCodeSegment fp = do
@@ -47,3 +30,33 @@ extractCodeSegment e = do
     [] -> error "extractCodeSegment: Could not find code segment"
     [textSection] -> return $ E.elfSectionData textSection
     _ -> error "extractCodeSegment: Too many text segments"
+#endif
+
+
+-- | Put the given assembly instructions into an assembly file,
+-- assemble it, then extract the bytes from the code segment.  Feed
+-- those bytes to a callback.
+withAssembledCode :: [String] -> (B.ByteString -> IO ()) -> IO ()
+withAssembledCode insns k = do
+  IO.withSystemTempFile "asm.s" $ \fname h -> do
+    mapM_ (IO.hPutStrLn h) [ "  .global " ++ start_sym_name
+                           , "  .text"
+                           , start_sym_name ++ ":"
+                           ]
+    mapM_ (IO.hPutStrLn h) (map ("  "++) insns)
+    IO.hFlush h
+    IO.withSystemTempFile "asm.exe" $ \outfile exeH -> do
+      IO.hClose exeH
+      let args = ["-nostdlib", "-static", "-o", outfile, fname]
+      let p = P.proc "gcc" args
+      (_, _, _, ph) <- P.createProcess p
+      ec <- P.waitForProcess ph
+      case ec of
+        IO.ExitFailure code -> do
+          IO.exitFailure
+          T.assertFailure $
+             "Assembler failed with exit status " ++ show code ++ "\n"
+             ++ "Cmd: gcc " ++ unwords args
+        IO.ExitSuccess -> do
+          codeBytes <- readCodeSegment outfile
+          k codeBytes
