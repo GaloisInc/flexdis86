@@ -568,6 +568,7 @@ encodeByteImmediate rex oso b ty =
   case ty of
     OpType ImmediateSource BSize -> B.word8 b
     IM_1 -> mempty
+    IM_SZ -> B.word8 b
     _ -> error ("Unhandled byte immediate encoding: " ++ show (ty, rex, oso))
 
 encodeWordImmediate :: REX -> Bool -> Word16 -> OperandType -> B.Builder

@@ -114,7 +114,9 @@ data OperandType
 
      -- | The constant one.
    | IM_1
-    -- | An immediate with 8 bits that is sign extended to match operand size.
+     -- | An immediate with 8 bits that is sign extended to match operand size.
+     --
+     -- This will be decoded as an ByteImm.
    | IM_SB
      -- | An immediate that is 32bits if REX.w set or operand size is 32 bits,
      -- and 16bits if operand size is 16bits.
