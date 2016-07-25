@@ -254,7 +254,7 @@ ppValue base v =
 
 ppImm :: (Integral w, Show w) => w -> Doc
 ppImm i | i >= 0 = text"0x" <> text (showHex i "")
-        | otherwise = text"-0x" <> text (showHex (negate i) "")
+        | otherwise = text"-0x" <> text (showHex (negate $ toInteger i) "")
 
 ------------------------------------------------------------------------
 -- InstructionInstance
