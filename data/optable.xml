@@ -8724,12 +8724,7 @@
         <mnemonic>movddup</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f2 0f 12 /mod=11</opc>
-            <opr>V W</opr>
-        </def>
-        <def>
-            <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f2 0f 12 /mod=!11</opc>
+            <opc>/sse=f2 0f 12</opc>b
             <opr>V W</opr>
         </def>
     </instruction>
@@ -8738,12 +8733,7 @@
         <mnemonic>movshdup</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f3 0f 16 /mod=11</opc>
-            <opr>V W</opr>
-        </def>
-        <def>
-            <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f3 0f 16 /mod=!11</opc>
+            <opc>/sse=f3 0f 16</opc>
             <opr>V W</opr>
         </def>
     </instruction>
@@ -8752,12 +8742,7 @@
         <mnemonic>movsldup</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f3 0f 12 /mod=11</opc>
-            <opr>V W</opr>
-        </def>
-        <def>
-            <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f3 0f 12 /mod=!11</opc>
+            <opc>/sse=f3 0f 12</opc>
             <opr>V W</opr>
         </def>
     </instruction>
