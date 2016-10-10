@@ -8724,7 +8724,7 @@
         <mnemonic>movddup</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>/sse=f2 0f 12</opc>b
+            <opc>/sse=f2 0f 12</opc>
             <opr>V W</opr>
         </def>
     </instruction>
