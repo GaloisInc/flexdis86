@@ -77,12 +77,9 @@ test-suite roundtrip-tests
                  temporary >= 1 && < 2,
                  elf-edit,
                  pretty-hex
-  if os(linux)
-    CPP-Options:    -DOS_Linux
-    other-modules:
-      Assemble
-      Roundtrip
-      Util
-
-  if os(darwin)
-    CPP-Options:    -DOS_OSX
+  if !os(darwin) && !os(windows)
+     cpp-options: -DARCH_ELF
+     other-modules:
+       Assemble
+       Roundtrip
+       Util
