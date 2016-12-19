@@ -33,5 +33,5 @@ matrix:
         - build-essential
 
 script:
- - stack --no-terminal --skip-ghc-check build
- - stack --no-terminal --skip-ghc-check test
+ - stack --no-terminal --system-ghc build
+ - stack --no-terminal --system-ghc test
