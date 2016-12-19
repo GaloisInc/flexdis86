@@ -1,5 +1,1 @@
-resolver: lts-6.2
-
-packages:
-- '.'
-- deps/elf-edit
+./stack-7.10.yaml
