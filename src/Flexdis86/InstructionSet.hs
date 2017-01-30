@@ -68,6 +68,27 @@ displacementInt d =
     Disp32 o -> o
     Disp8 o -> fromIntegral o
 
+prettyDisplacement :: Displacement -> Doc
+prettyDisplacement NoDisplacement = text "0"
+prettyDisplacement (Disp32 x)
+    | x >= 0 = text ("0x" ++ showHex x "")
+    | x < 0  = text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
+prettyDisplacement (Disp8 x)
+    | x >= 0 = text ("0x" ++ showHex x "")
+    | x < 0  = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
+
+-- | Append a displacement to an expression
+appendDisplacement :: Displacement -> Doc
+appendDisplacement NoDisplacement = text ""
+appendDisplacement (Disp32 x)
+  | x >  0 = text ("+0x" ++ showHex x "")
+  | x == 0 = text ""
+  | x <  0 = text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
+appendDisplacement (Disp8 x)
+  | x >  0 = text ("+0x" ++ showHex x "")
+  | x == 0 = text ""
+  | x <  0 = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
+
 instance Eq Displacement where
   x == y = displacementInt x == displacementInt y
 
@@ -123,10 +144,6 @@ data AddrRef
   | IP_Offset_64 Segment Displacement
   deriving (Show, Eq, Ord)
 
-pp0xHex :: (Integral a, Show a) => a -> Doc
-pp0xHex n = text "0x" <> text (showHex n' "")
-  where n' = fromIntegral (fromIntegral n :: Int64) :: Word64
-
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
   case addr of
@@ -137,39 +154,38 @@ ppAddrRef addr =
                 | seg == GS -> text (show seg) <> colon <+> a
                 | otherwise -> a -- ((text (show seg) <> colon) <+>)
          _ -> a
-      where a = ppAddr seg base roff off
+      where a = ppAddr base roff off
                                                           -- or rip? this is 32 bits ...
-    IP_Offset_32 _seg off     -> brackets $ text "ip+" <> pp0xHex (displacementInt off)
+    IP_Offset_32 _seg off     -> brackets $ text "ip" <> appendDisplacement off
     Offset_32 seg off         -> prefix seg off
     Offset_64 seg off         -> prefix seg off
-    Addr_64 seg base roff off ->
-      case base of
-        Just r  | seg == FS -> text (show seg) <> colon <> a
-                | seg == GS -> text (show seg) <> colon <> a
-                | isDefaultSeg64 seg r -> a
-                | otherwise -> a
-        Nothing | seg == FS -> text (show seg) <> colon <> a
-                | seg == GS -> text (show seg) <> colon <> a
-                | otherwise -> a
-      where a = ppAddr seg base roff off
-    IP_Offset_64 _seg off -> brackets $ text "rip+"<> pp0xHex (displacementInt off)
+    Addr_64 seg base roff off
+        | seg == FS || seg == GS -> text (show seg) <> colon <> a
+        | isDef     -> a
+        | otherwise -> a
+      where a = ppAddr base roff off
+            isDef = maybe False (isDefaultSeg64 seg) base
+
+    IP_Offset_64 _seg off -> brackets $ text "rip" <> appendDisplacement off
   where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
     addOrSub n = text $ if n >= 0 then "+" else "-"
-    ppAddr :: Show r => Segment -> Maybe r -> Maybe (Int, r) -> Displacement -> Doc
-    ppAddr _seg base roff off =
-      case (base, roff, displacementInt off) of
-         (Nothing, Nothing, 0)      -> text "0x0" -- happens with fs and gs segments
-         (Nothing, Just (n, r), 0) -> brackets (ppShowReg r <> text "*" <> int n)
-         (Just r, Nothing, 0)      -> brackets (ppShowReg r)
-         (Just r, Just (n, r'), 0) ->
-           brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n)
-         (Nothing, Nothing, n')     -> pp0xHex n'
-         (Just r, Nothing, n')      -> brackets (ppShowReg r <> addOrSub n' <>  pp0xHex (abs n'))
-         (Nothing, Just (n, r), n') ->
-           brackets (ppShowReg r <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
-         (Just r, Just (n, r'), n') ->
-           brackets (ppShowReg r <> text "+" <> ppShowReg r' <> text "*" <> int n <> addOrSub n' <> pp0xHex (abs n'))
+
+    ppAddr :: Show r
+           => Maybe r -- Base value
+           -> Maybe (Int, r) -- Relative offset
+           -> Displacement -- Offset
+           -> Doc
+    ppAddr base roff off =
+      case (base, roff) of
+         (Nothing, Nothing)     -> prettyDisplacement off
+         (Nothing, Just (n, r)) ->
+           brackets (text (show r) <> text "*" <> int n <> appendDisplacement off)
+         (Just r, Nothing)      -> brackets $
+           text (show r) <> appendDisplacement off
+         (Just r, Just (n, r')) ->
+           brackets $
+             text (show r) <> text "+" <> text (show r') <> text "*" <> int n <> appendDisplacement off
 
 
 
@@ -254,7 +270,9 @@ ppValue base v =
 
 ppImm :: (Integral w, Show w) => w -> Doc
 ppImm i | i >= 0 = text"0x" <> text (showHex i "")
-        | otherwise = text"-0x" <> text (showHex (negate i) "")
+          -- Print negation after converting to integer
+          -- Recall that  "negate minBound = minBound" with types like Int16, Int32, Int64.
+        | otherwise = text"-0x" <> text (showHex (negate (toInteger i)) "")
 
 ------------------------------------------------------------------------
 -- InstructionInstance
@@ -285,15 +303,10 @@ data InstructionInstanceF a
 instance Functor InstructionInstanceF where
   fmap f ii = ii { iiArgs = fmap f (iiArgs ii) }
 
-{-
--- | Compute the size of an instruction in bytes
-instructionSize :: InstructionInstance -> Word8
-instructionSize = undefined
--}
-
 nonHex1Instrs :: [String]
 nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]
 
+-- | This pretty prints an instruction using Intel syntax.
 ppInstruction :: Word64
                  -- ^ Base address for printing instruction offsets.
                  -- This should be the address of the next instruction.
@@ -301,22 +314,18 @@ ppInstruction :: Word64
               -> Doc
 ppInstruction base i =
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
-      args = map fst (iiArgs i)
+      args = fst <$> iiArgs i
       op = iiOp i
   in
-   case (op, args)
+   case (op, args) of
         -- special casem for one-bit shift instructions
-     of (_, [dst, ByteImm 1])
-          | op `elem` nonHex1Instrs ->
-                                     (text $ padToWidth 6 op)
-                                     <+> ppValue base dst
-                                     <> comma <> text "1"
-        -- objdump prints as nop
-        ("xchg", [DWordReg (Reg32 0), DWordReg (Reg32 0)]) -> text "nop"
-        _ -> case (args, iiLockPrefix i)
-               of ([], NoLockPrefix) -> text op
-                  (_, NoLockPrefix) -> (text $ padToWidth 6 op)
-                                       <+> (ppPunctuate comma $ ppValue base <$> args)
-                  ([], _) -> sLockPrefix <+> text op
-                  (_,_) -> sLockPrefix <+> text op
-                           <+> (ppPunctuate comma $ ppValue base <$> args)
+     (_, [dst, ByteImm 1])
+       | op `elem` nonHex1Instrs ->
+           text (padToWidth 6 op) <+> ppValue base dst <> comma <> text "1"
+     -- objdump prints as nop
+     ("xchg", [DWordReg (Reg32 0), DWordReg (Reg32 0)]) -> text "nop"
+     _ -> case (args, iiLockPrefix i) of
+            ([], NoLockPrefix) -> text op
+            (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue base <$> args)
+            ([], _) -> sLockPrefix <+> text op
+            (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppValue base <$> args)
