@@ -1,7 +1,10 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Main where
 
 import           Control.Monad (when)
+import           Control.Monad.Except
+import           Control.Monad.State
 import qualified Data.ByteString as BS
 import           Data.Maybe (catMaybes)
 import           Numeric (readHex)
@@ -9,6 +12,25 @@ import           System.Environment (getArgs)
 import           System.Exit (exitFailure)
 
 import           Flexdis86
+
+newtype SimpleByteReader a = SBR { unSBR :: ExceptT String (State BS.ByteString) a }
+  deriving (Applicative, Functor)
+
+instance ByteReader SimpleByteReader where
+  readByte = do
+    bs <- SBR get
+    case BS.uncons bs of
+      Nothing       -> SBR (throwError "No more bytes")
+      Just (b, bs') -> SBR (put bs') >> return b
+
+instance Monad SimpleByteReader where
+  return v      = SBR (return v)
+  (SBR v) >>= f = SBR $ v >>= unSBR . f
+  fail s        = SBR $ throwError s
+
+
+runSimpleByteReader :: SimpleByteReader a -> BS.ByteString -> Either String a
+runSimpleByteReader (SBR m) s = evalState (runExceptT m) s
 
 usageExit :: IO ()
 usageExit = do putStrLn "DumpInstr aa bb cc dd ee ff ..."
@@ -24,6 +46,7 @@ main = do args <- getArgs
 
           let bs = BS.pack $ map (fst . head) nums
 
-          case map disInstruction $ disassembleBuffer bs of
-           Just ii : _ -> print ii >> print (ppInstruction 0 ii)
-           _           -> error "No parse"
+          case runSimpleByteReader disassembleInstruction bs of
+           Right ii -> print ii >> print (ppInstruction 0 ii)
+           Left e   -> error ("No parse: " ++ e)
+

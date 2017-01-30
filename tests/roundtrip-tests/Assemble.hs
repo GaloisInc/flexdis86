@@ -8,7 +8,6 @@ import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
 import           Flexdis86.Prefixes ( prOSO )
-import qualified Flexdis86.Register as D
 
 import           Hexdump
 import           Util ( withAssembledCode )

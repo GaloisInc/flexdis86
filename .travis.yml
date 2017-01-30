@@ -1,0 +1,37 @@
+sudo: false
+language: c
+cache:
+  directories:
+  - $HOME/.stack
+
+before_install:
+# Download and unpack the stack executable
+- mkdir -p ~/.local/bin
+- export PATH=$HOME/.local/bin:$PATH
+- travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+- export PATH=/opt/ghc/$GHCVER/bin:$PATH
+- mkdir -p deps
+- git clone https://github.com/GaloisInc/elf-edit.git deps/elf-edit
+
+matrix:
+  include:
+  - env: GHCVER=8.0.1 STACK_YAML=stack-8.0.yaml
+    addons:
+      apt:
+        sources:
+        - hvr-ghc
+        packages:
+        - ghc-8.0.1
+        - build-essential
+  - env: GHCVER=7.10.3 STACK_YAML=stack-7.10.yaml
+    addons:
+      apt:
+        sources:
+        - hvr-ghc
+        packages:
+        - ghc-7.10.3
+        - build-essential
+
+script:
+ - stack --no-terminal --system-ghc build
+ - stack --no-terminal --system-ghc test

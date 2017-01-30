@@ -12,7 +12,7 @@ import qualified Test.Tasty.HUnit as T
 import qualified Data.ElfEdit as E
 
 
-#ifdef OS_Linux
+#ifdef ARCH_ELF
 start_sym_name :: String
 start_sym_name = "_start"
 
@@ -20,9 +20,11 @@ readCodeSegment :: FilePath -> IO B.ByteString
 readCodeSegment fp = do
   bytes <- B.readFile fp
   case E.parseElf bytes of
-    Left (off, msg) -> error ("Failed to parse ELF file at offset " ++ show off ++ ": " ++ msg)
-    Right (E.Elf32 someElf) -> extractCodeSegment someElf
-    Right (E.Elf64 someElf) -> extractCodeSegment someElf
+    E.ElfHeaderError off msg -> error ("Failed to parse ELF header at offset " ++ show off ++ ": " ++ msg)
+    E.Elf32Res [] someElf -> extractCodeSegment someElf
+    E.Elf64Res [] someElf -> extractCodeSegment someElf
+    E.Elf32Res errs _ -> error ("Errors while parsing ELF file: " ++ show errs)
+    E.Elf64Res errs _ -> error ("Errors while parsing ELF file: " ++ show errs)
 
 extractCodeSegment :: (Bits w, Integral w) => E.Elf w -> IO B.ByteString
 extractCodeSegment e = do
@@ -53,7 +55,7 @@ withAssembledCode insns k = do
       ec <- P.waitForProcess ph
       case ec of
         IO.ExitFailure code -> do
-          IO.exitFailure
+          _ <- IO.exitFailure
           T.assertFailure $
              "Assembler failed with exit status " ++ show code ++ "\n"
              ++ "Cmd: gcc " ++ unwords args
