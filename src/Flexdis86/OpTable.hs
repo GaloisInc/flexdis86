@@ -48,7 +48,7 @@ import           Data.Bits ((.&.), shiftR)
 import qualified Data.ByteString as BS
 import           Data.Char
 import           Data.List
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Word
 import           Numeric (readDec, readHex)
@@ -93,7 +93,7 @@ instance Applicative ElemParser where
     return (f x, s2)
 
 instance Monad ElemParser where
-  return v = EP $ \s -> Right (v,s)
+  return = pure
   m >>= h = EP $ \s -> do (v,s') <- unEP m s
                           unEP (h v) s'
   fail e = EP $ \s -> Left $ show (esLine s) ++ ": " ++  e
@@ -380,43 +380,6 @@ defSupported d = d^.reqAddrSize /= Just Size16
                  && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
                  && x64Compatible d
 
-strictMap :: (a -> b) -> [a] -> [b]
-strictMap _ [] = []
-strictMap f (a:l) = ((:) $! f a) $! strictMap  f l
-
--- | Parse a definition.
-parse_def ::
-  String -> [String] -> CPURequirement -> Maybe Vendor -> ElemParser Def
-parse_def nm syns creq v = do
-  checkTag "def"
-  let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText
-  prefix <- parse_prefix
-  opc_text <- required_text "opc"
-  oprnds <- fromMaybe [] . fmap words <$> opt "opr" asText
-  mode <- parse_mode
-  creq' <- parse_CPURequirement creq
-  v' <- parse_vendor v
-  checkEnd
-  let d0 = Def { _defMnemonic = nm
-               , _defMnemonicSynonyms = syns
-               , _defCPUReq = creq'
-               , _defVendor = v'
-               , _modeLimit = AnyMode
-               , _defMode = mode
-               , _reqAddrSize = Nothing
-               , _reqOpSize = Nothing
-               , _defPrefix = prefix
-               , _requiredPrefix = Nothing
-               , _defOpcodes = []
-               , _requiredMod = Nothing
-               , _requiredReg = Nothing
-               , _requiredRM  = Nothing
-               , _x87ModRM = Nothing
-               , _defOperands = strictMap (lookupOperandType nm) oprnds
-               }
-  seq d0 $ flip execStateT d0 $ do
-    mapM_ parse_opcode (words opc_text)
-
 addOpcode :: MonadState Def m => Word8 -> m ()
 addOpcode c = defOpcodes %= (++ [c])
 
@@ -501,14 +464,6 @@ isMnemonic [] = False
 isLowerOrDigit :: Char -> Bool
 isLowerOrDigit c = isLower c || isDigit c || (c == '_')
 
-parse_instruction :: ElemParser [Def]
-parse_instruction = do
-  checkTag "instruction"
-  (mnem, syns) <- parse_mnemonics
-  cpuReq <- parse_CPURequirement Base
-  v <- parse_vendor Nothing
-  remainingElts (parse_def mnem syns cpuReq v)
-
 parse_mnemonics :: ElemParser (String, [String])
 parse_mnemonics = do
   mnems <- words <$> required_text "mnemonic"
@@ -518,17 +473,6 @@ parse_mnemonics = do
     unless (isMnemonic mnem) $
       fail $ "Invalid mnemonic: " ++ show mnem
   return (head mnems, tail mnems)
-
-parse_x86_optable :: ElemParser [Def]
-parse_x86_optable = do
-  checkTag "x86optable"
-  concat <$> remainingElts parse_instruction
-
-parseOpTable :: BS.ByteString -> Either String [Def]
-parseOpTable bs = do
-  case parseXMLDoc bs of
-    Nothing -> Left "Not an XML document"
-    Just elt -> runElemParser parse_x86_optable elt
 
 operandHandlerMap :: Map.Map String OperandType
 operandHandlerMap = Map.fromList
@@ -706,8 +650,78 @@ operandHandlerMap = Map.fromList
   , (,) "W"   $ RM_XMM
   ]
 
-lookupOperandType :: String -> String -> OperandType
+lookupOperandType :: String -> String -> ElemParser OperandType
 lookupOperandType i nm =
   case Map.lookup nm operandHandlerMap of
-    Just h -> h
-    Nothing -> error $ "Unknown operand: " ++ i ++ " " ++ show nm
+    Just h -> pure h
+    Nothing -> fail $ "Unknown operand for " ++ i ++ " named " ++ show nm
+
+-- | Reverses a list while ensuring the spine of the list is strictly evaluated.
+strictReverse :: [a] -> [a]
+strictReverse = go []
+  where go :: [a] -> [a] -> [a]
+        go r [] = r
+        go r (a:l) = (go $! (a:r)) l
+
+-- | Map over a list strictly.
+strictMapList :: Monad m => (a -> m b) -> [a] -> m [b]
+strictMapList = go []
+  where go :: Monad m => [b] -> (a -> m b) -> [a] -> m [b]
+        go r _ [] = pure $! strictReverse r
+        go r f (a:l) = do
+          b <- f a
+          seq b $ go (b:r) f l
+
+-- | Parse a definition.
+parse_def ::
+  String -> [String] -> CPURequirement -> Maybe Vendor -> ElemParser Def
+parse_def nm syns creq v = do
+  checkTag "def"
+  let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText
+  prefix <- parse_prefix
+  opc_text <- required_text "opc"
+  oprndNames <- fromMaybe [] . fmap words <$> opt "opr" asText
+  mode <- parse_mode
+  creq' <- parse_CPURequirement creq
+  v' <- parse_vendor v
+  checkEnd
+  oprnds <- strictMapList (lookupOperandType nm) oprndNames
+
+  let d0 = Def { _defMnemonic = nm
+               , _defMnemonicSynonyms = syns
+               , _defCPUReq = creq'
+               , _defVendor = v'
+               , _modeLimit = AnyMode
+               , _defMode = mode
+               , _reqAddrSize = Nothing
+               , _reqOpSize = Nothing
+               , _defPrefix = prefix
+               , _requiredPrefix = Nothing
+               , _defOpcodes = []
+               , _requiredMod = Nothing
+               , _requiredReg = Nothing
+               , _requiredRM  = Nothing
+               , _x87ModRM = Nothing
+               , _defOperands = oprnds
+               }
+  seq d0 $ flip execStateT d0 $ do
+    mapM_ parse_opcode (words opc_text)
+
+parse_instruction :: ElemParser [Def]
+parse_instruction = do
+  checkTag "instruction"
+  (mnem, syns) <- parse_mnemonics
+  cpuReq <- parse_CPURequirement Base
+  v <- parse_vendor Nothing
+  remainingElts (parse_def mnem syns cpuReq v)
+
+parse_x86_optable :: ElemParser [Def]
+parse_x86_optable = do
+  checkTag "x86optable"
+  concat <$> remainingElts parse_instruction
+
+parseOpTable :: BS.ByteString -> Either String [Def]
+parseOpTable bs = do
+  case parseXMLDoc bs of
+    Nothing -> Left "Not an XML document"
+    Just elt -> runElemParser parse_x86_optable elt
