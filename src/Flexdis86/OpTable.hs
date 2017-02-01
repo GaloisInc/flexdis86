@@ -301,7 +301,7 @@ data Def = Def  { _defMnemonic :: String
                 , _requiredReg :: Maybe Fin8
                 , _requiredRM :: Maybe Fin8
                 , _x87ModRM    :: Maybe Fin64
-                , _defOperands  :: [OperandType]
+                , _defOperands  :: ![OperandType]
                 } deriving (Eq, Show)
 
 -- | Canonical mnemonic for definition.
@@ -380,6 +380,10 @@ defSupported d = d^.reqAddrSize /= Just Size16
                  && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
                  && x64Compatible d
 
+strictMap :: (a -> b) -> [a] -> [b]
+strictMap _ [] = []
+strictMap f (a:l) = ((:) $! f a) $! strictMap  f l
+
 -- | Parse a definition.
 parse_def ::
   String -> [String] -> CPURequirement -> Maybe Vendor -> ElemParser Def
@@ -408,9 +412,9 @@ parse_def nm syns creq v = do
                , _requiredReg = Nothing
                , _requiredRM  = Nothing
                , _x87ModRM = Nothing
-               , _defOperands = map (lookupOperandType "") oprnds
+               , _defOperands = strictMap (lookupOperandType nm) oprnds
                }
-  flip execStateT d0 $ do
+  seq d0 $ flip execStateT d0 $ do
     mapM_ parse_opcode (words opc_text)
 
 addOpcode :: MonadState Def m => Word8 -> m ()
@@ -530,7 +534,9 @@ operandHandlerMap :: Map.Map String OperandType
 operandHandlerMap = Map.fromList
   [ -- Fixed values implicitly derived from opcode.
     (,) "AL"  $ OpType (Reg_fixed 0) BSize
+  , (,) "AX"  $ OpType (Reg_fixed 0) WSize
   , (,) "eAX" $ OpType (Reg_fixed 0) ZSize
+  , (,) "Av"  $ AbsoluteAddr
   , (,) "rAX" $ OpType (Reg_fixed 0) VSize
   , (,) "CL"  $ OpType (Reg_fixed 1) BSize
   , (,) "DX"  $ OpType (Reg_fixed 2) WSize
@@ -545,8 +551,12 @@ operandHandlerMap = Map.fromList
   , (,) "MIsq" $ M_Implicit DS RSI QSize
 
     -- Fixed segment registers.
+  , (,) "CS"  $ SEG CS
+  , (,) "DS"  $ SEG DS
+  , (,) "ES"  $ SEG ES
   , (,) "FS"  $ SEG FS
   , (,) "GS"  $ SEG GS
+  , (,) "SS"  $ SEG SS
 
     -- Register values stored in opcode that also depend on REX.b
   , (,) "R0b" $ OpType (Opcode_reg 0) BSize
@@ -557,6 +567,7 @@ operandHandlerMap = Map.fromList
   , (,) "R5b" $ OpType (Opcode_reg 5) BSize
   , (,) "R6b" $ OpType (Opcode_reg 6) BSize
   , (,) "R7b" $ OpType (Opcode_reg 7) BSize
+
   , (,) "R0v" $ OpType (Opcode_reg 0) VSize
   , (,) "R1v" $ OpType (Opcode_reg 1) VSize
   , (,) "R2v" $ OpType (Opcode_reg 2) VSize
@@ -574,11 +585,21 @@ operandHandlerMap = Map.fromList
   , (,) "R6y" $ OpType (Opcode_reg 6) YSize
   , (,) "R7y" $ OpType (Opcode_reg 7) YSize
 
+  , (,) "R0z" $ OpType (Opcode_reg 0) ZSize
+  , (,) "R1z" $ OpType (Opcode_reg 1) ZSize
+  , (,) "R2z" $ OpType (Opcode_reg 2) ZSize
+  , (,) "R3z" $ OpType (Opcode_reg 3) ZSize
+  , (,) "R4z" $ OpType (Opcode_reg 4) ZSize
+  , (,) "R5z" $ OpType (Opcode_reg 5) ZSize
+  , (,) "R6z" $ OpType (Opcode_reg 6) ZSize
+  , (,) "R7z" $ OpType (Opcode_reg 7) ZSize
+
     -- Register values stored in ModRM.reg.
   , (,) "Gb"  $ OpType ModRM_reg BSize
   , (,) "Gd"  $ OpType ModRM_reg DSize
   , (,) "Gq"  $ OpType ModRM_reg QSize
   , (,) "Gv"  $ OpType ModRM_reg VSize
+  , (,) "Gw"  $ OpType ModRM_reg WSize
   , (,) "Gy"  $ OpType ModRM_reg YSize
 
     -- Control register read from ModRM.reg.
@@ -608,6 +629,9 @@ operandHandlerMap = Map.fromList
   , (,) "MwRv" $ MXRX VSize WSize
     -- As a  register has size DSize, and as memory has size BSize.
   , (,) "MbRd" $ MXRX BSize DSize
+  , (,) "MbRv" $ MXRX BSize VSize
+  , (,) "MdRy" $ MXRX DSize YSize
+  , (,) "MwRd" $ MXRX WSize DSize
   , (,) "MwRy" $ MXRX WSize YSize
 
     -- Far Pointer (which is an address) stored in ModRM.rm
@@ -616,11 +640,13 @@ operandHandlerMap = Map.fromList
     -- Memory value stored in ModRM.rm
     -- (ModRM.mod must not equal 3)
   , (,) "M"    $ M
+  , (,) "Mo"   $ M_X OSize
+  , (,) "Mt"   $ M_FloatingPoint FPSize80
+    -- ^ A reference to an 80-bit floating point value
 
     -- Memory value pointing to floating point value
   , (,) "M32fp" $ M_FloatingPoint FPSize32
   , (,) "M64fp" $ M_FloatingPoint FPSize64
-  , (,) "M80fp" $ M_FloatingPoint FPSize80
 
 
     -- FP Register indicies
@@ -635,9 +661,15 @@ operandHandlerMap = Map.fromList
 
     -- Memory value pointing to 64-bit integer stored in ModRM.rm
     -- (ModRM.mod must not equal 3).
-  , (,) "Mq"  $ M_X Size64
-  , (,) "Md"  $ M_X Size32
-  , (,) "Mw"  $ M_X Size16
+  , (,) "Mq"  $ M_X QSize
+  , (,) "Md"  $ M_X DSize
+  , (,) "Mv"  $ M_X VSize
+  , (,) "Mw"  $ M_X WSize
+  , (,) "Mo"  $ M_X OSize
+
+  , (,) "MdU"  $ M_U DSize
+  , (,) "MqU"  $ M_U QSize
+  , (,) "MwU"  $ M_U WSize
 
   , (,) "S"   $ RG_S
 

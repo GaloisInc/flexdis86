@@ -32,9 +32,9 @@ data OperandSource
      -- The word denote the index (0..7).
      -- rex.b is ored with this value to get the index of the
      -- Reg8.
-   | Opcode_reg Word8
+   | Opcode_reg !Word8
      -- ^ A fixed register that is not affected by REX.
-   | Reg_fixed Word8
+   | Reg_fixed !Word8
      -- ^ An immediate value read in from the instruction stream.
    | ImmediateSource
      -- ^ An offset value read in from the instruction stream.
@@ -53,6 +53,7 @@ data OperandSize
    | WSize -- ^ Operand is always 16-bits.
    | DSize -- ^ Operand is always 32-bits.
    | QSize -- ^ Operand is always 64-bits.
+   | OSize -- ^ Operand is always 128-bits.
    | VSize -- ^ Operand size equals operand mode (16,32 or 64 bits)
    | YSize -- ^ Operand size is 64-bits if operand size is 64 bits, and 32-bits otherwise.
    | ZSize -- ^ Operand size is 16-bits if operand size is 16 bits, and 32-bits otherwise.
@@ -61,7 +62,7 @@ data OperandSize
 
 data OperandType
      -- | Operand that comes from a source and size.
-   = OpType OperandSource OperandSize
+   = OpType !OperandSource !OperandSize
      -- | A control register from ModRM.reg
    | RG_C
      -- | A debug register from ModRM.reg
@@ -69,7 +70,7 @@ data OperandType
      -- | A segment register from ModRM.reg
    | RG_S
      -- | A floating point register index
-   | RG_ST Int
+   | RG_ST !Int
      -- | An MMX register from ModRM.reg
    | RG_MMX_reg
      -- | A SSE XMM register from ModRM.reg
@@ -79,7 +80,12 @@ data OperandType
      -- | A SSE XMM register or 64 bit address from ModRM.rm
    | RM_XMM
      -- | A specific segment
-   | SEG Segment
+   | SEG !Segment
+
+     -- | An absolute address encoded as a ptr16:16 or ptr16:32 depending on operand size
+     --
+     -- This is not used in 64-bit mode.
+   | AbsoluteAddr
 
      -- | Operand points to a far pointer in memory that may be 16,32,or 64 bits
      -- depending on operand size.
@@ -89,18 +95,22 @@ data OperandType
      -- | An address in memory with no defined target.
      -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
    | M
-     -- | A 64-bit integer memory location.
+
+     -- | A memory location address whose value matches the given size.
      -- Address stored from ModRM.rm (with ModRM.mod required to not equal 3).
-   | M_X SizeConstraint
+   | M_X !OperandSize
+
+     -- | Either an XMM register or a memory location with the size determined from the operand size.
+   | M_U !OperandSize
 
      -- | A 64-bit floating point memory location.
      -- Decoded as for M_X
-   | M_FloatingPoint FPSizeConstraint
+   | M_FloatingPoint !FPSizeConstraint
 
      -- | A register or memory location.
-     -- As a register has size X-Size, and as memory has size X-Size.
+     -- As a register has the first size, and as memory has size XySize.
      -- Stored in ModRM.rm
-   | MXRX OperandSize OperandSize -- FIXME, should prob. be SizeConstraint
+   | MXRX !OperandSize !OperandSize
 
      -- | An MMX register or 64bit memory operand.
      -- Stored in ModRM.rm.
@@ -110,7 +120,7 @@ data OperandType
 
      -- | An implicit memory location based upon the given register.
      -- Altered by ASO.
-   | M_Implicit Segment Reg64 OperandSize
+   | M_Implicit !Segment !Reg64 !OperandSize
 
      -- | The constant one.
    | IM_1
@@ -122,4 +132,4 @@ data OperandType
      -- and 16bits if operand size is 16bits.
      -- The value can be sign exected to match operator size.
    | IM_SZ
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Ord, Show)

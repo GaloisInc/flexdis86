@@ -811,7 +811,7 @@
             <opr>MIsq MIdq</opr>
         </def>
     </instruction>
-        
+
     <instruction>
         <mnemonic>cmpsd</mnemonic>
         <def>
@@ -820,7 +820,7 @@
             <opr>V W Ib</opr>
         </def>
     </instruction>
-        
+
     <instruction>
         <mnemonic>cmpss</mnemonic>
         <def>
@@ -1397,7 +1397,7 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>df /mod=!11 /reg=4</opc>
-            <opr>Mbcd</opr>
+            <opr>Mt</opr>
         </def>
     </instruction>
 
@@ -1407,7 +1407,7 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>df /mod=!11 /reg=6</opc>
-            <opr>Mbcd</opr>
+            <opr>Mt</opr>
         </def>
     </instruction>
 
@@ -2618,7 +2618,7 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>db /mod=!11 /reg=5</opc>
-            <opr>M80fp</opr>
+            <opr>Mt</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
@@ -2973,7 +2973,7 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>db /mod=!11 /reg=7</opc>
-            <opr>M80fp</opr>
+            <opr>Mt</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
@@ -4982,12 +4982,12 @@
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>a5 /o=32</opc>
-            <opr>MIdd MIsd</opr>            
+            <opr>MIdd MIsd</opr>
         </def>
         <def>
             <pfx>rep seg oso rexw</pfx>
             <opc>a5 /o=64</opc>
-            <opr>MIdq MIsq</opr>            
+            <opr>MIdq MIsq</opr>
         </def>
     </instruction>
 
@@ -7351,7 +7351,7 @@
         <def>
             <pfx>repz repnz</pfx>
             <opc>ae</opc>
-            <opr>AL MIdb</opr>            
+            <opr>AL MIdb</opr>
         </def>
         <def>
             <pfx>repz repnz oso rexw</pfx>
@@ -7361,13 +7361,13 @@
         <def>
             <pfx>repz repnz oso rexw</pfx>
             <opc>af /o=32</opc>
-            <opr>eAX MIdd</opr>            
+            <opr>eAX MIdd</opr>
         </def>
         <def>
           <pfx>repz repnz oso rexw</pfx>
             <opc>af /o=64</opc>
             <opr>rAX MIdq</opr>
-        </def>        
+        </def>
     </instruction>
 
     <instruction>

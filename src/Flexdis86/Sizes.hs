@@ -24,12 +24,12 @@ import Data.Bits
 import Data.Word ( Word8 )
 
 -- | Describes whether a value is 16, 32 or 64-bits.
-data SizeConstraint = Size16 | Size32 | Size64
-  deriving (Eq, Show, Ord)
+data SizeConstraint = Size16 | Size32 | Size64 | Size128
+  deriving (Eq, Ord, Show)
 
 -- | Describes whether a floating point memory address value is 32, 64, or 80-bits.
 data FPSizeConstraint = FPSize32 | FPSize64 | FPSize80
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Ord, Show)
 
 -- | Identifies whether the mod value of a RM field
 -- can be only memory (e.g. !11), only a register (e.g., =11).

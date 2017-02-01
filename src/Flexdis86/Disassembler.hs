@@ -232,6 +232,7 @@ expectsModRM d
 modRMOperand :: OperandType -> Bool
 modRMOperand nm =
   case nm of
+    AbsoluteAddr -> False
     OpType sc _ ->
       case sc of
         ModRM_rm        -> True
@@ -253,6 +254,7 @@ modRMOperand nm =
     SEG _ -> False
     M_FP  -> True
     M     -> True
+    M_U _ -> True
     M_X _ -> True
     M_FloatingPoint _ -> True
     MXRX _ _ -> True
@@ -605,6 +607,7 @@ sizeFn _ WSize = Size16
 sizeFn _ DSize = Size32
 sizeFn _ QSize = Size64
 sizeFn osz VSize = osz
+sizeFn _      OSize = Size128
 sizeFn Size64 YSize = Size64
 sizeFn _      YSize = Size32
 sizeFn Size16 ZSize = Size16
@@ -618,6 +621,7 @@ regSizeFn osz _ sz =
     Size16  -> WordReg  . reg16
     Size32  -> DWordReg . reg32
     Size64  -> QWordReg . reg64
+    Size128 -> error "Unexpected register size function"
 
 memSizeFn :: SizeConstraint -> OperandSize -> AddrRef -> Value
 memSizeFn _ BSize = Mem8
@@ -626,6 +630,8 @@ memSizeFn osz sz =
     Size16 -> Mem16
     Size32 -> Mem32
     Size64 -> Mem64
+    Size128 -> Mem128
+
 
 parseValue :: ByteReader m
            => Prefixes
@@ -653,6 +659,7 @@ parseValue p osz mmrm tp = do
       rm_reg = rex_b rex .|. modRM_rm modRM
 
   case tp of
+    AbsoluteAddr -> error $ "Absolute addr not yet supported."
     OpType ModRM_rm sz
       | modRM_mod modRM == 3 -> pure $ regSizeFn osz rex sz rm_reg
       | otherwise            -> memSizeFn osz sz <$> addr
@@ -668,21 +675,24 @@ parseValue p osz mmrm tp = do
         Size16 ->  WordImm <$> readSWord
         Size32 -> DWordImm <$> readSDWord
         Size64 -> QWordImm <$> readSQWord
+        Size128 -> error "128-bit immediates are not supported."
     OpType OffsetSource sz
         | BSize <- sz -> Mem8 <$> moffset
         | otherwise -> case sizeFn osz sz of
                          Size16 -> Mem16 <$> moffset
                          Size32 -> Mem32 <$> moffset
                          Size64 -> Mem64 <$> moffset
+                         Size128 -> error "128-bit offsets are not supported."
       where s = sp `setDefault` DS
             moffset | aso =  Offset_32 s <$> readDWord
                     | otherwise = Offset_64 s <$> readQWord
     OpType JumpImmediate BSize -> JumpOffset BSize . fromIntegral <$> readSByte
     OpType JumpImmediate sz -> fmap (JumpOffset sz) $
       case sizeFn osz sz of
-        Size16 -> fromIntegral <$> readSWord
-        Size32 -> fromIntegral <$> readSDWord
-        Size64 -> readSQWord
+        Size16  -> fromIntegral <$> readSWord
+        Size32  -> fromIntegral <$> readSDWord
+        Size64  -> readSQWord
+        Size128 -> error "128-bit jump immediates are not supported."
 
     RG_C   -> return $ ControlReg (controlReg reg_with_rex)
     RG_dbg -> return $ DebugReg   (debugReg   reg_with_rex)
@@ -698,21 +708,24 @@ parseValue p osz mmrm tp = do
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
     M    ->    VoidMem <$> addr
-    M_X sz -> case sz of
-                Size16 -> Mem16 <$> addr
-                Size32 -> Mem32 <$> addr
-                Size64 -> Mem64 <$> addr
     M_FloatingPoint sz ->
       case sz of
         FPSize32 -> FPMem32 <$> addr
         FPSize64 -> FPMem64 <$> addr
         FPSize80 -> FPMem80 <$> addr
-    MXRX msz _rsz
+    M_U sz
       | modRM_mod modRM == 3 ->
-        case osz of
-          Size16 -> pure $  WordReg $ reg16 rm_reg
-          Size32 -> pure $ DWordReg $ reg32 rm_reg
-          Size64 -> pure $ QWordReg $ reg64 rm_reg
+        return $ XMMReg (xmmReg rm_reg)
+      | otherwise ->
+        memSizeFn osz sz <$> addr
+    M_X sz -> memSizeFn osz sz <$> addr
+    MXRX msz rsz
+      | modRM_mod modRM == 3 ->
+        case sizeFn osz rsz of
+          Size16  -> pure $  WordReg $ reg16 rm_reg
+          Size32  -> pure $ DWordReg $ reg32 rm_reg
+          Size64  -> pure $ QWordReg $ reg64 rm_reg
+          Size128 -> error "128-bit registers are not supported."
       | otherwise -> memSizeFn osz msz <$> addr -- FIXME!!
     RM_MMX
       | modRM_mod modRM == 3 ->
@@ -730,9 +743,10 @@ parseValue p osz mmrm tp = do
     IM_SZ ->
       -- This reads 16-bits if operand size is 16bits and 32-bits otherwise.
       case osz of
-        Size16 ->  WordImm <$> readSWord
-        Size32 -> DWordImm <$> readSDWord
-        Size64 -> DWordImm <$> readSDWord
+        Size16  ->  WordImm <$> readSWord
+        Size32  -> DWordImm <$> readSDWord
+        Size64  -> DWordImm <$> readSDWord
+        Size128 -> error $ "128-bit immediates are not supported."
 
 -- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m

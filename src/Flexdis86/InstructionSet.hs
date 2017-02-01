@@ -70,24 +70,28 @@ displacementInt d =
 
 prettyDisplacement :: Displacement -> Doc
 prettyDisplacement NoDisplacement = text "0"
-prettyDisplacement (Disp32 x)
-    | x >= 0 = text ("0x" ++ showHex x "")
-    | x < 0  = text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
-prettyDisplacement (Disp8 x)
-    | x >= 0 = text ("0x" ++ showHex x "")
-    | x < 0  = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
+prettyDisplacement (Disp32 x) =
+  if x >= 0 then
+    text ("0x" ++ showHex x "")
+   else
+    text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
+prettyDisplacement (Disp8 x) =
+  if x >= 0 then
+    text ("0x" ++ showHex x "")
+   else
+    text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
 
 -- | Append a displacement to an expression
 appendDisplacement :: Displacement -> Doc
 appendDisplacement NoDisplacement = text ""
 appendDisplacement (Disp32 x)
-  | x >  0 = text ("+0x" ++ showHex x "")
-  | x == 0 = text ""
-  | x <  0 = text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
+  | x >  0    = text ("+0x" ++ showHex x "")
+  | x == 0    = text ""
+  | otherwise = text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
 appendDisplacement (Disp8 x)
-  | x >  0 = text ("+0x" ++ showHex x "")
-  | x == 0 = text ""
-  | x <  0 = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
+  | x >  0    = text ("+0x" ++ showHex x "")
+  | x == 0    = text ""
+  | otherwise = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
 
 instance Eq Displacement where
   x == y = displacementInt x == displacementInt y
@@ -169,7 +173,6 @@ ppAddrRef addr =
     IP_Offset_64 _seg off -> brackets $ text "rip" <> appendDisplacement off
   where
     prefix seg off = ppShowReg seg <> colon <> text (show off)
-    addOrSub n = text $ if n >= 0 then "+" else "-"
 
     ppAddr :: Show r
            => Maybe r -- Base value
