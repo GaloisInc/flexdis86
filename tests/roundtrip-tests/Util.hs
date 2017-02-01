@@ -3,6 +3,7 @@ module Util ( withAssembledCode ) where
 
 import Data.Bits ( Bits )
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as B8
 import qualified System.Exit as IO
 import qualified System.IO as IO
 import qualified System.IO.Temp as IO
@@ -28,7 +29,7 @@ readCodeSegment fp = do
 
 extractCodeSegment :: (Bits w, Integral w) => E.Elf w -> IO B.ByteString
 extractCodeSegment e = do
-  case E.findSectionByName ".text" e of
+  case E.findSectionByName (B8.pack ".text") e of
     [] -> error "extractCodeSegment: Could not find code segment"
     [textSection] -> return $ E.elfSectionData textSection
     _ -> error "extractCodeSegment: Too many text segments"
