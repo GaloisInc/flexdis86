@@ -39,6 +39,10 @@ class (Applicative m, Monad m) => ByteReader m where
   readQWord :: m Word64
   readQWord = readAndShift readDWord 32
 
+  -- | Invalid instruction when parsing
+  invalidInstruction :: m a
+  invalidInstruction = fail "Invalid instruction"
+
 -- | @readAndShift reader i@ invokes reader twice, the first one is stored
 -- in the low-order bits and the second is stored in the high order bits.
 readAndShift :: (Applicative m, Integral a, Bits b, Num b)

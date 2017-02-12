@@ -585,7 +585,7 @@ parseReadTable :: ByteReader m
                => ModRM
                -> ReadTable
                -> m InstructionInstance
-parseReadTable _ NoParse = fail "Invalid instruction."
+parseReadTable _ NoParse = invalidInstruction
 parseReadTable modRM (ReadTable pfx osz nm tps df) =
   finish <$> traverse (parseValue pfx osz (Just modRM)) tps
   where finish args = II { iiLockPrefix = pfx^.prLockPrefix
