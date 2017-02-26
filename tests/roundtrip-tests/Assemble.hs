@@ -36,9 +36,9 @@ testCases = [ ("ret", mkI "ret" [])
             -- e.g. @xor %rdx, %rdx@ can be encoded as both 0x4831d2
             -- and 0x4833d2 -- and so these tests depend on flexdis
             -- choosing the same encoding as gcc.
-            , ("xor %rdx, %rdx", mkI "xor" [D.QWordReg D.rdx, D.QWordReg D.rdx])
-            , ("xor %rbx, %rbx", mkI "xor" [D.QWordReg D.rbx, D.QWordReg D.rbx])
-            , ("xor %rcx, %rcx", mkI "xor" [D.QWordReg D.rcx, D.QWordReg D.rcx])
+            , ("xor %rdx, %rdx", mkI "xor" [D.QWordReg D.RDX, D.QWordReg D.RDX])
+            , ("xor %rbx, %rbx", mkI "xor" [D.QWordReg D.RBX, D.QWordReg D.RBX])
+            , ("xor %rcx, %rcx", mkI "xor" [D.QWordReg D.RCX, D.QWordReg D.RCX])
             , ("xor %r8, %r8", mkI "xor" [D.QWordReg (D.reg64 8), D.QWordReg (D.reg64 8)])
             , ("movq $0x190000000,%r11", mkI "mov" [D.QWordReg (D.reg64 11), D.QWordImm 0x190000000])
 
