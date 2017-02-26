@@ -15,9 +15,8 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Disassembler
-  ( DisassemblerContext
-  , mkX64Disassembler
-  , TableRef
+  ( mkX64Disassembler
+  , NextOpcodeTable
   , disassembleInstruction
   , DisassembledAddr(..)
   , tryDisassemble
@@ -27,14 +26,13 @@ module Flexdis86.Disassembler
 import           Control.Applicative
 import           Control.Exception
 import           Control.Lens
-import           Control.Monad.State
+import           Control.Monad.Except
 import           Data.Binary.Get (Decoder(..), runGetIncremental)
 import           Data.Bits
 import qualified Data.ByteString as BS
 import           Data.Int
 import           Data.List (subsequences, permutations)
 import           Data.Maybe
-import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import           Data.Word
@@ -49,12 +47,6 @@ import           Flexdis86.Prefixes
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
-
--- | Create an instruction parser from the given udis86 parser.
--- This is currently restricted to x64 base operations.
-mkX64Disassembler :: BS.ByteString -> Either String DisassemblerContext
-mkX64Disassembler bs = mkContext . filter defSupported <$> parseOpTable bs
-  where mkContext defs = fst $ runParserGen $ parseTable defs
 
 ------------------------------------------------------------------------
 -- REX
@@ -144,80 +136,56 @@ sib_si index_reg sib | idx == rsp_idx = Nothing
   where idx = index_reg $ sib_index sib
 
 
--- | A TableRef describes a table of parsers to read based on the bytes.
-data TableRef a = TableRef
-       { -- | Name of table for pretty printing purposes.
-         trName :: !String
-       , -- | 256-element vector containing parsers after next byte is read.
-         trVec :: !(V.Vector (IParser a))
-       }
-
-instance Show (TableRef a) where
-  show tr = '#' : trName tr
-
--- | Return the parser after reading the given byte.
-trVal :: TableRef a -> Word8 -> IParser a
-trVal tr i = trVec tr `regIdx` i
-
--- | List of tables in parser with a particular type.
-type TableRefSeq a = Seq.Seq (TableRef a)
-
-data ParserState
-   = ParserState { _startTables :: TableRefSeq (InstructionInstance) }
+-- | Return parsed instruction.
+data ReadTable
+   = ReadTable Prefixes SizeConstraint String [OperandType] Def
+     -- ^ This indicates we read with the given operand size and size constraint
+   | NoParse
   deriving (Show)
 
-startTables :: Simple Lens ParserState (TableRefSeq InstructionInstance)
-startTables = lens _startTables (\s v -> s { _startTables = v})
+data RegTable a
+   = RegTable (V.Vector a)
+   | RegUnchecked !a
+  deriving (Show)
 
-type ParserGen = State ParserState
+type RMTable = RegTable ReadTable
 
-runParserGen :: ParserGen a -> (a,ParserState)
-runParserGen p = do
-  let s0 = ParserState { _startTables = Seq.empty }
-   in runState p s0
+data ModTable
+     -- | @ModTable memTable regTable@
+   = ModTable !RMTable !RMTable
+   | ModUnchecked !RMTable
+  deriving (Show)
 
-mkTableRef :: String
-           -> Simple Lens ParserState (TableRefSeq a)
-           -> V.Vector (IParser a)
-           -> ParserGen (TableRef a)
-mkTableRef nm seqLens v = do
-  l <- Seq.length <$> use seqLens
-  let r = TableRef (nm ++ show l) v
-  seq r $ do
-    seqLens %= (Seq.|> r)
-    return r
+------------------------------------------------------------------------
+-- OpcodeTable/NextOpcodeTable mutually recursive definitions
 
-startTableRef :: V.Vector (IParser InstructionInstance)
-            -> ParserGen  (TableRef InstructionInstance)
-startTableRef = mkTableRef "startTable" startTables
+data OpcodeTable
+   = OpcodeTable NextOpcodeTable
+   | SkipModRM Prefixes Def
+   | ReadModRM (RegTable ModTable)
 
-type TableFn t    = [Def]             -> ParserGen t
+-- | A NextOpcodeTable describes a table of parsers to read based on the bytes.
+type NextOpcodeTable = V.Vector OpcodeTable
+
+------------------------------------------------------------------------
+-- OpcodeTable/NextOpcodeTable instances
+
+deriving instance Show OpcodeTable
+
+type ParserGen = Except String
+
+runParserGen :: ParserGen a -> Either String a
+runParserGen p = runExcept p
+
 type PfxTableFn t = [(Prefixes, Def)] -> ParserGen t
-
-type DisassemblerContext = TableRef InstructionInstance
-
-data IParser a where
-  OpcodeTable :: TableRef (InstructionInstance)
-              -> IParser  (InstructionInstance)
-  SkipModRM :: Prefixes
-            -> SizeConstraint
-            -> String
-            -> [OperandType]
-            -> Def
-            -> IParser (InstructionInstance)
-  ReadModRM :: RegTable (ModTable RMTable)
-            -> IParser (InstructionInstance)
-
-deriving instance Show (IParser a)
-
-type OpcodeTable = IParser (InstructionInstance)
-
-regIdx :: V.Vector a -> Word8 -> a
-regIdx v i = v V.! fromIntegral i
+-- ^ Given a list of presfixes and a definition this?
 
 -- | Returns true if this definition supports the given operand size constaint.
-matchRequiredOpSize :: SizeConstraint -> Def -> Bool
-matchRequiredOpSize sc d = maybe True (==sc) (d^.reqOpSize)
+matchRequiredOpSize :: Prefixes -> Def -> Bool
+matchRequiredOpSize pfx d =
+  case d^.reqOpSize of
+    Just sc -> sc == prefixOperandSizeConstraint pfx d
+    Nothing -> True
 
 -- | Returns true if this instruction depends on modrm byte.
 expectsModRM :: Def -> Bool
@@ -265,18 +233,18 @@ modRMOperand nm =
     IM_SB -> False
     IM_SZ -> False
 
-partitionBy :: Show d => [([Word8],d)] -> V.Vector [([Word8],d)]
+-- | Split entries based on first identifier in list of bytes.
+partitionBy :: [([Word8], (Prefixes, Def))] -> V.Vector [([Word8], (Prefixes, Def))]
 partitionBy l = V.create $ do
   mv <- VM.replicate 256 []
-  forM_ l (go mv)
+  let  go ([], d) = error $ "internal: empty bytes in partitionBy at def " ++ show d
+       go (w:wl,d) = do
+         el <- VM.read mv (fromIntegral w)
+         VM.write mv (fromIntegral w) ((wl,d):el)
+  mapM_ go l
   return mv
-  where
-    go _ ([], d) = error $ "internal: empty bytes in partitionBy at def " ++ show d
-    go mv (w:wl,d) = do el <- VM.read mv (fromIntegral w)
-                        VM.write mv (fromIntegral w) ((wl,d):el)
 
 
--- | The rules for this are a little convoluted ...
 prefixOperandSizeConstraint :: Prefixes -> Def -> SizeConstraint
 prefixOperandSizeConstraint pfx d
   -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
@@ -291,9 +259,9 @@ prefixOperandSizeConstraint pfx d
 -- with the same opcode distinguished by the /o= and /a= annotations.
 -- This function removes those definitions which don't match the given
 -- prefix.
-validPrefix :: (Prefixes, Def) -> Bool
-validPrefix (pfx, d) = matchRequiredOpSize (prefixOperandSizeConstraint pfx d) d
-                       && matchReqAddr (prAddrSize pfx) d
+validPrefix :: Prefixes -> Def -> Bool
+validPrefix pfx d = matchRequiredOpSize pfx d
+                 && matchReqAddr (prAddrSize pfx) d
   where
     matchReqAddr sz = maybe True (==sz) . view reqAddrSize
 
@@ -314,51 +282,93 @@ validPrefix (pfx, d) = matchRequiredOpSize (prefixOperandSizeConstraint pfx d) d
 -- seem to allow other prefixes sometimes, along with REX.
 --
 
--- FIXME: we could probably share more here, rather than recalculating for each instr.
-allPrefixedOpcodes :: Def -> [([Word8], (Prefixes, Def))]
-allPrefixedOpcodes def = filter (validPrefix . snd) $ map (mkBytes . unzip) rexs
-  where
-    mkBytes (bytes, funs) = (bytes ++ def^.defOpcodes, (appList funs defaultPrefix, def))
-    appList :: [a -> a] -> a -> a
-    appList = foldl (.) id
-    -- all allowed prefixes from REP, REPZ, ASO, OSO
-    simplePfxs :: [ [(Word8, Prefixes -> Prefixes)] ]
-    simplePfxs = subsequences (simplePrefixes allowed)
-    -- all possible permutations of the allowed prefixes
-    -- FIXME: check that the required prefix doesn't occur in the allowed prefixes
-    segs   :: [ [(Word8, Prefixes -> Prefixes)] ]
-    segs   = concat
-           $ map permutations -- get all permutations
-           $ map (reqPfx ++) -- add required prefix to every allowed prefix
-           $ simplePfxs ++ [ v : vs | v <- segPrefixes allowed, vs <- simplePfxs ]
-    -- above with REX
-    rexs   :: [ [(Word8, Prefixes -> Prefixes)] ]
-    rexs   = segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
+-- | A function which given an assignment of viewed prefixes, returns the modifies
+-- set based on a particular value seen.
+type PrefixAssignFun = Prefixes -> Prefixes
 
-    allowed = def^.defPrefix
-    reqPfx = case def^.requiredPrefix of
-               Nothing -> []
-               Just b  -> [(b, id)] -- don't do anything, but byte must occur.
-    defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
-                             , _prSP  = no_seg_prefix
-                             , _prREX = no_rex
-                             , _prASO = False
-                             , _prOSO = False }
+-- | A list of paisr which map prefix bytes corresponding to prefixes to the associated update function.
+type PrefixAssignTable = [(Word8, PrefixAssignFun)]
 
-simplePrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
-simplePrefixes allowed = [ v | (name, v) <- pfxs, name `elem` allowed ]
+-- Given a list of allowed prefixes
+simplePrefixes :: String -> [String] -> PrefixAssignTable
+simplePrefixes mnem allowed
+  | "rep" `elem` allowed && "repz" `elem` allowed = error $
+      "Instruction " ++ mnem ++ " should not be allowed to have both rep and repz as prefixes"
+  | otherwise = [ v | (name, v) <- pfxs, name `elem` allowed ]
   where
     pfxs =  [ ("lock",  (0xf0, set prLockPrefix LockPrefix))
             , ("repnz", (0xf2, set prLockPrefix RepNZPrefix))
             , ("repz",  (0xf3, set prLockPrefix RepZPrefix))
             , ("rep",   (0xf3, set prLockPrefix RepPrefix))
             , ("oso",   (0x66, set prOSO True))
-            , ("aso",   (0x67, set prASO True)) ]
+            , ("aso",   (0x67, set prASO True))
+            ]
 
-segPrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
+-- | Table for segment prefixes
+segPrefixes :: [String] -> PrefixAssignTable
 segPrefixes allowed
   | "seg" `elem` allowed = [ (x, set prSP (SegmentPrefix x)) | x <- [ 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 ] ]
   | otherwise            = []
+
+-- FIXME: we could probably share more here, rather than recalculating for each instr.
+allPrefixedOpcodes :: Def -> [([Word8], (Prefixes, Def))]
+allPrefixedOpcodes def
+    | checkRequiredPrefix = mapMaybe mkBytes rexs
+    | otherwise = error $ "Required prefix of " ++ show (def^.defMnemonic) ++ " overlaps with allowed prefixes."
+  where
+    appList :: [a -> a] -> a -> a
+    appList = foldl (.) id
+    -- Get list of permitted prefixes
+    allowed = def^.defPrefix
+    -- Get all subsets of allowed segmented prefixes
+    segPfxs :: PrefixAssignTable
+    segPfxs = segPrefixes allowed
+    -- Get all subsets of allowed prefixes from REP, REPZ, ASO, OSO
+    simplePfxs :: PrefixAssignTable
+    simplePfxs = simplePrefixes (def^.defMnemonic) allowed
+
+    -- Function to prepend required prefixes
+    checkRequiredPrefix ::  Bool
+    checkRequiredPrefix =
+      case def^.requiredPrefix of
+        Nothing -> True
+        -- Required prefix doesn't do anything, but must occur
+        Just b  -> all (\(v,_) -> v /= b) (segPfxs ++ simplePfxs)
+
+    -- Function to prepend required prefixes
+    prependRequiredPrefix :: PrefixAssignTable -> PrefixAssignTable
+    prependRequiredPrefix pfx =
+      case def^.requiredPrefix of
+        Nothing -> pfx
+        -- Required prefix doesn't do anything, but must occur
+        Just b  -> [(b, id)] ++ pfx
+    -- all possible permutations of the allowed prefixes
+    -- FIXME: check that the required prefix doesn't occur in the allowed prefixes
+    segs   :: [PrefixAssignTable]
+    segs   = concatMap permutations -- get all permutations
+           $ map prependRequiredPrefix -- add required prefix to every allowed prefix
+           $ subsequences simplePfxs ++ [ v : vs | v <- segPfxs, vs <- subsequences simplePfxs ]
+    -- above with REX
+    rexs   :: [PrefixAssignTable]
+    rexs   = segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
+
+    -- Create the pair containing the byte representation the prefixes and the definition.
+    mkBytes :: PrefixAssignTable -> Maybe ([Word8], (Prefixes, Def))
+    mkBytes tbl
+          | validPrefix pfx def = Just (byte_rep, (pfx, def))
+          | otherwise = Nothing
+      where (prefix_bytes, funs) = unzip tbl
+            -- Get complete binary representation of instruction
+            byte_rep = prefix_bytes ++ def^.defOpcodes
+            -- Get prefix value
+            pfx = appList funs defaultPrefix
+
+    defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
+                             , _prSP  = no_seg_prefix
+                             , _prREX = no_rex
+                             , _prASO = False
+                             , _prOSO = False
+                             }
 
 -- FIXME: we could also decode the REX
 rexPrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
@@ -376,9 +386,8 @@ rexPrefixes allowed
 
 -- We calculate all allowed prefixes for the instruction in the first
 -- argument.  This simplifies parsing at the cost of extra space.
-mkOpcodeTable :: PfxTableFn (RegTable (ModTable RMTable))
-              -> TableFn OpcodeTable
-mkOpcodeTable f defs = go [] (concatMap allPrefixedOpcodes defs)
+mkOpcodeTable ::  [Def] -> ParserGen OpcodeTable
+mkOpcodeTable defs = go [] (concatMap allPrefixedOpcodes defs)
   where -- Recursive function that generates opcode table by parsing
         -- opcodes in first element of list.
         go :: -- Opcode bytes parsed so far.
@@ -393,36 +402,27 @@ mkOpcodeTable f defs = go [] (concatMap allPrefixedOpcodes defs)
           | all opcodeDone l = do
               case l of
                 _ | all (expectsModRM.snd.snd) l -> do
-                     ReadModRM <$> f (snd <$> l)
+                     fmap ReadModRM $ checkRequiredReg (snd <$> l)
                 [([],(pfx, d))] -> assert (not (expectsModRM d)) $
-                    return $ SkipModRM pfx (prefixOperandSizeConstraint pfx d) (d^.defMnemonic) tps d
-                  where tps = view defOperands d
-                _ -> error $ "mkOpcodeTable: ambiguous operators " ++ show (map snd l)
+                    return $ SkipModRM pfx d
+                _ -> error $ "mkOpcodeTable: ambiguous operators " ++ show l
             -- If we still have opcodes to parse, check that all definitions
             -- expect at least one more opcode, and generate table for next
             -- opcode match.
           | otherwise = assert (all (not.opcodeDone) l) $ do
             let v = partitionBy l
                 g i = go (fromIntegral i:seen) (v V.! i)
-            fmap OpcodeTable $ startTableRef =<< V.generateM 256 g
+            OpcodeTable <$> V.generateM 256 g
         -- Return whether opcode parsing is done.
         opcodeDone :: ([Word8], a) -> Bool
         opcodeDone (remaining,_) = null remaining
 
-data ModTable a
-     -- | @ModTable memTable regTable@
-   = ModTable !a !a
-   | ModUnchecked !a
-  deriving (Show)
-
 requireModCheck :: Def -> Bool
 requireModCheck d = isJust (d^.requiredMod)
 
-mkModTable :: (Applicative f)
-           => ([(a, Def)] -> f b)
-           -> [(a, Def)]
-           -> f (ModTable b)
-mkModTable f pfxdefs
+mkModTable :: [(Prefixes, Def)]
+           -> ParserGen ModTable
+mkModTable pfxdefs
   | any (requireModCheck . snd) pfxdefs = do
     let memDef d =
           case d^.requiredMod of
@@ -457,54 +457,52 @@ mkModTable f pfxdefs
             RM_MMX  -> True
             RM_XMM  -> True
             _       -> False
-    ModTable <$> f (filter (memDef . snd) pfxdefs)
-             <*> f (filter (regDef . snd) pfxdefs)
-  | otherwise = ModUnchecked <$> f pfxdefs
+    ModTable <$> checkRequiredRM (filter (memDef . snd) pfxdefs)
+             <*> checkRequiredRM (filter (regDef . snd) pfxdefs)
+  | otherwise =
+    ModUnchecked <$> checkRequiredRM  pfxdefs
 
-data RegTable a
-   = RegTable (V.Vector a)
-   | RegUnchecked !a
-  deriving (Show)
+checkRequiredReg :: PfxTableFn (RegTable ModTable)
+checkRequiredReg pfxdefs
+  | any (\(_,d) -> isJust (d^.requiredReg)) pfxdefs =
+    let p i (_,d) = equalsOptConstraint i (d^.requiredReg)
+        eltFn i = mkModTable $ filter (p i) pfxdefs
+     in RegTable <$> mkFin8Vector eltFn
+  | otherwise = RegUnchecked <$> mkModTable pfxdefs
 
-mkRegTable :: (Def -> Maybe Fin8)
-           -> PfxTableFn a
-           -> PfxTableFn (RegTable a)
-mkRegTable rfn f pfxdefs
-  | any (isJust . rfn . snd) pfxdefs
-  = let p i = maybe True (\r -> unFin8 r == i)
-        eltFn i = f $ filter (p i . rfn . snd) pfxdefs
-     in RegTable <$> V.generateM 8 (eltFn.fromIntegral)
-  | otherwise = RegUnchecked <$> f pfxdefs
+-- | Make a vector with length 8 from a function over fin8.
+mkFin8Vector :: Monad m => (Fin8 -> m v) -> m (V.Vector v)
+mkFin8Vector f = V.generateM 8 $ g
+  where g i = f j
+          where Just j = asFin8 (fromIntegral i)
 
-type RMTable = RegTable ReadTable
+-- | Return true if value matches an optional constraint (where 'Nothing' denotes any)
+-- and 'Just v' denotes a singleton v.
+equalsOptConstraint :: Eq a => a -> Maybe a -> Bool
+equalsOptConstraint _ Nothing = True
+equalsOptConstraint i (Just c) = i == c
 
--- | Return parsed instruction.
-data ReadTable
-   = ReadTable Prefixes SizeConstraint String [OperandType] Def
-   | NoParse
-  deriving (Show)
+-- | Return true if the definition matches the Fin8 constraint
+matchRMConstraint :: Fin8 -> (Prefixes,Def)  -> Bool
+matchRMConstraint i (_,d) = i `equalsOptConstraint` (d^.requiredRM)
 
--- | Create a vector of entries by matching an opcode table.
-asOpcodeTable :: IParser  (InstructionInstance)
-              -> DisassemblerContext
-asOpcodeTable (OpcodeTable v) = v
-asOpcodeTable _ = error "asOpcodeTable expected OpcodeTable"
 
-parseTable :: [Def] -> ParserGen DisassemblerContext
-parseTable = fmap asOpcodeTable . makeTables finished
-  --TODO: Handle rep and repz prefix filters.
-    where
-      makeTables = mkOpcodeTable
-                   . mkRegTable (view requiredReg)
-                   . mkModTable
-                   . mkRegTable (view requiredRM)
+-- | Check required RM if needed, then forward to final table.
+checkRequiredRM :: PfxTableFn (RegTable ReadTable)
+checkRequiredRM pfxdefs
+    -- Split on the required RM value if any of the definitions depend on it
+  | any (\(_,d) -> isJust (d^.requiredRM)) pfxdefs =
+    let eltFn i = mkFinalTable $ filter (i `matchRMConstraint`) pfxdefs
+     in RegTable <$> mkFin8Vector eltFn
+  | otherwise = RegUnchecked <$> mkFinalTable pfxdefs
 
-      finished []         = return NoParse
-      finished [(pfx, d)] = let nm = d^.defMnemonic
-                                tps = view defOperands d
-                            in
-                             return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps d
-      finished pfxdefs = fail $ "parseTable ambiguous" ++ show (map snd pfxdefs)
+mkFinalTable :: PfxTableFn ReadTable
+mkFinalTable []         = return NoParse
+mkFinalTable [(pfx, d)] =
+  let nm = d^.defMnemonic
+      tps = view defOperands d
+   in return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps d
+mkFinalTable pfxdefs = throwError $ "parseTable ambiguous" ++ show pfxdefs
 
 ------------------------------------------------------------------------
 -- Parsing
@@ -527,18 +525,19 @@ read_disp8 = Disp8 <$> readSByte
 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
-                       => DisassemblerContext
+                       => NextOpcodeTable
                        -> m InstructionInstance
 disassembleInstruction tr0 = do
   b <- readByte
 
-  case tr0 `trVal` b of
+  case tr0 V.! fromIntegral b of
     OpcodeTable tr -> disassembleInstruction tr
-    SkipModRM pfx osz nm tps df -> finish <$> traverse (parseValue pfx osz Nothing) tps
+    SkipModRM pfx df ->
+        finish <$> traverse (parseValue pfx (prefixOperandSizeConstraint pfx df) Nothing) (df^.defOperands)
       where finish args =
               II { iiLockPrefix = pfx^.prLockPrefix
                  , iiAddrSize = prAddrSize pfx
-                 , iiOp   = nm
+                 , iiOp   = df^.defMnemonic
                  , iiArgs = zipWith (,) args (view defOperands df)
                  , iiPrefixes = pfx
                  , iiRequiredPrefix = view requiredPrefix df
@@ -556,18 +555,18 @@ parseGenRegTable :: ByteReader m
               -> RegTable a
               -> m InstructionInstance
 parseGenRegTable f g modRM (RegTable v) = f modRM mtable
-  where mtable = v `regIdx` g modRM
+  where mtable = v V.! fromIntegral (g modRM)
 parseGenRegTable f _g modRM (RegUnchecked m) = f modRM m
 
 parseRegTable :: ByteReader m
               => ModRM
-              -> RegTable (ModTable RMTable)
+              -> RegTable ModTable
               -> m InstructionInstance
 parseRegTable = parseGenRegTable parseModTable modRM_reg
 
 parseModTable :: ByteReader m
               => ModRM
-              -> ModTable RMTable
+              -> ModTable
               -> m InstructionInstance
 parseModTable modRM (ModTable x y) = parseRMTable modRM z
   where z | modRM_mod modRM == 3 = y
@@ -815,7 +814,7 @@ data DisassembledAddr = DAddr { disOffset :: Int
                               deriving Show
 
 -- | Try disassemble returns the numbers of bytes read and an instruction instance.
-tryDisassemble :: DisassemblerContext -> BS.ByteString -> (Int, Maybe InstructionInstance)
+tryDisassemble :: NextOpcodeTable -> BS.ByteString -> (Int, Maybe InstructionInstance)
 tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
   where bytesRead bs = BS.length bs0 - BS.length bs
 
@@ -831,7 +830,7 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
 -- | Parse the buffer as a list of instructions.
 --
 -- Returns a list containing offsets,
-disassembleBuffer :: DisassemblerContext
+disassembleBuffer :: NextOpcodeTable
                   -> BS.ByteString
                      -- ^ Buffer to decompose
                   -> [DisassembledAddr]
@@ -854,3 +853,14 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
         decode bs (Partial f) = decode bs (f (Just bs))
         decode bs (Done bs' _ i) = (n, Just i) : decode bs' decoder
           where n = BS.length bs - BS.length bs'
+
+------------------------------------------------------------------------
+-- Create the diassembler
+
+-- | Create an instruction parser from the given udis86 parser.
+-- This is currently restricted to x64 base operations.
+mkX64Disassembler :: BS.ByteString -> Either String NextOpcodeTable
+mkX64Disassembler bs = do
+  tbl <- parseOpTable bs
+  OpcodeTable v <- runParserGen $ mkOpcodeTable (filter defSupported tbl)
+  pure v

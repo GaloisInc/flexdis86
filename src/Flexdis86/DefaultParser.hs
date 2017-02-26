@@ -62,7 +62,7 @@ optableData =
        [| unsafePerformIO $ unsafePackAddressLen blen $(return addr) |]))
 
 
-defaultX64Disassembler :: DisassemblerContext
+defaultX64Disassembler :: NextOpcodeTable
 defaultX64Disassembler = p
   where p = case mkX64Disassembler optableData of
               Right v -> v

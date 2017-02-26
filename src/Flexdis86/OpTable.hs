@@ -295,6 +295,7 @@ data Def = Def  { _defMnemonic :: String
                 , _reqAddrSize :: Maybe SizeConstraint
                 , _reqOpSize :: Maybe SizeConstraint
                 , _defPrefix :: [String]
+                  -- ^ List of allowed prefixes.
                 , _requiredPrefix :: Maybe Word8
                 , _defOpcodes :: [Word8]
                 , _requiredMod :: Maybe ModConstraint

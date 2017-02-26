@@ -801,7 +801,7 @@
             <opr>MIsw MIdw</opr>
         </def>
         <def>
-            <pfx>rep repz oso rexw seg</pfx>
+            <pfx>repz oso rexw seg</pfx>
             <opc>a7 /o=32</opc>
             <opr>MIsd MIdd</opr>
         </def>
@@ -4866,9 +4866,10 @@
     <instruction>
         <mnemonic>movmskpd</mnemonic>
         <def>
-            <pfx>oso rexr rexb</pfx>
+            <pfx>rexr rexb</pfx>
             <opc>/sse=66 0f 50</opc>
             <opr>Gd U</opr>
+            <mode>def64</mode>
         </def>
     </instruction>
 
@@ -4876,9 +4877,10 @@
         <mnemonic>movmskps</mnemonic>
         <class>sse</class>
         <def>
-            <pfx>oso rexr rexb</pfx>
+            <pfx>rexr rexb</pfx>
             <opc>0f 50</opc>
             <opr>Gd U</opr>
+            <mode>def64</mode>
         </def>
     </instruction>
 
@@ -5677,7 +5679,6 @@
             <pfx>aso rexr rexw rexb</pfx>
             <opc>/sse=66 0f 3a 16 /o=64</opc>
             <opr>Eq V Ib</opr>
-            <mode>def64</mode>
         </def>
     </instruction>
 
@@ -5690,7 +5691,7 @@
             <opr>Gd U Ib</opr>
         </def>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso rexw rexr rexx rexb</pfx>
             <opc>0f c5</opc>
             <opr>Gd N Ib</opr>
         </def>
@@ -5748,7 +5749,7 @@
     <instruction>
         <mnemonic>pinsrq</mnemonic>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso rexw rexr rexx rexb</pfx>
             <opc>/sse=66 0f 3a 22 /o=64</opc>
             <opr>V Eq Ib</opr>
             <class>sse4.1</class>

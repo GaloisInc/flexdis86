@@ -16,7 +16,7 @@ module Flexdis86.Register (
   , Reg32(..), reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
 
     -- * 64-bit General Purpose registers
-  , Reg64(..), reg64, reg64No, reg64Idx, rax, rbx, rcx, rdx, rsp, rbp, rsi, rdi
+  , Reg64(..), reg64, reg64No, reg64Idx
   , pattern RAX
   , pattern RBX
   , pattern RCX
@@ -134,28 +134,28 @@ high_reg8 :: Word8 -> Reg8
 high_reg8 w = assert (w < 4) $ Reg8 $ 16+w
 
 al :: Reg8
-al = low_reg8 (unReg64 rax)
+al = low_reg8 (unReg64 RAX)
 
 bl :: Reg8
-bl = low_reg8 (unReg64 rbx)
+bl = low_reg8 (unReg64 RBX)
 
 cl :: Reg8
-cl = low_reg8 (unReg64 rcx)
+cl = low_reg8 (unReg64 RCX)
 
 dl :: Reg8
-dl = low_reg8 (unReg64 rdx)
+dl = low_reg8 (unReg64 RDX)
 
 ah :: Reg8
-ah = high_reg8 (unReg64 rax)
+ah = high_reg8 (unReg64 RAX)
 
 bh :: Reg8
-bh = high_reg8 (unReg64 rbx)
+bh = high_reg8 (unReg64 RBX)
 
 ch :: Reg8
-ch = high_reg8 (unReg64 rcx)
+ch = high_reg8 (unReg64 RCX)
 
 dh :: Reg8
-dh = high_reg8 (unReg64 rdx)
+dh = high_reg8 (unReg64 RDX)
 
 is_low_reg  :: Reg8 -> Maybe Reg64
 is_low_reg (Reg8 r)
@@ -191,16 +191,16 @@ regNames16 = V.fromList [ "ax",   "cx",   "dx",   "bx"
                         ]
 
 ax :: Reg16
-ax = Reg16 (unReg64 rax)
+ax = Reg16 (unReg64 RAX)
 
 bx :: Reg16
-bx = Reg16 (unReg64 rbx)
+bx = Reg16 (unReg64 RBX)
 
 cx :: Reg16
-cx = Reg16 (unReg64 rcx)
+cx = Reg16 (unReg64 RCX)
 
 dx :: Reg16
-dx = Reg16 (unReg64 rdx)
+dx = Reg16 (unReg64 RDX)
 
 ------------------------------------------------------------------------
 -- Reg32
@@ -278,43 +278,50 @@ regNames64 = V.fromList [ "rax", "rcx", "rdx", "rbx"
                         ]
 
 
+pattern RAX :: Reg64
 pattern RAX = Reg64  0
+
+pattern RCX :: Reg64
 pattern RCX = Reg64  1
+
+pattern RDX :: Reg64
 pattern RDX = Reg64  2
+
+pattern RBX :: Reg64
 pattern RBX = Reg64  3
+
+pattern RSP :: Reg64
 pattern RSP = Reg64  4
+
+pattern RBP :: Reg64
 pattern RBP = Reg64  5
+
+pattern RSI :: Reg64
 pattern RSI = Reg64  6
+
+pattern RDI :: Reg64
 pattern RDI = Reg64  7
+
+pattern R8  :: Reg64
 pattern R8  = Reg64  8
+
+pattern R9  :: Reg64
 pattern R9  = Reg64  9
+
+pattern R10 :: Reg64
 pattern R10 = Reg64 10
+
+pattern R11 :: Reg64
 pattern R11 = Reg64 11
+
+pattern R12 :: Reg64
 pattern R12 = Reg64 12
+
+pattern R13 :: Reg64
 pattern R13 = Reg64 13
+
+pattern R14 :: Reg64
 pattern R14 = Reg64 14
+
+pattern R15 :: Reg64
 pattern R15 = Reg64 15
-
-rax :: Reg64
-rax = RAX
-
-rcx :: Reg64
-rcx = RCX
-
-rdx :: Reg64
-rdx = RDX
-
-rbx :: Reg64
-rbx = RBX
-
-rsp :: Reg64
-rsp = RSP
-
-rbp :: Reg64
-rbp = RBP
-
-rsi :: Reg64
-rsi = RSI
-
-rdi :: Reg64
-rdi = RDI

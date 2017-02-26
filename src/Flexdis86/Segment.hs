@@ -31,11 +31,22 @@ import Flexdis86.Register
 newtype Segment = Segment { _unSegment :: Word8 }
   deriving (Eq, Ord)
 
+pattern ES :: Segment
 pattern ES = Segment 0
+
+pattern CS :: Segment
 pattern CS = Segment 1
+
+pattern SS :: Segment
 pattern SS = Segment 2
+
+pattern DS :: Segment
 pattern DS = Segment 3
+
+pattern FS :: Segment
 pattern FS = Segment 4
+
+pattern GS :: Segment
 pattern GS = Segment 5
 
 instance Show Segment where
