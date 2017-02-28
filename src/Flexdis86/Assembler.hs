@@ -182,7 +182,7 @@ matchOperandType ops =
     (QWordReg _, OpType ModRM_reg VSize) -> True
     (QWordReg _, OpType ModRM_reg YSize) -> True
     (QWordReg _, OpType ModRM_reg RDQSize) -> True
-    (QWordReg (Reg64 rno), OpType (Opcode_reg rcode) VSize) -> rno - 8 == rcode
+    (QWordReg (Reg64 rno), OpType (Opcode_reg rcode) VSize) -> rno `mod` 8 == rcode
     _ -> False
 
 -- | Create a bytestring builder from an instruction instance.
