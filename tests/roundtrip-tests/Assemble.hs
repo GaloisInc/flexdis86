@@ -41,6 +41,8 @@ testCases = [ ("ret", mkI "ret" [])
             , ("xor %rcx, %rcx", mkI "xor" [D.QWordReg D.RCX, D.QWordReg D.RCX])
             , ("xor %r8, %r8", mkI "xor" [D.QWordReg (D.reg64 8), D.QWordReg (D.reg64 8)])
             , ("movq $0x190000000,%r11", mkI "mov" [D.QWordReg (D.reg64 11), D.QWordImm 0x190000000])
+            , ("sub %rsp,(%rax)", mkI "sub" [D.Mem64 (D.Addr_64 D.DS (Just D.RAX) Nothing D.NoDisplacement), D.QWordReg D.RSP])
+            , ("sub (%rax),%rsp", mkI "sub" [D.QWordReg D.RSP, D.Mem64 (D.Addr_64 D.DS (Just D.RAX) Nothing D.NoDisplacement)])
 
             -- Instructions with mnemonic synonyms.
             , ("jnb .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])

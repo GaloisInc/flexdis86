@@ -174,6 +174,10 @@ matchOperandType ops =
     (QWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm YSize) -> True
     (QWordReg _, OpType ModRM_rm RDQSize) -> True
+    (Mem64 _, OpType ModRM_rm QSize) -> True
+    (Mem64 _, OpType ModRM_rm VSize) -> True
+    (Mem64 _, OpType ModRM_rm YSize) -> True
+    (Mem64 _, OpType ModRM_rm RDQSize) -> True
     (QWordReg _, OpType ModRM_reg QSize) -> True
     (QWordReg _, OpType ModRM_reg VSize) -> True
     (QWordReg _, OpType ModRM_reg YSize) -> True
