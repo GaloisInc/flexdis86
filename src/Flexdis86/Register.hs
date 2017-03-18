@@ -9,12 +9,31 @@ Defines types for x86 registers.
 {-# LANGUAGE Trustworthy #-}
 module Flexdis86.Register (
     -- * 8-bit General Purpose registers
-    Reg8(..), low_reg8, high_reg8, al, bl, cl, dl, ah, bh, ch, dh, is_low_reg, is_high_reg
+    Reg8(..), low_reg8, high_reg8 , is_low_reg, is_high_reg
+  , pattern AL
+  , pattern BL
+  , pattern CL
+  , pattern DL
+  , pattern AH
+  , pattern BH
+  , pattern CH
+  , pattern DH
     -- * 16-bit General Purpose registers
-  , Reg16(..), reg16, ax, bx, cx, dx, reg16_reg
+  , Reg16(..), reg16, reg16_reg
+  , pattern AX
+  , pattern BX
+  , pattern CX
+  , pattern DX
     -- * 32-bit General Purpose registers
-  , Reg32(..), reg32, eax, ebx, ecx, edx, esp, ebp, esi, edi, reg32_reg
-
+  , Reg32(..), reg32, reg32_reg
+  , pattern EAX
+  , pattern EBX
+  , pattern ECX
+  , pattern EDX
+  , pattern ESP
+  , pattern EBP
+  , pattern ESI
+  , pattern EDI
     -- * 64-bit General Purpose registers
   , Reg64(..), reg64, reg64No, reg64Idx
   , pattern RAX
@@ -47,65 +66,6 @@ import           Control.Exception ( assert )
 import qualified Data.Vector as V
 import           Data.Word ( Word8 )
 
--- | There are 16 control registers CR0 through CR15.
-newtype ControlReg = CR Word8
-  deriving (Eq, Ord)
-
-instance Show ControlReg where
-  show (CR w) = "cr" ++ show w
-
-controlReg :: Word8 -> ControlReg
-controlReg w = assert (w < 16) $ CR w
-
-controlRegNo :: ControlReg -> Word8
-controlRegNo (CR w) = w
-
--- | There are 8 32-bit debug registers in ia32, and 16 64-bit
--- debug registers in ia64.
-newtype DebugReg = DR Word8
-  deriving (Eq, Ord)
-
-instance Show DebugReg where
-  show (DR w) = "dr" ++ show w
-
-debugReg :: Word8 -> DebugReg
-debugReg w = assert (w < 16) $ DR w
-
-debugRegNo :: DebugReg -> Word8
-debugRegNo (DR w) = w
-
--- | There are 8 64-bit MMX registers
-newtype MMXReg = MMXR Word8
-  deriving (Eq, Ord)
-
-instance Show MMXReg where
-  show (MMXR w) = "mm" ++ show w
-
-mmxReg :: Word8 -> MMXReg
-mmxReg w = assert (w < 8) $ MMXR w
-
-mmxRegNo :: MMXReg -> Word8
-mmxRegNo (MMXR w) = w
-
-mmxRegIdx :: MMXReg -> Int
-mmxRegIdx = fromIntegral . mmxRegNo
-
--- | There are 16 128-bit XMM registers
-newtype XMMReg = XMMR Word8
-  deriving (Eq, Ord)
-
-instance Show XMMReg where
-  show (XMMR w) = "xmm" ++ show w
-
-xmmReg :: Word8 -> XMMReg
-xmmReg w = assert (w < 16) $ XMMR w
-
-xmmRegNo :: XMMReg -> Word8
-xmmRegNo (XMMR w) = w
-
-xmmRegIdx :: XMMReg -> Int
-xmmRegIdx (XMMR w) = fromIntegral w
-
 ------------------------------------------------------------------------
 -- Reg8
 
@@ -133,29 +93,29 @@ low_reg8 w = assert (w < 16) $ Reg8 w
 high_reg8 :: Word8 -> Reg8
 high_reg8 w = assert (w < 4) $ Reg8 $ 16+w
 
-al :: Reg8
-al = low_reg8 (unReg64 RAX)
+pattern AL :: Reg8
+pattern AL = Reg8 0
 
-bl :: Reg8
-bl = low_reg8 (unReg64 RBX)
+pattern CL :: Reg8
+pattern CL = Reg8 1
 
-cl :: Reg8
-cl = low_reg8 (unReg64 RCX)
+pattern DL :: Reg8
+pattern DL = Reg8 2
 
-dl :: Reg8
-dl = low_reg8 (unReg64 RDX)
+pattern BL :: Reg8
+pattern BL = Reg8 3
 
-ah :: Reg8
-ah = high_reg8 (unReg64 RAX)
+pattern AH :: Reg8
+pattern AH = Reg8 16
 
-bh :: Reg8
-bh = high_reg8 (unReg64 RBX)
+pattern CH :: Reg8
+pattern CH = Reg8 17
 
-ch :: Reg8
-ch = high_reg8 (unReg64 RCX)
+pattern DH :: Reg8
+pattern DH = Reg8 18
 
-dh :: Reg8
-dh = high_reg8 (unReg64 RDX)
+pattern BH :: Reg8
+pattern BH = Reg8 19
 
 is_low_reg  :: Reg8 -> Maybe Reg64
 is_low_reg (Reg8 r)
@@ -190,17 +150,17 @@ regNames16 = V.fromList [ "ax",   "cx",   "dx",   "bx"
                         , "r12w", "r13w", "r14w", "r15w"
                         ]
 
-ax :: Reg16
-ax = Reg16 (unReg64 RAX)
+pattern AX :: Reg16
+pattern AX = Reg16 0
 
-bx :: Reg16
-bx = Reg16 (unReg64 RBX)
+pattern CX :: Reg16
+pattern CX = Reg16 1
 
-cx :: Reg16
-cx = Reg16 (unReg64 RCX)
+pattern DX :: Reg16
+pattern DX = Reg16 2
 
-dx :: Reg16
-dx = Reg16 (unReg64 RDX)
+pattern BX :: Reg16
+pattern BX = Reg16 3
 
 ------------------------------------------------------------------------
 -- Reg32
@@ -225,30 +185,29 @@ regNames32 = V.fromList [ "eax",  "ecx",  "edx",  "ebx"
                         , "r12d", "r13d", "r14d", "r15d"
                         ]
 
-eax :: Reg32
-eax = Reg32 0
+pattern EAX :: Reg32
+pattern EAX = Reg32 0
 
+pattern ECX :: Reg32
+pattern ECX = Reg32 1
 
-ecx :: Reg32
-ecx = Reg32 1
+pattern EDX :: Reg32
+pattern EDX = Reg32 2
 
-edx :: Reg32
-edx = Reg32 2
+pattern EBX :: Reg32
+pattern EBX = Reg32 3
 
-ebx :: Reg32
-ebx = Reg32 3
+pattern ESP :: Reg32
+pattern ESP = Reg32 4
 
-esp :: Reg32
-esp = Reg32 4
+pattern EBP :: Reg32
+pattern EBP = Reg32 5
 
-ebp :: Reg32
-ebp = Reg32 5
+pattern ESI :: Reg32
+pattern ESI = Reg32 6
 
-esi :: Reg32
-esi = Reg32 6
-
-edi :: Reg32
-edi = Reg32 7
+pattern EDI :: Reg32
+pattern EDI = Reg32 7
 
 ------------------------------------------------------------------------
 -- Reg64
@@ -325,3 +284,74 @@ pattern R14 = Reg64 14
 
 pattern R15 :: Reg64
 pattern R15 = Reg64 15
+
+------------------------------------------------------------------------
+-- ControlReg
+
+-- | There are 16 control registers CR0 through CR15.
+newtype ControlReg = CR Word8
+  deriving (Eq, Ord)
+
+instance Show ControlReg where
+  show (CR w) = "cr" ++ show w
+
+controlReg :: Word8 -> ControlReg
+controlReg w = assert (w < 16) $ CR w
+
+controlRegNo :: ControlReg -> Word8
+controlRegNo (CR w) = w
+
+------------------------------------------------------------------------
+-- DebugReg
+
+-- | There are 8 32-bit debug registers in ia32, and 16 64-bit
+-- debug registers in ia64.
+newtype DebugReg = DR Word8
+  deriving (Eq, Ord)
+
+instance Show DebugReg where
+  show (DR w) = "dr" ++ show w
+
+debugReg :: Word8 -> DebugReg
+debugReg w = assert (w < 16) $ DR w
+
+debugRegNo :: DebugReg -> Word8
+debugRegNo (DR w) = w
+
+------------------------------------------------------------------------
+-- MMXReg
+
+-- | There are 8 64-bit MMX registers
+newtype MMXReg = MMXR Word8
+  deriving (Eq, Ord)
+
+instance Show MMXReg where
+  show (MMXR w) = "mm" ++ show w
+
+mmxReg :: Word8 -> MMXReg
+mmxReg w = assert (w < 8) $ MMXR w
+
+mmxRegNo :: MMXReg -> Word8
+mmxRegNo (MMXR w) = w
+
+mmxRegIdx :: MMXReg -> Int
+mmxRegIdx = fromIntegral . mmxRegNo
+
+------------------------------------------------------------------------
+-- XMMReg
+
+-- | There are 16 128-bit XMM registers
+newtype XMMReg = XMMR Word8
+  deriving (Eq, Ord)
+
+instance Show XMMReg where
+  show (XMMR w) = "xmm" ++ show w
+
+xmmReg :: Word8 -> XMMReg
+xmmReg w = assert (w < 16) $ XMMR w
+
+xmmRegNo :: XMMReg -> Word8
+xmmRegNo (XMMR w) = w
+
+xmmRegIdx :: XMMReg -> Int
+xmmRegIdx (XMMR w) = fromIntegral w
