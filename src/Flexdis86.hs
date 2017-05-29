@@ -36,7 +36,6 @@ import           Flexdis86.Prefixes
 import           Flexdis86.Register
 import           Flexdis86.Segment
 
-
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
                        => m InstructionInstance
