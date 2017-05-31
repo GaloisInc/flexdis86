@@ -4804,12 +4804,12 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 16 /mod=!11</opc>
-            <opr>V M</opr>
+            <opr>V Mq</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 17</opc>
-            <opr>M V</opr>
+            <opr>Mq V</opr>
         </def>
     </instruction>
 
@@ -4844,12 +4844,12 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 12 /mod=!11</opc>
-            <opr>V M</opr>
+            <opr>V Mq</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 13</opc>
-            <opr>M V</opr>
+            <opr>Mq V</opr>
         </def>
     </instruction>
 

@@ -732,11 +732,10 @@ parseValue p osz mmrm tp = do
       | otherwise -> Mem64 <$> addr
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
       pure $ MMXReg $ mmxReg $ modRM_rm modRM
-    M_Implicit seg r sz ->
-      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing NoDisplacement
-      where
-        mkaddr | aso = memRef_32
-               | otherwise = memRef_64
+    M_Implicit seg r sz -> do
+      let addr | aso       = Addr_32 seg (Just (reg32 (reg64No r))) Nothing NoDisplacement
+               | otherwise = Addr_64 seg (Just r)                   Nothing NoDisplacement
+      pure $ memSizeFn Size64 sz addr
     IM_1 -> pure $ ByteImm 1
     IM_SB -> ByteImm <$> readSByte
     IM_SZ ->
