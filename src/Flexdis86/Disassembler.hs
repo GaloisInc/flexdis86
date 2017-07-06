@@ -822,7 +822,8 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
                -> Decoder InstructionInstance
                -> (Int, Maybe InstructionInstance)
         decode _ (Fail bs' _ _) = (bytesRead bs', Nothing)
-        --decode bs (Partial f) | BS.null bs = (bytesRead bs, Nothing)
+        -- End the recursive decoding when the input is empty. This prevents a loop.
+        decode bs (Partial f) | BS.null bs = (bytesRead bs, Nothing)
         decode bs (Partial f) = decode BS.empty (f (Just bs))
         decode _ (Done bs' _ i) = (bytesRead bs', Just i)
 
