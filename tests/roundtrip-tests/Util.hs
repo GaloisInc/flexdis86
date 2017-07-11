@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
 module Util ( withAssembledCode ) where
 
-import Data.Bits ( Bits )
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import qualified System.Exit as IO
@@ -27,7 +27,7 @@ readCodeSegment fp = do
     E.Elf32Res errs _ -> error ("Errors while parsing ELF file: " ++ show errs)
     E.Elf64Res errs _ -> error ("Errors while parsing ELF file: " ++ show errs)
 
-extractCodeSegment :: (Bits w, Integral w) => E.Elf w -> IO B.ByteString
+extractCodeSegment :: E.Elf w -> IO B.ByteString
 extractCodeSegment e = do
   case E.findSectionByName (B8.pack ".text") e of
     [] -> error "extractCodeSegment: Could not find code segment"
