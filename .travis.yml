@@ -33,5 +33,5 @@ matrix:
         - build-essential
 
 script:
- - stack --no-terminal --system-ghc build
- - stack --no-terminal --system-ghc test
+ - stack --no-terminal --system-ghc build flexdis86
+ - stack --no-terminal --system-ghc test flexdis86
