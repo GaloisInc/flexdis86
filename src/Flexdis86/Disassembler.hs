@@ -732,11 +732,10 @@ parseValue p osz mmrm tp = do
       | otherwise -> Mem64 <$> addr
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
       pure $ MMXReg $ mmxReg $ modRM_rm modRM
-    M_Implicit seg r sz ->
-      pure $ memSizeFn Size64 sz $ mkaddr seg (Just (reg64No r)) Nothing NoDisplacement
-      where
-        mkaddr | aso = memRef_32
-               | otherwise = memRef_64
+    M_Implicit seg r sz -> do
+      let a | aso       = Addr_32 seg (Just (reg32 (reg64No r))) Nothing NoDisplacement
+            | otherwise = Addr_64 seg (Just r)                   Nothing NoDisplacement
+      pure $ memSizeFn Size64 sz a
     IM_1 -> pure $ ByteImm 1
     IM_SB -> ByteImm <$> readSByte
     IM_SZ ->
@@ -823,7 +822,8 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
                -> Decoder InstructionInstance
                -> (Int, Maybe InstructionInstance)
         decode _ (Fail bs' _ _) = (bytesRead bs', Nothing)
-        --decode bs (Partial f) | BS.null bs = (bytesRead bs, Nothing)
+        -- End the recursive decoding when the input is empty. This prevents a loop.
+        decode bs (Partial f) | BS.null bs = (bytesRead bs, Nothing)
         decode bs (Partial f) = decode BS.empty (f (Just bs))
         decode _ (Done bs' _ i) = (bytesRead bs', Just i)
 

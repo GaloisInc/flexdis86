@@ -16,13 +16,6 @@ module Flexdis86.InstructionSet
   , Displacement(..)
   , displacementInt
   , AddrRef(..)
-{-
-  , Flexdis86.Register.ControlReg, controlReg, controlRegNo
-  , Flexdis86.Register.DebugReg, debugReg, debugRegNo
-  , Flexdis86.Register.MMXReg, mmxReg, mmxRegNo, mmxRegIdx
-  , Flexdis86.Register.XMMReg, xmmReg, xmmRegNo, xmmRegIdx
-  , LockPrefix(..), ppLockPrefix
--}
   ) where
 
 import           Control.Applicative

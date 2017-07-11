@@ -186,7 +186,7 @@ matchOperandType ops =
     _ -> False
 
 -- | Create a bytestring builder from an instruction instance.
-assembleInstruction :: (MonadPlus m) => InstructionInstance -> m B.Builder
+assembleInstruction :: MonadPlus m => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
   return $ mconcat [ prefixBytes
                    , opcode

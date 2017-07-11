@@ -14,6 +14,10 @@ module Flexdis86.Register (
   , pattern BL
   , pattern CL
   , pattern DL
+  , pattern SPL
+  , pattern BPL
+  , pattern SIL
+  , pattern DIL
   , pattern AH
   , pattern BH
   , pattern CH
@@ -24,6 +28,10 @@ module Flexdis86.Register (
   , pattern BX
   , pattern CX
   , pattern DX
+  , pattern SP
+  , pattern BP
+  , pattern SI
+  , pattern DI
     -- * 32-bit General Purpose registers
   , Reg32(..), reg32, reg32_reg
   , pattern EAX
@@ -94,16 +102,28 @@ high_reg8 :: Word8 -> Reg8
 high_reg8 w = assert (w < 4) $ Reg8 $ 16+w
 
 pattern AL :: Reg8
-pattern AL = Reg8 0
+pattern AL =  Reg8 0
 
 pattern CL :: Reg8
-pattern CL = Reg8 1
+pattern CL =  Reg8 1
 
 pattern DL :: Reg8
-pattern DL = Reg8 2
+pattern DL =  Reg8 2
 
 pattern BL :: Reg8
-pattern BL = Reg8 3
+pattern BL =  Reg8 3
+
+pattern SPL :: Reg8
+pattern SPL =  Reg8 4
+
+pattern BPL :: Reg8
+pattern BPL =  Reg8 5
+
+pattern SIL :: Reg8
+pattern SIL =  Reg8 6
+
+pattern DIL :: Reg8
+pattern DIL =  Reg8 7
 
 pattern AH :: Reg8
 pattern AH = Reg8 16
@@ -161,6 +181,18 @@ pattern DX = Reg16 2
 
 pattern BX :: Reg16
 pattern BX = Reg16 3
+
+pattern SP :: Reg16
+pattern SP = Reg16 4
+
+pattern BP :: Reg16
+pattern BP = Reg16 5
+
+pattern SI :: Reg16
+pattern SI = Reg16 6
+
+pattern DI :: Reg16
+pattern DI = Reg16 7
 
 ------------------------------------------------------------------------
 -- Reg32
