@@ -454,7 +454,7 @@ ripRefComponents v =
 encodeValue :: Value -> Word8
 encodeValue v =
   case v of
-    ByteReg r8 -> reg8ToRM r8
+    ByteReg r8 -> 0x7 .&. reg8ToRM r8
     WordReg (Reg16 rno) -> 0x7 .&. rno
     DWordReg (Reg32 rno) -> 0x7 .&. rno
     QWordReg (Reg64 rno) -> 0x7 .&. rno
