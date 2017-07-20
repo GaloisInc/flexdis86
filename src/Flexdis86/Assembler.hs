@@ -267,12 +267,12 @@ encodeOperandModRM ii reqModRM =
       pure $ withMode op1 $ \mode disp ->
         let rm = encodeValue op1
         in withSIB mode rm op1 $ \sib ->
-             mkModRM reqModRM mode 0 rm <> sib <> disp
+             mkModRM ii mode 0 rm <> sib <> disp
     [op1, op2] ->
       pure $ withRMFirst op1 op2 $ \vrm vreg -> withMode vrm $ \mode disp ->
         let rm = encodeValue vrm
         in withSIB mode rm vrm $ \sib ->
-             mkModRM reqModRM mode (encodeValue vreg) rm <> sib <> disp
+             mkModRM ii mode (encodeValue vreg) rm <> sib <> disp
     _ -> empty
 
 -- | Re-order the arguments such that the RM operand is the first
@@ -513,8 +513,13 @@ reg8ToRM (Reg8 rno)
 
 -- | From constituent components, construct the ModRM byte with
 -- appropriate shifting.
-mkModRM :: Word8 -> Word8 -> Word8 -> Word8 -> B.Builder
-mkModRM req modb regb rmb = B.word8 (req .|. (modb `shiftL` 6) .|. (regb `shiftL` 3) .|. rmb)
+mkModRM :: InstructionInstance -> Word8 -> Word8 -> Word8 -> B.Builder
+mkModRM ii modb regb rmb =
+  B.word8 (rm .|. (reg `shiftL` 3) .|. (rmmod `shiftL` 6))
+  where
+    reg = maybe regb unFin8 (iiRequiredReg ii)
+    rm = maybe rmb unFin8 (iiRequiredRM ii)
+    rmmod = maybe modb modConstraintVal (iiRequiredMod ii)
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
 -- bits.
