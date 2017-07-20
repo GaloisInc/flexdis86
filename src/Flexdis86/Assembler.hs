@@ -337,10 +337,10 @@ mkSIB seg mScaleIdx mBase =
   case (mScaleIdx, mBase) of
     (Nothing, Just rno) -> B.word8 ((4 `shiftL` 3) .|. (rno .&. 0x7))
     (Just (scale, ix), Just rno) ->
-      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. (rno .&. 0x7))
+      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. ((ix .&. 0x7) `shiftL` 3) .|. (rno .&. 0x7))
     -- With no base, the base part of the SIB is 0x5, according to the table (the [*] column).
     (Just (scale, ix), Nothing) ->
-      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. (ix `shiftL` 3) .|. 0x5)
+      B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. ((ix .&. 0x7) `shiftL` 3) .|. 0x5)
     (Nothing, Nothing) | seg `elem` [FS, GS] -> B.word8 0x25
     other -> error ("Unexpected inputs to mkSIB: " ++ show other)
 
