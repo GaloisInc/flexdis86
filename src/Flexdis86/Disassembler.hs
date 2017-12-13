@@ -232,6 +232,7 @@ modRMOperand nm =
     IM_1  -> False
     IM_SB -> False
     IM_SZ -> False
+    VVVV_XMM -> False
 
 -- | Split entries based on first identifier in list of bytes.
 partitionBy :: [([Word8], (Prefixes, Def))] -> V.Vector [([Word8], (Prefixes, Def))]
@@ -287,7 +288,7 @@ validPrefix pfx d = matchRequiredOpSize pfx d
 type PrefixAssignFun = Prefixes -> Prefixes
 
 -- | A list of paisr which map prefix bytes corresponding to prefixes to the associated update function.
-type PrefixAssignTable = [(Word8, PrefixAssignFun)]
+type PrefixAssignTable = [([Word8], PrefixAssignFun)]
 
 -- Given a list of allowed prefixes
 simplePrefixes :: String -> [String] -> PrefixAssignTable
@@ -296,18 +297,18 @@ simplePrefixes mnem allowed
       "Instruction " ++ mnem ++ " should not be allowed to have both rep and repz as prefixes"
   | otherwise = [ v | (name, v) <- pfxs, name `elem` allowed ]
   where
-    pfxs =  [ ("lock",  (0xf0, set prLockPrefix LockPrefix))
-            , ("repnz", (0xf2, set prLockPrefix RepNZPrefix))
-            , ("repz",  (0xf3, set prLockPrefix RepZPrefix))
-            , ("rep",   (0xf3, set prLockPrefix RepPrefix))
-            , ("oso",   (0x66, set prOSO True))
-            , ("aso",   (0x67, set prASO True))
+    pfxs =  [ ("lock",  ([0xf0], set prLockPrefix LockPrefix))
+            , ("repnz", ([0xf2], set prLockPrefix RepNZPrefix))
+            , ("repz",  ([0xf3], set prLockPrefix RepZPrefix))
+            , ("rep",   ([0xf3], set prLockPrefix RepPrefix))
+            , ("oso",   ([0x66], set prOSO True))
+            , ("aso",   ([0x67], set prASO True))
             ]
 
 -- | Table for segment prefixes
 segPrefixes :: [String] -> PrefixAssignTable
 segPrefixes allowed
-  | "seg" `elem` allowed = [ (x, set prSP (SegmentPrefix x)) | x <- [ 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 ] ]
+  | "seg" `elem` allowed = [ ([x], set prSP (SegmentPrefix x)) | x <- [ 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 ] ]
   | otherwise            = []
 
 -- FIXME: we could probably share more here, rather than recalculating for each instr.
@@ -333,7 +334,7 @@ allPrefixedOpcodes def
       case def^.requiredPrefix of
         Nothing -> True
         -- Required prefix doesn't do anything, but must occur
-        Just b  -> all (\(v,_) -> v /= b) (segPfxs ++ simplePfxs)
+        Just b  -> all (\(v,_) -> v /= [b]) (segPfxs ++ simplePfxs)
 
     -- Function to prepend required prefixes
     prependRequiredPrefix :: PrefixAssignTable -> PrefixAssignTable
@@ -341,16 +342,19 @@ allPrefixedOpcodes def
       case def^.requiredPrefix of
         Nothing -> pfx
         -- Required prefix doesn't do anything, but must occur
-        Just b  -> [(b, id)] ++ pfx
+        Just b  -> [([b], id)] ++ pfx
     -- all possible permutations of the allowed prefixes
     -- FIXME: check that the required prefix doesn't occur in the allowed prefixes
     segs   :: [PrefixAssignTable]
     segs   = concatMap permutations -- get all permutations
            $ map prependRequiredPrefix -- add required prefix to every allowed prefix
            $ subsequences simplePfxs ++ [ v : vs | v <- segPfxs, vs <- subsequences simplePfxs ]
-    -- above with REX
+    -- above with REX or VEX.  Having both is #UD.
     rexs   :: [PrefixAssignTable]
-    rexs   = segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
+    rexs
+      | null (def ^. vexPrefixes) =
+          segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
+      | otherwise = [ seg ++ [v] | seg <- segs, v <- mkVexPrefixes def ]
 
     -- Create the pair containing the byte representation the prefixes and the definition.
     mkBytes :: PrefixAssignTable -> Maybe ([Word8], (Prefixes, Def))
@@ -359,22 +363,23 @@ allPrefixedOpcodes def
           | otherwise = Nothing
       where (prefix_bytes, funs) = unzip tbl
             -- Get complete binary representation of instruction
-            byte_rep = prefix_bytes ++ def^.defOpcodes
+            byte_rep = concat prefix_bytes ++ def^.defOpcodes
             -- Get prefix value
             pfx = appList funs defaultPrefix
 
     defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
                              , _prSP  = no_seg_prefix
                              , _prREX = no_rex
+                             , _prVEX = Nothing
                              , _prASO = False
                              , _prOSO = False
                              }
 
 -- FIXME: we could also decode the REX
-rexPrefixes :: [String] -> [(Word8, Prefixes -> Prefixes)]
+rexPrefixes :: [String] -> PrefixAssignTable
 rexPrefixes allowed
   | null possibleBits = []
-  | otherwise         = [ (x, set prREX (REX x))
+  | otherwise         = [ ([x], set prREX (REX x))
                         | xs <- subsequences possibleBits
                         , let x = foldl (.|.) rex_instr_pfx xs ]
   where
@@ -383,6 +388,16 @@ rexPrefixes allowed
                     , ("rexr", rex_r_bit)
                     , ("rexx", rex_x_bit)
                     , ("rexb", rex_b_bit) ]
+
+
+mkVexPrefixes :: Def -> PrefixAssignTable
+mkVexPrefixes def = map cvt (def ^. vexPrefixes)
+  where
+  cvt pref =
+    case pref of
+      [ _, b ]      -> (pref, set prVEX (Just (VEX2 b)))
+      [ _, b1, b2 ] -> (pref, set prVEX (Just (VEX3 b1 b2)))
+      _             -> error "vexPrefixes: unexpected byte sequence"
 
 -- We calculate all allowed prefixes for the instruction in the first
 -- argument.  This simplifies parsing at the cost of extra space.
@@ -502,7 +517,8 @@ mkFinalTable [(pfx, d)] =
   let nm = d^.defMnemonic
       tps = view defOperands d
    in return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm tps d
-mkFinalTable pfxdefs = throwError $ "parseTable ambiguous" ++ show pfxdefs
+mkFinalTable pfxdefs = throwError $ unlines
+                          ("parseTable ambiguous" : map show pfxdefs)
 
 ------------------------------------------------------------------------
 -- Parsing
@@ -640,7 +656,9 @@ parseValue :: ByteReader m
            -> m Value
 parseValue p osz mmrm tp = do
   let sp  = p^.prSP
-      rex = p^.prREX
+      rex = case p ^. prVEX of
+              Just vex -> vex ^. vexRex
+              _        -> p^.prREX
       aso = p^.prASO
       msg = "internal: parseValue missing modRM with operand type: " ++ show tp
       modRM = fromMaybe (error msg) mmrm -- laziness is used here and below, this is not used for e.g. ImmediateSource
@@ -704,6 +722,15 @@ parseValue p osz mmrm tp = do
       | modRM_mod modRM == 3 ->
         pure $ XMMReg $ xmmReg $ rm_reg
       | otherwise -> Mem128 <$> addr
+    VVVV_XMM ->
+      case p ^. prVEX of
+        Nothing -> fail "Missing VEX prefix"
+        Just vx
+          | vx ^. vex256 -> return $ YMMReg $ ymmReg num
+          | otherwise    -> return $ XMMReg $ xmmReg num
+          where num = complement (vx ^. vexVVVV) .&. 0xF
+
+
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
     M    ->    VoidMem <$> addr
@@ -823,7 +850,7 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
                -> (Int, Maybe InstructionInstance)
         decode _ (Fail bs' _ _) = (bytesRead bs', Nothing)
         -- End the recursive decoding when the input is empty. This prevents a loop.
-        decode bs (Partial f) | BS.null bs = (bytesRead bs, Nothing)
+        decode bs (Partial _) | BS.null bs = (bytesRead bs, Nothing)
         decode bs (Partial f) = decode BS.empty (f (Just bs))
         decode _ (Done bs' _ i) = (bytesRead bs', Just i)
 

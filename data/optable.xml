@@ -4776,6 +4776,28 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vmovaps</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=128.0F.WIG 28</opc>
+        <opr>V W</opr>
+      </def>
+      <def>
+        <opc>/vex=128.0F.WIG 29</opc>
+        <opr>W V</opr>
+      </def>
+      <def>
+        <opc>/vex=256.0F.WIG 28</opc>
+        <opr>V W</opr>
+      </def>
+      <def>
+        <opc>/vex=256.0F.WIG 29</opc>
+        <opr>W V</opr>
+      </def>
+
+    </instruction>
+
+    <instruction>
         <mnemonic>movd</mnemonic>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
@@ -5061,6 +5083,27 @@
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f 11</opc>
             <opr>W V</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>vmovups</mnemonic>
+        <class>avx</class>
+        <def>
+          <opc>/vex=128.0F.WIG 10</opc>
+          <opr>V W</opr>
+        </def>
+        <def>
+          <opc>/vex=128.0F.WIG 11</opc>
+          <opr>W V</opr>
+        </def>
+        <def>
+          <opc>/vex=256.0F.WIG 10</opc>
+          <opr>V W</opr>
+        </def>
+        <def>
+          <opc>/vex=256.0F.WIG 11</opc>
+          <opr>W V</opr>
         </def>
     </instruction>
 
@@ -5445,6 +5488,19 @@
         </def>
     </instruction>
 
+    <instruction>
+      <mnemonic>vpaddd</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG FE</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG FE</opc>
+        <opr>V H W</opr>
+      </def>
+    </instruction>
+
 
     <instruction>
         <mnemonic>paddsb</mnemonic>
@@ -5514,6 +5570,19 @@
             <opc>0f db</opc>
             <opr>P Q</opr>
         </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vpand</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG DB</opc>
+        <opr>V W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG DB</opc>
+        <opr>V W</opr>
+      </def>
     </instruction>
 
     <instruction>
@@ -6044,6 +6113,19 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vpor</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG EB</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG EB</opc>
+        <opr>V H W</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>prefetch</mnemonic>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
@@ -6190,6 +6272,28 @@
             <opc>0f 72 /reg=6</opc>
             <opr>N Ib</opr>
         </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vpslld</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG F2</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDD.128.66.0F.WIG 72</opc>
+        <opr>H U Ib</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG F2</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDD.256.66.0F.WIG 72</opc>
+        <opr>H U Ib</opr>
+      </def>
+
     </instruction>
 
     <instruction>
@@ -6370,6 +6474,19 @@
             <opc>/sse=66 0f fa</opc>
             <opr>V W</opr>
         </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vpsubd</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG FA</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG FA</opc>
+        <opr>V H W</opr>
+      </def>
     </instruction>
 
     <instruction>
@@ -6891,6 +7008,19 @@
             <opc>0f ef</opc>
             <opr>P Q</opr>
         </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vpxor</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG EF</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG EF</opc>
+        <opr>V H W</opr>
+      </def>
     </instruction>
 
     <instruction>
@@ -8446,6 +8576,15 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vaesenc</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F38.WIG DC</opc>
+        <opr>V H W</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>aesenclast</mnemonic>
     <class>aesni</class>
     <def>
@@ -8454,6 +8593,16 @@
         <opr>V W</opr>
     </def>
     </instruction>
+
+    <instruction>
+        <mnemonic>aesenclast</mnemonic>
+    <class>avx</class>
+    <def>
+        <opc>/vex=NDS.128.66.0F38.WIG DD</opc>
+        <opr>V H W</opr>
+    </def>
+    </instruction>
+
 
     <instruction>
         <mnemonic>aesimc</mnemonic>
@@ -8477,12 +8626,21 @@
 
     <instruction>
         <mnemonic>pclmulqdq</mnemonic>
-    <class>aesni</class>
-    <def>
-        <pfx>aso rexr rexx rexb</pfx>
-        <opc>/sse=66 0f 3a 44</opc>
-        <opr>V W Ib</opr>
-    </def>
+        <class>aesni</class>
+        <def>
+            <pfx>aso rexr rexx rexb</pfx>
+            <opc>/sse=66 0f 3a 44</opc>
+            <opr>V W Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vpclmulqdq</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F3A.WIG 44</opc>
+        <opr>V H W Ib</opr>
+      </def>
     </instruction>
 
     <!--
@@ -8512,6 +8670,27 @@
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f 6f</opc>
             <opr>V W</opr>
+        </def>
+      </instruction>
+
+      <instruction>
+        <mnemonic>vmovdqa</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=128.66.0F.WIG 6f</opc>
+            <opr>V W</opr>
+        </def>
+        <def>
+            <opc>/vex=128.66.0F.WIG 7f</opc>
+            <opr>W V</opr>
+        </def>
+        <def>
+            <opc>/vex=256.66.0F.WIG 6f</opc>
+            <opr>V W</opr>
+        </def>
+        <def>
+            <opc>/vex=256.66.0F.WIG 7f</opc>
+            <opr>W V</opr>
         </def>
     </instruction>
 
@@ -8544,6 +8723,27 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=f3 0f 7f</opc>
+            <opr>W V</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>vmovdqu</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=128.F3.0F.WIG 6F</opc>
+            <opr>V W</opr>
+        </def>
+        <def>
+            <opc>/vex=128.F3.0F.WIG 7F</opc>
+            <opr>W V</opr>
+        </def>
+        <def>
+            <opc>/vex=256.F3.0F.WIG 6F</opc>
+            <opr>V W</opr>
+        </def>
+        <def>
+            <opc>/vex=256.F3.0F.WIG 7F</opc>
             <opr>W V</opr>
         </def>
     </instruction>
@@ -8627,6 +8827,19 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vpshufd</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=128.66.0F.WIG 70</opc>
+        <opr>V W Ib</opr>
+      </def>
+      <def>
+        <opc>/vex=256.66.0F.WIG 70</opc>
+        <opr>V W Ib</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>pslldq</mnemonic>
         <def>
             <pfx>rexb</pfx>
@@ -8634,6 +8847,21 @@
             <opr>U Ib</opr>
         </def>
     </instruction>
+
+    <instruction>
+        <mnemonic>vpslldq</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDD.128.66.0F.WIG 73</opc>
+            <opr>H W Ib</opr>
+        </def>
+        <def>
+            <opc>/vex=NDD.256.66.0F.WIG 73</opc>
+            <opr>H W Ib</opr>
+        </def>
+    </instruction>
+
+
 
     <instruction>
         <mnemonic>psrldq</mnemonic>
@@ -8809,6 +9037,19 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vpshufb</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F38.WIG 00</opc>
+        <opr>V H W</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F38.WIG 00</opc>
+        <opr>V H W</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>phaddw</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
@@ -8974,6 +9215,19 @@
             <opc>/sse=66 0f 3a 0f</opc>
             <opr>V W Ib</opr>
         </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vpalignr</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F3A.WIG 0F</opc>
+        <opr>V H W Ib</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F3A.WIG 0F</opc>
+        <opr>V H W Ib</opr>
+      </def>
     </instruction>
 
     <!--
@@ -9204,6 +9458,15 @@
             <pfx>aso rexr rexw rexx rexb</pfx>
             <opc>/sse=66 0f 3a 17</opc>
             <opr>MdRy V Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>vextractf128</mnemonic>
+        <class>avx</class>
+        <def>
+          <opc>/vex=256.66.0F3A.W0 19</opc>
+          <opr>V W Ib</opr>
         </def>
     </instruction>
 
@@ -9464,6 +9727,22 @@
             <opr>Gy Ev</opr>
             <class>sse4.2</class>
         </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vzeroupper</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=128.0F.WIG 77</opc>
+      </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>vzeroall</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=256.0F.WIG 77</opc>
+      </def>
     </instruction>
 
     <instruction>

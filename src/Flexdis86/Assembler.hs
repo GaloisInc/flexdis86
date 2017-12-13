@@ -77,6 +77,7 @@ findEncoding args def = do
   let argTypes = zip args opTypes
   F.forM_ argTypes $ \at -> guard (matchOperandType at)
   let rex = mkREX args
+  let vex = Nothing -- XXX: implement this
   return $ II { iiLockPrefix = NoLockPrefix
               , iiAddrSize = Size16
               , iiOp = L.view defMnemonic def
@@ -84,6 +85,7 @@ findEncoding args def = do
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
                                       , _prSP = no_seg_prefix
                                       , _prREX = rex
+                                      , _prVEX = vex
                                       , _prASO = False
                                       , _prOSO = False
                                       }

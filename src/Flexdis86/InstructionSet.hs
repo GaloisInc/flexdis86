@@ -194,6 +194,7 @@ data Value
   | DebugReg DebugReg
   | MMXReg MMXReg
   | XMMReg XMMReg
+  | YMMReg YMMReg
   | SegmentValue Segment
   | X87Register Int
   | FarPointer AddrRef
@@ -240,6 +241,7 @@ ppValue base v =
     DebugReg     r    -> text (show r)
     MMXReg       r    -> text (show r)
     XMMReg       r    -> text (show r)
+    YMMReg       r    -> text (show r)
     X87Register  n    -> text "st" <> if n == 0 then PP.empty else parens (int n)
     SegmentValue r    -> ppShowReg    r
     -- do the "*" belong here or in ppAddrRef?

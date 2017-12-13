@@ -37,6 +37,7 @@ module Flexdis86.OpTable
   , x87ModRM
   , defOperands
   , x64Compatible
+  , vexPrefixes
     -- * Parsing defs
   , parseOpTable
   ) where
@@ -44,7 +45,7 @@ module Flexdis86.OpTable
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.State
-import           Data.Bits ((.&.), shiftR)
+import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
 import qualified Data.ByteString as BS
 import           Data.Char
 import           Data.List
@@ -175,7 +176,7 @@ asText = do
   s <- get
   case esContent s of
     [Text d] | cdVerbatim d == CDataText -> return (cdData d)
-    _ -> fail "asText found non-text."
+    x -> fail (unlines [ "asText found non-text.", show x])
 
 required_text :: String -> ElemParser String
 required_text nm = next $ checkTag nm >> asText
@@ -222,6 +223,8 @@ data CPURequirement
    | SSE4_2
      -- | AES new instructions.
    | AESNI
+
+   | AVX    -- ^ Advanced vector extensions
   deriving (Eq,Ord, Show)
 
 insClassMap :: Map.Map String CPURequirement
@@ -236,6 +239,7 @@ insClassMap = Map.fromList
   , (,) "sse4.1" SSE4_1
   , (,) "sse4.2" SSE4_2
   , (,) "aesni" AESNI
+  , (,) "avx" AVX
   ]
 
 -- | Returns a CPU requirement, possible given a requirement from the outer
@@ -277,6 +281,141 @@ data ModeLimit
 valid64 :: ModeLimit -> Bool
 valid64 m = m == AnyMode || m == Only64
 
+--------------------------------------------------------------------------------
+
+-- | VEX prefixes
+-- See "Intel® 64 and IA-32 Architectures Software Developer’s Manual"
+-- Vol. 2A 3-3
+data VexSpec = VexSpec
+  { vexUseVVVV    :: Maybe VexUseVVVV   -- ^ Purpose of VVVV, if any.
+  , vexSize       :: VexSize            -- ^ Vector size
+  , vexImpSimd    :: Maybe VexImpSimd   -- ^ Implied SIMD prefix
+  , vexImpOpc     :: Maybe VexImpOpc    -- ^ Implided opcode prefix
+  , vexW          :: Maybe VexW         -- ^ W field
+  , vexAllowShort :: Bool               -- ^ Could we use 2-byte encoding
+  } deriving (Eq,Show)
+
+data VexUseVVVV = VEX_NDS | VEX_NDD | VEX_DDS      deriving (Eq,Show)
+data VexSize    = Vex128 | Vex256                  deriving (Eq,Show)
+data VexImpSimd = Imp0x66 | Imp0xF3 | Imp0xF2      deriving (Eq,Show)
+data VexImpOpc  = Imp0x0F | Imp0x0F38 | Imp0x0F3A  deriving (Eq,Show)
+data VexW       = VexW0 | VexW1                    deriving (Eq,Show)
+
+-- | Note: this doesn't do any error checking.
+parseVex :: String -> VexSpec
+parseVex inp =
+  VexSpec { vexUseVVVV = vvvv
+          , vexSize    = size
+          , vexImpSimd = impS
+          , vexImpOpc  = impO
+          , vexW       = w
+          , vexAllowShort = short
+          }
+  where
+  ts0 = chunks inp
+
+  (vvvv,ts1) =
+    case ts0 of
+      f : fs | f == "NDS" -> (Just VEX_NDS, fs)
+             | f == "NDD" -> (Just VEX_NDD, fs)
+             | f == "DDS" -> (Just VEX_DDS, fs)
+      _ -> (Nothing, ts0)
+
+  (size,ts2) =
+    case ts1 of
+      f : fs | f == "128" -> (Vex128, fs)
+             | f == "256" -> (Vex256, fs)
+      _ -> error "VEX specification is missing its size field"
+
+  (impS,ts3) =
+    case ts2 of
+      f : fs | f == "66" -> (Just Imp0x66, fs)
+             | f == "F2" -> (Just Imp0xF2, fs)
+             | f == "F3" -> (Just Imp0xF3, fs)
+      _ -> (Nothing, ts2)
+
+  (impO,ts4) =
+     case ts3 of
+      f : fs | f == "0F"   -> (Just Imp0x0F,   fs)
+             | f == "0F3A" -> (Just Imp0x0F3A, fs)
+             | f == "0F38" -> (Just Imp0x0F38, fs)
+      _ -> (Nothing, ts3)
+
+  (w,ts5) =
+    case ts4 of
+      f : fs | f == "W0" -> (Just VexW0, fs)
+             | f == "W1" -> (Just VexW1, fs)
+      _ -> (Nothing, ts4)
+
+  short =
+    case ts5 of
+      f : _ | f == "WIG" -> True
+      _ -> False
+
+  chunks x = if null x then []
+                       else case break (== '.') x of
+                              (as,_:bs) -> as : chunks bs
+                              _         -> [x]
+
+-- | Can this prefix use the short (2 byte) form?
+vexMayBeShort :: VexSpec -> Bool
+vexMayBeShort vp =
+  case vexImpOpc vp of
+    Just Imp0x0F38  -> False
+    Just Imp0x0F3A  -> False
+    _ -> case vexW vp of
+           Just VexW1 -> False
+           _          -> vexAllowShort vp
+
+-- | Map a VEX prefix specificaiton for an instruction to the sequences
+-- of bytes that will match it.
+vexToBytes :: VexSpec -> [[Word8]]
+vexToBytes vp = short ++ long
+  where
+  long  = [ [0xC4, b1, b2 ] | b1 <- longByte1, b2 <- longByte2 ]
+  short = if vexMayBeShort vp then [ [0xC5, b ] | b <- shortByte ] else []
+
+  shortByte = nub
+              [ field 7 r .|. field 3 vvvv .|. field 2 l .|. pp
+              | r <- [ 0, 1 ], vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
+  longByte1 = nub
+              [ field 5 rxb .|. m
+              | rxb <- [ 0 .. 7 ], m <- mmmmVals ]
+  longByte2 = nub
+              [ w .|. field 3 vvvv .|. field 2 l .|. pp
+              | w <- wVals, vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
+
+  field amt x = shiftL x amt
+
+  vvvvVals = case vexUseVVVV vp of
+               Nothing -> [ 15 ]
+               Just _  -> [ 0 .. 15 ]
+
+  wVals    = case vexW vp of
+               Nothing    -> [ 0, 1 ]
+               Just VexW0 -> [ 0 ]
+               Just VexW1 -> [ 1 ]
+
+  lVals    = case vexSize vp of
+               Vex128 -> [0]
+               Vex256 -> [1]
+
+  ppVals   = case vexImpSimd vp of
+               Nothing      -> [ 0 ]
+               Just Imp0x66 -> [ 1 ]
+               Just Imp0xF3 -> [ 2 ]
+               Just Imp0xF2 -> [ 3 ]
+
+  mmmmVals = case vexImpOpc vp of
+               Nothing -> []
+               Just imp ->
+                 case imp of
+                   Imp0x0F   -> [1]
+                   Imp0x0F38 -> [2]
+                   Imp0x0F3A -> [3]
+
+
+
 ------------------------------------------------------------------------
 -- Instruction
 
@@ -289,6 +428,9 @@ data Def = Def  { _defMnemonic :: String
                   -- the canonical mnemonic. Used e.g. by
                   -- jump instructions.
                 , _defCPUReq :: CPURequirement
+                  -- ^ XXX: we should be able to combine these.
+                  -- For example, instruction `vaesenc` requires both
+                  -- AES and AVX support.
                 , _defVendor :: Maybe Vendor
                 , _modeLimit :: ModeLimit
                 , _defMode   :: Maybe Mode
@@ -302,6 +444,8 @@ data Def = Def  { _defMnemonic :: String
                 , _requiredReg :: Maybe Fin8
                 , _requiredRM :: Maybe Fin8
                 , _x87ModRM    :: Maybe Fin64
+                , _vexPrefixes  :: ![ [Word8] ]
+                  -- ^ Allowed VEX prefixes for this instruction.
                 , _defOperands  :: ![OperandType]
                 } deriving (Eq, Show)
 
@@ -371,6 +515,9 @@ requiredRM = lens _requiredRM (\s v -> s { _requiredRM = v })
 x87ModRM :: Simple Lens Def (Maybe Fin64)
 x87ModRM = lens _x87ModRM (\s v -> s { _x87ModRM = v })
 
+vexPrefixes :: Simple Lens Def [[Word8]]
+vexPrefixes = lens _vexPrefixes (\s v -> s { _vexPrefixes = v })
+
 -- | Operand descriptions.
 defOperands :: Simple Lens Def [OperandType]
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
@@ -378,7 +525,7 @@ defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
 defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87])
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87,AVX])
                  && x64Compatible d
 
 addOpcode :: MonadState Def m => Word8 -> m ()
@@ -445,6 +592,11 @@ parse_opcode nm = do
             -- pretend we want both Reg and R/M
             requiredRM  ?= maskFin8 b -- bottom 3 bits
             requiredReg ?= maskFin8 (b `shiftR` 3)
+
+    _ | Just r <- stripPrefix "/vex=" nm
+      -> do setDefCPUReq AVX
+            vexPrefixes .= vexToBytes (parseVex r)
+
     _  ->  fail $ "Unexpected opcode: " ++ show nm
 
 ------------------------------------------------------------------------
@@ -454,7 +606,7 @@ parse_opcode nm = do
 x64Compatible :: Def -> Bool
 x64Compatible d =
   case d^.defOpcodes of
-    [b] | b .&. 0xF0 == 0x40 -> False
+    [b] | null (d^.vexPrefixes) && (b .&. 0xF0 == 0x40) -> False
     _ -> valid64 (d^.modeLimit)
 
 -- | Recognizes form for mnemonics
@@ -649,6 +801,7 @@ operandHandlerMap = Map.fromList
   , (,) "U"   $ RG_XMM_rm
   , (,) "V"   $ RG_XMM_reg
   , (,) "W"   $ RM_XMM
+  , (,) "H"   $ VVVV_XMM
   ]
 
 lookupOperandType :: String -> String -> ElemParser OperandType
@@ -703,6 +856,7 @@ parse_def nm syns creq v = do
                , _requiredReg = Nothing
                , _requiredRM  = Nothing
                , _x87ModRM = Nothing
+               , _vexPrefixes = []
                , _defOperands = oprnds
                }
   seq d0 $ flip execStateT d0 $ do

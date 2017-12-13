@@ -68,6 +68,8 @@ module Flexdis86.Register (
   , MMXReg(..), mmxReg, mmxRegNo, mmxRegIdx
     -- * XMM registers
   , XMMReg(..), xmmReg, xmmRegNo, xmmRegIdx
+    -- * YMM registers
+  , YMMReg(..), ymmReg, ymmRegNo, ymmRegIdx
   ) where
 
 import           Control.Exception ( assert )
@@ -387,3 +389,24 @@ xmmRegNo (XMMR w) = w
 
 xmmRegIdx :: XMMReg -> Int
 xmmRegIdx (XMMR w) = fromIntegral w
+
+
+------------------------------------------------------------------------
+-- YMMReg
+
+-- | There are 16 128-bit XMM registers
+newtype YMMReg = YMMR Word8
+  deriving (Eq, Ord)
+
+instance Show YMMReg where
+  show (YMMR w) = "ymm" ++ show w
+
+ymmReg :: Word8 -> YMMReg
+ymmReg w = assert (w < 16) $ YMMR w
+
+ymmRegNo :: YMMReg -> Word8
+ymmRegNo (YMMR w) = w
+
+ymmRegIdx :: YMMReg -> Int
+ymmRegIdx (YMMR w) = fromIntegral w
+

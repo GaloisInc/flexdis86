@@ -79,6 +79,9 @@ data OperandType
    | RG_XMM_rm
      -- | A SSE XMM register or 64 bit address from ModRM.rm
    | RM_XMM
+    -- | An XMM/YMM register from the VVVV fiewld of the VEX prefix.
+   | VVVV_XMM
+
      -- | A specific segment
    | SEG !Segment
 

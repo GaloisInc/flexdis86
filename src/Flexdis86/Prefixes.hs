@@ -5,7 +5,7 @@ Maintainer  : jhendrix@galois.com
 
 Defines prefix operations.
 -}
-{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE Trustworthy, RankNTypes #-}
 module Flexdis86.Prefixes
   ( Prefixes(..)
   , REX(..)
@@ -17,6 +17,7 @@ module Flexdis86.Prefixes
   , prLockPrefix
   , prSP
   , prREX
+  , prVEX
   , prASO
   , prOSO
   , prAddrSize
@@ -24,6 +25,10 @@ module Flexdis86.Prefixes
   , setDefault
   , LockPrefix(..)
   , ppLockPrefix
+  , VEX(..)
+  , vexRex
+  , vexVVVV
+  , vex256
   ) where
 
 import           Control.Lens
@@ -40,10 +45,63 @@ import           Flexdis86.Sizes
 data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
                          , _prSP  :: SegmentPrefix
                          , _prREX :: REX
+                         , _prVEX :: !(Maybe VEX)
                          , _prASO :: Bool
                          , _prOSO :: Bool
                          }
                 deriving (Eq, Show)
+
+data VEX = VEX2 Word8{-1-}              -- ^ Byte of a 2-byte VEX prefix
+         | VEX3 Word8{-1-} Word8{-2-}   -- ^ Byte 1 and 2 of 3-byte VEX prefix
+           deriving (Eq, Show)
+
+
+vexLens :: (Word8 -> a) ->
+           (Word8 -> Word8 -> a) ->
+           (Word8 -> a -> Word8) ->
+           (Word8 -> Word8 -> a -> (Word8,Word8)) ->
+           Simple Lens VEX a
+vexLens get1 get2 upd1 upd2 = lens getter updater
+  where getter vex = case vex of
+                       VEX2 b     -> get1 b
+                       VEX3 b1 b2 -> get2 b1 b2
+        updater old a = case old of
+                          VEX2 b     -> VEX2 (upd1 b a)
+                          VEX3 b1 b2 -> let (b1',b2') = upd2 b1 b2 a
+                                        in VEX3 b1' b2'
+
+-- | Are we using 256-bit vectors
+vex256 :: Simple Lens VEX Bool
+vex256 = vexLens gt (\_ b2 -> gt b2)
+                 st (\b1 b2 a -> (b1, st b2 a))
+  where
+  gt b   = B.testBit b 2
+  st b v = if v then B.setBit b 2 else B.clearBit b 2
+
+
+-- | REX info from VEX prefix
+vexRex :: Simple Lens VEX REX
+vexRex = vexLens gt1 gt2 st1 st2
+  where
+  gt1 b      = REX (0x40 B..|. B.shiftR (B.complement b B..&. 0x80) 5)
+  gt2 b1 b2  = REX (0x40 B..|. B.shiftR (B.complement b2 B..&. 0x80) 4
+                         B..|. B.shiftR (B.complement b1 B..&. 0xE0) 5)
+
+  st1 b v     = if v ^. rexR then B.clearBit b 7 else B.setBit b 7
+  st2 b1 b2 v = ( (b1 B..&. 0x1F) B..|. (B.complement (unREX v) `B.shiftL` 5)
+                , if v ^. rexW then B.clearBit b2 7 else B.setBit b2 7
+                )
+
+-- | The VVVV field.  We return it as is.  Note that when used to encode
+-- registers, the byte needs to be complemented.
+vexVVVV :: Simple Lens VEX Word8
+vexVVVV = vexLens gt (\_ b2 -> gt b2)
+                  st (\b1 b2 v -> (b1, st b2 v))
+  where
+  gt b   = B.shiftR b 3 B..&. 0xF
+  st b v = (b B..&. 0x87) B..|. B.shiftL (v B..&. 0xF) 3
+
+
 
 -- | REX value for 64-bit mode.
 newtype REX = REX { unREX :: Word8 }
@@ -81,6 +139,9 @@ prSP = lens _prSP (\s v -> s { _prSP = v})
 
 prREX :: Simple Lens Prefixes REX
 prREX = lens _prREX (\s v -> s { _prREX = v })
+
+prVEX :: Simple Lens Prefixes (Maybe VEX)
+prVEX = lens _prVEX (\s v -> s { _prVEX = v })
 
 prASO :: Simple Lens Prefixes Bool
 prASO = lens _prASO (\s v -> s { _prASO = v })
