@@ -291,8 +291,8 @@ withRMFirst (v1, _v1ty) (v2, v2ty) k =
   case v2ty of
     OpType ModRM_rm _ -> k v2 v1
     OpType ModRM_rm_mod3 _ -> k v2 v1
-    RG_XMM_rm -> k v2 v1
-    RM_XMM -> k v2 v1
+    RG_XMM_rm {} -> k v2 v1
+    RM_XMM {} -> k v2 v1
     M_FP -> k v2 v1
     M -> k v2 v1
     M_X {} -> k v2 v1

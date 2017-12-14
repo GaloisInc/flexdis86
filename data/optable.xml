@@ -5493,11 +5493,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F.WIG FE</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F.WIG FE</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
     </instruction>
 
@@ -5577,11 +5577,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F.WIG DB</opc>
-        <opr>V W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F.WIG DB</opc>
-        <opr>V W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
     </instruction>
 
@@ -6117,11 +6117,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F.WIG EB</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F.WIG EB</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
     </instruction>
 
@@ -6279,19 +6279,19 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F.WIG F2</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDD.128.66.0F.WIG 72</opc>
-        <opr>H U Ib</opr>
+        <opr>Hx Ux Ib</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F.WIG F2</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDD.256.66.0F.WIG 72</opc>
-        <opr>H U Ib</opr>
+        <opr>Hx Ux Ib</opr>
       </def>
 
     </instruction>
@@ -6481,11 +6481,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F.WIG FA</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F.WIG FA</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
     </instruction>
 
@@ -7015,11 +7015,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F.WIG EF</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F.WIG EF</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
     </instruction>
 
@@ -8580,7 +8580,7 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F38.WIG DC</opc>
-        <opr>V H W</opr>
+        <opr>Vdq Hdq Wdq</opr>
       </def>
     </instruction>
 
@@ -8599,7 +8599,7 @@
     <class>avx</class>
     <def>
         <opc>/vex=NDS.128.66.0F38.WIG DD</opc>
-        <opr>V H W</opr>
+        <opr>Vdq Hdq Wdq</opr>
     </def>
     </instruction>
 
@@ -8639,7 +8639,7 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F3A.WIG 44</opc>
-        <opr>V H W Ib</opr>
+        <opr>Vdq Hdq Wdq Ib</opr>
       </def>
     </instruction>
 
@@ -8678,19 +8678,19 @@
         <class>avx</class>
         <def>
             <opc>/vex=128.66.0F.WIG 6f</opc>
-            <opr>V W</opr>
+            <opr>Vx Wx</opr>
         </def>
         <def>
             <opc>/vex=128.66.0F.WIG 7f</opc>
-            <opr>W V</opr>
+            <opr>Wx Vx</opr>
         </def>
         <def>
             <opc>/vex=256.66.0F.WIG 6f</opc>
-            <opr>V W</opr>
+            <opr>Vx Wx</opr>
         </def>
         <def>
             <opc>/vex=256.66.0F.WIG 7f</opc>
-            <opr>W V</opr>
+            <opr>Wx Vx</opr>
         </def>
     </instruction>
 
@@ -8732,19 +8732,19 @@
         <class>avx</class>
         <def>
             <opc>/vex=128.F3.0F.WIG 6F</opc>
-            <opr>V W</opr>
+            <opr>Vx Wx</opr>
         </def>
         <def>
             <opc>/vex=128.F3.0F.WIG 7F</opc>
-            <opr>W V</opr>
+            <opr>Wx Vx</opr>
         </def>
         <def>
             <opc>/vex=256.F3.0F.WIG 6F</opc>
-            <opr>V W</opr>
+            <opr>Vx Wx</opr>
         </def>
         <def>
             <opc>/vex=256.F3.0F.WIG 7F</opc>
-            <opr>W V</opr>
+            <opr>Wx Vx</opr>
         </def>
     </instruction>
 
@@ -8831,11 +8831,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=128.66.0F.WIG 70</opc>
-        <opr>V W Ib</opr>
+        <opr>Vx Wx Ib</opr>
       </def>
       <def>
         <opc>/vex=256.66.0F.WIG 70</opc>
-        <opr>V W Ib</opr>
+        <opr>Vx Wx Ib</opr>
       </def>
     </instruction>
 
@@ -8853,11 +8853,11 @@
         <class>avx</class>
         <def>
             <opc>/vex=NDD.128.66.0F.WIG 73</opc>
-            <opr>H W Ib</opr>
+            <opr>Hx Ux Ib</opr>
         </def>
         <def>
             <opc>/vex=NDD.256.66.0F.WIG 73</opc>
-            <opr>H W Ib</opr>
+            <opr>Hx Ux Ib</opr>
         </def>
     </instruction>
 
@@ -9041,11 +9041,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F38.WIG 00</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F38.WIG 00</opc>
-        <opr>V H W</opr>
+        <opr>Vx Hx Wx</opr>
       </def>
     </instruction>
 
@@ -9222,11 +9222,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=NDS.128.66.0F3A.WIG 0F</opc>
-        <opr>V H W Ib</opr>
+        <opr>Vx Hx Wx Ib</opr>
       </def>
       <def>
         <opc>/vex=NDS.256.66.0F3A.WIG 0F</opc>
-        <opr>V H W Ib</opr>
+        <opr>Vx Hx Wx Ib</opr>
       </def>
     </instruction>
 
@@ -9466,7 +9466,7 @@
         <class>avx</class>
         <def>
           <opc>/vex=256.66.0F3A.W0 19</opc>
-          <opr>V W Ib</opr>
+          <opr>Wdq Vqq Ib</opr>
         </def>
     </instruction>
 

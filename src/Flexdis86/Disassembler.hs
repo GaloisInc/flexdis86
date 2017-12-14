@@ -216,9 +216,9 @@ modRMOperand nm =
     RG_S   -> True
     RG_ST _ -> False -- FIXME(?)
     RG_MMX_reg -> True
-    RG_XMM_reg -> True
-    RG_XMM_rm -> True
-    RM_XMM -> True
+    RG_XMM_reg {} -> True
+    RG_XMM_rm {} -> True
+    RM_XMM {} -> True
     SEG _ -> False
     M_FP  -> True
     M     -> True
@@ -232,7 +232,7 @@ modRMOperand nm =
     IM_1  -> False
     IM_SB -> False
     IM_SZ -> False
-    VVVV_XMM -> False
+    VVVV_XMM {} -> False
 
 -- | Split entries based on first identifier in list of bytes.
 partitionBy :: [([Word8], (Prefixes, Def))] -> V.Vector [([Word8], (Prefixes, Def))]
@@ -451,7 +451,7 @@ mkModTable pfxdefs
                 _ -> False
             MXRX _ _  -> True
             RG_MMX_rm -> True -- FIXME: no MMX_reg?
-            RG_XMM_rm -> True
+            RG_XMM_rm {} -> True
             RG_ST _   -> True
             _         -> False
     let regDef d =
@@ -470,7 +470,7 @@ mkModTable pfxdefs
             M_FloatingPoint _ -> True
             MXRX _ _ -> True
             RM_MMX  -> True
-            RM_XMM  -> True
+            RM_XMM {} -> True
             _       -> False
     ModTable <$> checkRequiredRM (filter (memDef . snd) pfxdefs)
              <*> checkRequiredRM (filter (regDef . snd) pfxdefs)
@@ -623,6 +623,7 @@ sizeFn _ DSize = Size32
 sizeFn _ QSize = Size64
 sizeFn osz VSize = osz
 sizeFn _      OSize = Size128
+sizeFn _      QQSize = Size256
 sizeFn Size64 YSize = Size64
 sizeFn _      YSize = Size32
 sizeFn Size16 ZSize = Size16
@@ -636,7 +637,8 @@ regSizeFn osz _ sz =
     Size16  -> WordReg  . reg16
     Size32  -> DWordReg . reg32
     Size64  -> QWordReg . reg64
-    Size128 -> error "Unexpected register size function"
+    Size128 -> error "Unexpected register size function: Size128"
+    Size256 -> error "Unexpected register size function: Size256"
 
 memSizeFn :: SizeConstraint -> OperandSize -> AddrRef -> Value
 memSizeFn _ BSize = Mem8
@@ -646,6 +648,7 @@ memSizeFn osz sz =
     Size32 -> Mem32
     Size64 -> Mem64
     Size128 -> Mem128
+    Size256 -> Mem256
 
 
 parseValue :: ByteReader m
@@ -693,6 +696,7 @@ parseValue p osz mmrm tp = do
         Size32 -> DWordImm <$> readSDWord
         Size64 -> QWordImm <$> readSQWord
         Size128 -> error "128-bit immediates are not supported."
+        Size256 -> error "256-bit immediates are not supported."
     OpType OffsetSource sz
         | BSize <- sz -> Mem8 <$> moffset
         | otherwise -> case sizeFn osz sz of
@@ -700,6 +704,7 @@ parseValue p osz mmrm tp = do
                          Size32 -> Mem32 <$> moffset
                          Size64 -> Mem64 <$> moffset
                          Size128 -> error "128-bit offsets are not supported."
+                         Size256 -> error "256-bit offsets are not supported."
       where s = sp `setDefault` DS
             moffset | aso =  Offset_32 s <$> readDWord
                     | otherwise = Offset_64 s <$> readQWord
@@ -710,26 +715,33 @@ parseValue p osz mmrm tp = do
         Size32  -> fromIntegral <$> readSDWord
         Size64  -> readSQWord
         Size128 -> error "128-bit jump immediates are not supported."
+        Size256 -> error "256-bit jump immediates are not supported."
 
     RG_C   -> return $ ControlReg (controlReg reg_with_rex)
     RG_dbg -> return $ DebugReg   (debugReg   reg_with_rex)
     RG_S   -> SegmentValue <$> segmentRegisterByIndex reg
     RG_ST n -> return $ X87Register n
     RG_MMX_reg -> return $ MMXReg (mmxReg reg)
-    RG_XMM_reg -> return $ XMMReg (xmmReg reg_with_rex)
-    RG_XMM_rm  -> return $ XMMReg (xmmReg rm_reg)
-    RM_XMM
-      | modRM_mod modRM == 3 ->
-        pure $ XMMReg $ xmmReg $ rm_reg
-      | otherwise -> Mem128 <$> addr
-    VVVV_XMM ->
-      case p ^. prVEX of
-        Nothing -> fail "Missing VEX prefix"
-        Just vx
-          | vx ^. vex256 -> return $ YMMReg $ ymmReg num
-          | otherwise    -> return $ XMMReg $ xmmReg num
-          where num = complement (vx ^. vexVVVV) .&. 0xF
 
+    RG_XMM_reg mb -> return $ largeReg p mb reg_with_rex
+    RG_XMM_rm  mb -> return $ largeReg p mb rm_reg
+    RM_XMM mb
+      | modRM_mod modRM == 3 -> pure $ largeReg p mb rm_reg
+
+      | Just OSize  <- mb -> Mem128 <$> addr
+      | Just QQSize <- mb -> Mem256 <$> addr
+      | Just sz <- mb     -> error ("[RM_XMM] Unexpected size: " ++ show sz)
+
+      | Nothing <- mb
+      , Just vx <- p ^. prVEX
+      , vx ^. vex256      -> Mem256 <$> addr
+
+      | otherwise         -> Mem128 <$> addr
+
+    VVVV_XMM mb
+      | Just vx <- p ^. prVEX ->
+          return $ largeReg p mb $ complement (vx ^. vexVVVV) .&. 0xF
+      | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
 
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
@@ -752,6 +764,7 @@ parseValue p osz mmrm tp = do
           Size32  -> pure $ DWordReg $ reg32 rm_reg
           Size64  -> pure $ QWordReg $ reg64 rm_reg
           Size128 -> error "128-bit registers are not supported."
+          Size256 -> error "256-bit registers are not supported."
       | otherwise -> memSizeFn osz msz <$> addr -- FIXME!!
     RM_MMX
       | modRM_mod modRM == 3 ->
@@ -772,6 +785,25 @@ parseValue p osz mmrm tp = do
         Size32  -> DWordImm <$> readSDWord
         Size64  -> DWordImm <$> readSDWord
         Size128 -> error $ "128-bit immediates are not supported."
+        Size256 -> error $ "256-bit immediates are not supported."
+
+largeReg :: Prefixes -> Maybe OperandSize -> Word8 -> Value
+largeReg p mb num =
+  case mb of
+
+    Nothing | Just vx <- p ^. prVEX
+            , vx ^. vex256  -> useYMM
+            | otherwise     -> useXMM
+
+    Just sz ->
+      case sz of
+        OSize  -> useXMM
+        QQSize -> useYMM
+        _      -> error ("[largeReg] Unexpected size: " ++ show sz)
+
+  where
+  useXMM = XMMReg (xmmReg num)
+  useYMM = YMMReg (ymmReg num)
 
 -- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m

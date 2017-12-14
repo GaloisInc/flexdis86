@@ -798,10 +798,24 @@ operandHandlerMap = Map.fromList
   , (,) "sIz" $ IM_SZ
 
     -- XMM
-  , (,) "U"   $ RG_XMM_rm
-  , (,) "V"   $ RG_XMM_reg
-  , (,) "W"   $ RM_XMM
-  , (,) "H"   $ VVVV_XMM
+  , (,) "U"   $ RG_XMM_rm Nothing
+  , (,) "Ux"  $ RG_XMM_rm Nothing
+  , (,) "Udq" $ RG_XMM_rm (Just OSize)
+  , (,) "Uqq" $ RG_XMM_rm (Just QQSize)
+
+  , (,) "V"   $ RG_XMM_reg Nothing
+  , (,) "Vx"  $ RG_XMM_reg Nothing
+  , (,) "Vdq" $ RG_XMM_reg (Just OSize)
+  , (,) "Vqq" $ RG_XMM_reg (Just QQSize)
+
+  , (,) "W"   $ RM_XMM Nothing
+  , (,) "Wx"  $ RM_XMM Nothing
+  , (,) "Wdq" $ RM_XMM (Just OSize)
+  , (,) "Wqq" $ RM_XMM (Just QQSize)
+
+  , (,) "Hx"  $ VVVV_XMM Nothing
+  , (,) "Hdq" $ VVVV_XMM (Just OSize)
+  , (,) "Hqq" $ VVVV_XMM (Just QQSize)
   ]
 
 lookupOperandType :: String -> String -> ElemParser OperandType

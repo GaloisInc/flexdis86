@@ -53,7 +53,9 @@ data OperandSize
    | WSize -- ^ Operand is always 16-bits.
    | DSize -- ^ Operand is always 32-bits.
    | QSize -- ^ Operand is always 64-bits.
-   | OSize -- ^ Operand is always 128-bits.
+   | OSize -- ^ Operand is always 128-bits.   (aka dq?)
+   | QQSize  -- ^ Operand is always 256-bits.
+
    | VSize -- ^ Operand size equals operand mode (16,32 or 64 bits)
    | YSize -- ^ Operand size is 64-bits if operand size is 64 bits, and 32-bits otherwise.
    | ZSize -- ^ Operand size is 16-bits if operand size is 16 bits, and 32-bits otherwise.
@@ -73,14 +75,19 @@ data OperandType
    | RG_ST !Int
      -- | An MMX register from ModRM.reg
    | RG_MMX_reg
+
+
      -- | A SSE XMM register from ModRM.reg
-   | RG_XMM_reg
-     -- | A SSE XMM register from ModRM.rm
-   | RG_XMM_rm
-     -- | A SSE XMM register or 64 bit address from ModRM.rm
-   | RM_XMM
+   | RG_XMM_reg (Maybe OperandSize)
+
+     -- | A SSE XMM/YMM register from ModRM.rm
+   | RG_XMM_rm (Maybe OperandSize)
+
+     -- | A SSE XMM/YMM register or 64 bit address from ModRM.rm
+   | RM_XMM (Maybe OperandSize)
+
     -- | An XMM/YMM register from the VVVV fiewld of the VEX prefix.
-   | VVVV_XMM
+   | VVVV_XMM (Maybe OperandSize)
 
      -- | A specific segment
    | SEG !Segment

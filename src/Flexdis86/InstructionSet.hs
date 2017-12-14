@@ -208,6 +208,7 @@ data Value
   | Mem64 AddrRef
     -- ^ An address to a eight byte value.
   | Mem128 AddrRef
+  | Mem256 AddrRef
   | FPMem32 AddrRef
   | FPMem64 AddrRef
   | FPMem80 AddrRef
@@ -252,6 +253,7 @@ ppValue base v =
     Mem32        addr -> text "DWORD PTR"   <+> ppAddrRef addr
     Mem64        addr -> text "QWORD PTR"   <+> ppAddrRef addr
     Mem128       addr -> text "XMMWORD PTR" <+> ppAddrRef addr
+    Mem256       addr -> text "YMMWORD PTR" <+> ppAddrRef addr
     FPMem32      addr -> text "DWORD PTR"   <+> ppAddrRef addr
     FPMem64      addr -> text "QWORD PTR"   <+> ppAddrRef addr
     FPMem80      addr -> text "TBYTE PTR"   <+> ppAddrRef addr

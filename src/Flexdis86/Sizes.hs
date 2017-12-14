@@ -23,8 +23,8 @@ module Flexdis86.Sizes (
 import Data.Bits
 import Data.Word ( Word8 )
 
--- | Describes whether a value is 16, 32 or 64-bits.
-data SizeConstraint = Size16 | Size32 | Size64 | Size128
+-- | Describes the size of a value.
+data SizeConstraint = Size16 | Size32 | Size64 | Size128 | Size256
   deriving (Eq, Ord, Show)
 
 -- | Describes whether a floating point memory address value is 32, 64, or 80-bits.
