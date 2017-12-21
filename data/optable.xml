@@ -8595,7 +8595,7 @@
     </instruction>
 
     <instruction>
-        <mnemonic>aesenclast</mnemonic>
+        <mnemonic>vaesenclast</mnemonic>
     <class>avx</class>
     <def>
         <opc>/vex=NDS.128.66.0F38.WIG DD</opc>
