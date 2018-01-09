@@ -738,8 +738,8 @@ operandHandlerMap = Map.fromList
     -- (ModRM.mod must not equal 3)
   , (,) "M"    $ M
   , (,) "Mo"   $ M_X OSize
+    -- A reference to an 80-bit floating point value
   , (,) "Mt"   $ M_FloatingPoint FPSize80
-    -- ^ A reference to an 80-bit floating point value
 
     -- Memory value pointing to floating point value
   , (,) "M32fp" $ M_FloatingPoint FPSize32
