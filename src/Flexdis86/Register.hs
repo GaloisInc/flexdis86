@@ -5,11 +5,15 @@ Maintainer  : jhendrix@galois.com
 
 Defines types for x86 registers.
 -}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE ViewPatterns #-}
 module Flexdis86.Register (
     -- * 8-bit General Purpose registers
-    Reg8(..), low_reg8, high_reg8 , is_low_reg, is_high_reg
+    Reg8
+  , pattern LowReg8
+  , pattern HighReg8
   , pattern AL
   , pattern BL
   , pattern CL
@@ -23,7 +27,8 @@ module Flexdis86.Register (
   , pattern CH
   , pattern DH
     -- * 16-bit General Purpose registers
-  , Reg16(..), reg16, reg16_reg
+  , Reg16(..)
+  , reg16, reg16_reg
   , pattern AX
   , pattern BX
   , pattern CX
@@ -33,7 +38,8 @@ module Flexdis86.Register (
   , pattern SI
   , pattern DI
     -- * 32-bit General Purpose registers
-  , Reg32(..), reg32, reg32_reg
+  , Reg32(..)
+  , reg32_reg
   , pattern EAX
   , pattern EBX
   , pattern ECX
@@ -43,7 +49,7 @@ module Flexdis86.Register (
   , pattern ESI
   , pattern EDI
     -- * 64-bit General Purpose registers
-  , Reg64(..), reg64, reg64No, reg64Idx
+  , Reg64(..), reg64No, reg64Idx
   , pattern RAX
   , pattern RBX
   , pattern RCX
@@ -73,6 +79,7 @@ module Flexdis86.Register (
   ) where
 
 import           Control.Exception ( assert )
+import           Data.Bits
 import qualified Data.Vector as V
 import           Data.Word ( Word8 )
 
@@ -85,6 +92,32 @@ import           Data.Word ( Word8 )
 newtype Reg8 = Reg8 Word8
   deriving (Eq, Ord)
 
+asLowReg :: Reg8 -> Maybe Word8
+asLowReg (Reg8 w) | w < 16 = Just w
+                  | otherwise = Nothing
+
+low_reg8 :: Word8 -> Reg8
+low_reg8 w | w < 16 = Reg8 w
+           | otherwise = error $ "low_reg8 given bad index " ++ show w
+
+pattern LowReg8 :: Word8 -> Reg8
+pattern LowReg8 w <- (asLowReg -> Just w)
+  where LowReg8 x = low_reg8 x
+
+asHighReg :: Reg8 -> Maybe Word8
+asHighReg (Reg8 w) | w >= 16 = Just (w .&. 0xf)
+                   | otherwise = Nothing
+
+-- | Returns the high register ah, ch, dh, or bh from the index value.
+high_reg8 :: Word8 -> Reg8
+high_reg8 w | w < 4 = Reg8 $ 16+w
+            | otherwise = error $ "high_reg8 given bad index " ++ show w
+
+-- | One of the 4 registers ah ch dh bh
+pattern HighReg8 :: Word8 -> Reg8
+pattern HighReg8 w <- (asHighReg -> Just w)
+  where HighReg8 x = high_reg8 x
+
 instance Show Reg8 where
   show (Reg8 i) = assert (i < 20) (regNames8 V.! (fromIntegral i))
 
@@ -95,13 +128,6 @@ regNames8 = V.fromList [ "al",   "cl",   "dl",   "bl"
                        , "r12b", "r13b", "r14b", "r15b"
                        , "ah",   "ch",   "dh",   "bh"
                        ]
-
-low_reg8 :: Word8 -> Reg8
-low_reg8 w = assert (w < 16) $ Reg8 w
-
--- | Returns the high register ah, ch, dh, or bh from the index value.
-high_reg8 :: Word8 -> Reg8
-high_reg8 w = assert (w < 4) $ Reg8 $ 16+w
 
 pattern AL :: Reg8
 pattern AL =  Reg8 0
@@ -128,26 +154,16 @@ pattern DIL :: Reg8
 pattern DIL =  Reg8 7
 
 pattern AH :: Reg8
-pattern AH = Reg8 16
+pattern AH = HighReg8 0
 
 pattern CH :: Reg8
-pattern CH = Reg8 17
+pattern CH = HighReg8 1
 
 pattern DH :: Reg8
-pattern DH = Reg8 18
+pattern DH = HighReg8 2
 
 pattern BH :: Reg8
-pattern BH = Reg8 19
-
-is_low_reg  :: Reg8 -> Maybe Reg64
-is_low_reg (Reg8 r)
-  | r < 16    = return $ Reg64 r
-  | otherwise = Nothing
-
-is_high_reg :: Reg8 -> Maybe Reg64
-is_high_reg (Reg8 r)
-  | 16 <= r && r <= 19   = return $ Reg64 (r - 16)
-  | otherwise            = Nothing
+pattern BH = HighReg8 3
 
 ------------------------------------------------------------------------
 -- Reg16
@@ -203,9 +219,6 @@ pattern DI = Reg16 7
 newtype Reg32 = Reg32 Word8
   deriving (Eq, Ord)
 
-reg32 :: Word8 -> Reg32
-reg32 i = assert (i < 16) $ Reg32 i
-
 reg32_reg :: Reg32 -> Reg64
 reg32_reg (Reg32 r) = Reg64 r
 
@@ -248,10 +261,6 @@ pattern EDI = Reg32 7
 
 newtype Reg64 = Reg64 { unReg64 :: Word8 }
   deriving (Eq, Ord)
-
--- | Make reg64 by index.
-reg64 :: Word8 -> Reg64
-reg64 i = assert (i < 16) $ Reg64 i
 
 reg64No :: Reg64 -> Word8
 reg64No (Reg64 r) = r
@@ -409,4 +418,3 @@ ymmRegNo (YMMR w) = w
 
 ymmRegIdx :: YMMReg -> Int
 ymmRegIdx (YMMR w) = fromIntegral w
-

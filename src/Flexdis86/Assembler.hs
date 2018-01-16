@@ -509,9 +509,9 @@ isNotImmediate val =
 -- We need to remove the 16 we added (hence the 0xf mask).  Further,
 -- x86 represents the high registers starting ah at 4.
 reg8ToRM :: Reg8 -> Word8
-reg8ToRM (Reg8 rno)
-  | rno >= 16 = rno .&. 0xf + 4
-  | otherwise = rno
+reg8ToRM (HighReg8 rno) = rno + 4
+reg8ToRM (LowReg8 rno) = rno
+reg8ToRM _ = error "reg8ToRM encountered unexpected case."
 
 -- | From constituent components, construct the ModRM byte with
 -- appropriate shifting.

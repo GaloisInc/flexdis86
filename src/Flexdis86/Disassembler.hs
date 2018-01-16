@@ -80,8 +80,8 @@ rex_b :: REX -> Word8
 rex_b r = (unREX r `shiftL` 3) .&. 0x8
 
 reg8 :: REX -> Word8 -> Reg8
-reg8 rex w | rex == no_rex = if w < 4 then low_reg8 w else high_reg8 (w-4)
-           | otherwise     = low_reg8 w
+reg8 rex w | rex == no_rex = if w < 4 then LowReg8 w else HighReg8 (w-4)
+           | otherwise     = LowReg8 w
 
 ------------------------------------------------------------------------
 -- ModRM
@@ -119,10 +119,10 @@ sib_base s = unSIB s .&. 0x7
 type AddrOpts = Segment -> Maybe Word8 -> Maybe (Int,Word8) -> Displacement -> AddrRef
 
 memRef_32 :: AddrOpts
-memRef_32 s b si o = Addr_32 s (reg32 <$> b) (over _2 reg32 <$> si) o
+memRef_32 s b si o = Addr_32 s (Reg32 <$> b) (over _2 Reg32 <$> si) o
 
 memRef_64 :: AddrOpts
-memRef_64 s b si o = Addr_64 s (reg64 <$> b) (over _2 reg64 <$> si) o
+memRef_64 s b si o = Addr_64 s (Reg64 <$> b) (over _2 Reg64 <$> si) o
 
 rsp_idx :: Word8
 rsp_idx = 4
@@ -634,9 +634,9 @@ regSizeFn :: SizeConstraint -> REX -> OperandSize -> Word8 -> Value
 regSizeFn _ rex BSize = ByteReg . reg8 rex
 regSizeFn osz _ sz =
   case sizeFn osz sz of
-    Size16  -> WordReg  . reg16
-    Size32  -> DWordReg . reg32
-    Size64  -> QWordReg . reg64
+    Size16  -> WordReg  . Reg16
+    Size32  -> DWordReg . Reg32
+    Size64  -> QWordReg . Reg64
     Size128 -> error "Unexpected register size function: Size128"
     Size256 -> error "Unexpected register size function: Size256"
 
@@ -760,9 +760,9 @@ parseValue p osz mmrm tp = do
     MXRX msz rsz
       | modRM_mod modRM == 3 ->
         case sizeFn osz rsz of
-          Size16  -> pure $  WordReg $ reg16 rm_reg
-          Size32  -> pure $ DWordReg $ reg32 rm_reg
-          Size64  -> pure $ QWordReg $ reg64 rm_reg
+          Size16  -> pure $  WordReg $ Reg16 rm_reg
+          Size32  -> pure $ DWordReg $ Reg32 rm_reg
+          Size64  -> pure $ QWordReg $ Reg64 rm_reg
           Size128 -> error "128-bit registers are not supported."
           Size256 -> error "256-bit registers are not supported."
       | otherwise -> memSizeFn osz msz <$> addr -- FIXME!!
@@ -773,7 +773,7 @@ parseValue p osz mmrm tp = do
     RG_MMX_rm -> assert (modRM_mod modRM == 3) $ do
       pure $ MMXReg $ mmxReg $ modRM_rm modRM
     M_Implicit seg r sz -> do
-      let a | aso       = Addr_32 seg (Just (reg32 (reg64No r))) Nothing NoDisplacement
+      let a | aso       = Addr_32 seg (Just (Reg32 (reg64No r))) Nothing NoDisplacement
             | otherwise = Addr_64 seg (Just r)                   Nothing NoDisplacement
       pure $ memSizeFn Size64 sz a
     IM_1 -> pure $ ByteImm 1

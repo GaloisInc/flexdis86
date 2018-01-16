@@ -323,7 +323,7 @@ ppInstruction base i =
        | op `elem` nonHex1Instrs ->
            text (padToWidth 6 op) <+> ppValue base dst <> comma <> text "1"
      -- objdump prints as nop
-     ("xchg", [DWordReg (Reg32 0), DWordReg (Reg32 0)]) -> text "nop"
+     ("xchg", [DWordReg EAX, DWordReg EAX]) -> text "nop"
      _ -> case (args, iiLockPrefix i) of
             ([], NoLockPrefix) -> text op
             (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue base <$> args)
