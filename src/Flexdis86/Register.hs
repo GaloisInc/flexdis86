@@ -49,7 +49,7 @@ module Flexdis86.Register (
   , pattern ESI
   , pattern EDI
     -- * 64-bit General Purpose registers
-  , Reg64(..), reg64No, reg64Idx
+  , Reg64(..), reg64, reg64No, reg64Idx
   , pattern RAX
   , pattern RBX
   , pattern RCX
@@ -261,6 +261,11 @@ pattern EDI = Reg32 7
 
 newtype Reg64 = Reg64 { unReg64 :: Word8 }
   deriving (Eq, Ord)
+
+reg64 :: Word8 -> Reg64
+reg64 = Reg64
+
+{-# DEPRECATRED reg64 "Use Reg64 instead" #-}
 
 reg64No :: Reg64 -> Word8
 reg64No (Reg64 r) = r
