@@ -5,7 +5,6 @@ Maintainer  : jhendrix@galois.com
 
 Top-level module for Flexdis.
 -}
-{-# LANGUAGE Safe #-}
 module Flexdis86
   ( module Flexdis86.InstructionSet
   , module Flexdis86.Prefixes

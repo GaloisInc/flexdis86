@@ -6,7 +6,6 @@ Maintainer  :  jhendrix@galois.com
 This declares the main datatypes for the instruction set.
 -}
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE Safe #-}
 module Flexdis86.InstructionSet
   ( -- * Instruction information
     InstructionInstance

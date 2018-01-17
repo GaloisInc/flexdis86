@@ -5,7 +5,7 @@ Maintainer  : jhendrix@galois.com
 
 Defines prefix operations.
 -}
-{-# LANGUAGE Safe, RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
 module Flexdis86.Prefixes
   ( Prefixes(..)
   , REX(..)

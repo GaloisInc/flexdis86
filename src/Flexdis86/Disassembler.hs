@@ -539,6 +539,55 @@ read_disp32 = Disp32 <$> readSDWord
 read_disp8 :: ByteReader m => m Displacement
 read_disp8 = Disp8 <$> readSByte
 
+parseGenRegTable :: (ModRM -> a -> m InstructionInstance)
+                 -> (ModRM -> Word8)
+                 -> ModRM
+                 -> RegTable a
+                 -> m InstructionInstance
+parseGenRegTable f g modRM (RegTable v) = f modRM mtable
+  where mtable = v V.! fromIntegral (g modRM)
+parseGenRegTable f _g modRM (RegUnchecked m) = f modRM m
+
+parseReadTable :: ByteReader m
+               => ModRM
+               -> ReadTable
+               -> m InstructionInstance
+parseReadTable _ NoParse = invalidInstruction
+parseReadTable modRM (ReadTable pfx osz nm tps df) =
+  finish <$> traverse (parseValue pfx osz (Just modRM)) tps
+  where finish args = II { iiLockPrefix = pfx^.prLockPrefix
+                         , iiAddrSize = prAddrSize pfx
+                         , iiOp = nm
+                         , iiArgs = zipWith (,) args (view defOperands df)
+                         , iiPrefixes = pfx
+                         , iiRequiredPrefix = view requiredPrefix df
+                         , iiOpcode = view defOpcodes df
+                         , iiRequiredMod = view requiredMod df
+                         , iiRequiredReg = view requiredReg df
+                         , iiRequiredRM = view requiredRM df
+                         }
+
+parseRMTable :: ByteReader m
+             => ModRM
+             -> RMTable
+             -> m InstructionInstance
+parseRMTable = parseGenRegTable parseReadTable modRM_rm
+
+parseModTable :: ByteReader m
+              => ModRM
+              -> ModTable
+              -> m InstructionInstance
+parseModTable modRM (ModTable x y) = parseRMTable modRM z
+  where z | modRM_mod modRM == 3 = y
+          | otherwise = x
+parseModTable modRM (ModUnchecked x) = parseRMTable modRM x
+
+parseRegTable :: ByteReader m
+              => ModRM
+              -> RegTable ModTable
+              -> m InstructionInstance
+parseRegTable = parseGenRegTable parseModTable modRM_reg
+
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
                        => NextOpcodeTable
@@ -563,57 +612,6 @@ disassembleInstruction tr0 = do
                  , iiRequiredRM = view requiredRM df
                  }
     ReadModRM t -> flip parseRegTable t =<< readModRM
-
-parseGenRegTable :: ByteReader m
-              => (ModRM -> a -> m InstructionInstance)
-              -> (ModRM -> Word8)
-              -> ModRM
-              -> RegTable a
-              -> m InstructionInstance
-parseGenRegTable f g modRM (RegTable v) = f modRM mtable
-  where mtable = v V.! fromIntegral (g modRM)
-parseGenRegTable f _g modRM (RegUnchecked m) = f modRM m
-
-parseRegTable :: ByteReader m
-              => ModRM
-              -> RegTable ModTable
-              -> m InstructionInstance
-parseRegTable = parseGenRegTable parseModTable modRM_reg
-
-parseModTable :: ByteReader m
-              => ModRM
-              -> ModTable
-              -> m InstructionInstance
-parseModTable modRM (ModTable x y) = parseRMTable modRM z
-  where z | modRM_mod modRM == 3 = y
-          | otherwise = x
-parseModTable modRM (ModUnchecked x) = parseRMTable modRM x
-
-
-parseRMTable :: ByteReader m
-             => ModRM
-             -> RMTable
-             -> m InstructionInstance
-parseRMTable = parseGenRegTable parseReadTable modRM_rm
-
-parseReadTable :: ByteReader m
-               => ModRM
-               -> ReadTable
-               -> m InstructionInstance
-parseReadTable _ NoParse = invalidInstruction
-parseReadTable modRM (ReadTable pfx osz nm tps df) =
-  finish <$> traverse (parseValue pfx osz (Just modRM)) tps
-  where finish args = II { iiLockPrefix = pfx^.prLockPrefix
-                         , iiAddrSize = prAddrSize pfx
-                         , iiOp = nm
-                         , iiArgs = zipWith (,) args (view defOperands df)
-                         , iiPrefixes = pfx
-                         , iiRequiredPrefix = view requiredPrefix df
-                         , iiOpcode = view defOpcodes df
-                         , iiRequiredMod = view requiredMod df
-                         , iiRequiredReg = view requiredReg df
-                         , iiRequiredRM = view requiredRM df
-                         }
 
 -- | Returns the size of a function.
 sizeFn :: SizeConstraint -> OperandSize -> SizeConstraint

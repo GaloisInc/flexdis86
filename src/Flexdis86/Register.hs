@@ -399,7 +399,6 @@ xmmRegNo (XMMR w) = w
 xmmRegIdx :: XMMReg -> Int
 xmmRegIdx (XMMR w) = fromIntegral w
 
-
 ------------------------------------------------------------------------
 -- YMMReg
 
