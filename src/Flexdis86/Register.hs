@@ -265,7 +265,7 @@ newtype Reg64 = Reg64 { unReg64 :: Word8 }
 reg64 :: Word8 -> Reg64
 reg64 = Reg64
 
-{-# DEPRECATRED reg64 "Use Reg64 instead" #-}
+{-# DEPRECATED reg64 "Use Reg64 instead" #-}
 
 reg64No :: Reg64 -> Word8
 reg64No (Reg64 r) = r
