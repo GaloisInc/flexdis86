@@ -6282,7 +6282,7 @@
         <opr>Vx Hx Wx</opr>
       </def>
       <def>
-        <opc>/vex=NDD.128.66.0F.WIG 72</opc>
+        <opc>/vex=NDD.128.66.0F.WIG 72 /reg=6</opc>
         <opr>Hx Ux Ib</opr>
       </def>
       <def>
@@ -6290,7 +6290,7 @@
         <opr>Vx Hx Wx</opr>
       </def>
       <def>
-        <opc>/vex=NDD.256.66.0F.WIG 72</opc>
+        <opc>/vex=NDD.256.66.0F.WIG 72 /reg=6</opc>
         <opr>Hx Ux Ib</opr>
       </def>
 
@@ -8852,11 +8852,24 @@
         <mnemonic>vpslldq</mnemonic>
         <class>avx</class>
         <def>
-            <opc>/vex=NDD.128.66.0F.WIG 73</opc>
+            <opc>/vex=NDD.128.66.0F.WIG 73 /reg=7</opc>
             <opr>Hx Ux Ib</opr>
         </def>
         <def>
-            <opc>/vex=NDD.256.66.0F.WIG 73</opc>
+            <opc>/vex=NDD.256.66.0F.WIG 73 /reg=7</opc>
+            <opr>Hx Ux Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>vpsrldq</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDD.128.66.0F.WIG 73 /reg=3</opc>
+            <opr>Hx Ux Ib</opr>
+        </def>
+        <def>
+            <opc>/vex=NDD.256.66.0F.WIG 73 /reg=3</opc>
             <opr>Hx Ux Ib</opr>
         </def>
     </instruction>
