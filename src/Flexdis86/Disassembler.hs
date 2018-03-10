@@ -251,7 +251,7 @@ prefixOperandSizeConstraint pfx d
   -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
   | Just Default64 <- d^.defMode,
     pfx^.prOSO == False = Size64
-  | rex_w (pfx^.prREX)  = Size64
+  | rex_w (getREX pfx)  = Size64
   | pfx^.prOSO          = Size16
   | otherwise           = Size32
 
@@ -649,6 +649,11 @@ memSizeFn osz sz =
     Size256 -> Mem256
 
 
+getREX :: Prefixes -> REX
+getREX p = case p ^. prVEX of
+             Just vex -> vex ^. vexRex
+             _        -> p ^. prREX
+
 parseValue :: ByteReader m
            => Prefixes
            -> SizeConstraint -- ^ Operand size
@@ -657,9 +662,7 @@ parseValue :: ByteReader m
            -> m Value
 parseValue p osz mmrm tp = do
   let sp  = p^.prSP
-      rex = case p ^. prVEX of
-              Just vex -> vex ^. vexRex
-              _        -> p^.prREX
+      rex = getREX p
       aso = p^.prASO
       msg = "internal: parseValue missing modRM with operand type: " ++ show tp
       modRM = fromMaybe (error msg) mmrm -- laziness is used here and below, this is not used for e.g. ImmediateSource
@@ -813,7 +816,7 @@ readNoOffset aso p modRM = do
   let memRef | aso = memRef_32
              | otherwise = memRef_64
   let rm = modRM_rm modRM
-  let rex = p^.prREX
+  let rex = getREX p
       sp = p^.prSP
   let base_reg  = (rex_b rex .|.)
       index_reg = (rex_x rex .|.)
@@ -846,7 +849,7 @@ readWithOffset readDisp aso p modRM = do
   let sp = p^.prSP
   let memRef | aso = memRef_32
              | otherwise = memRef_64
-  let rex = p^.prREX
+  let rex = getREX p
   let rm = modRM_rm modRM
   let base_reg  = (rex_b rex .|.)
       index_reg = (rex_x rex .|.)
