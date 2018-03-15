@@ -8862,6 +8862,19 @@
     </instruction>
 
     <instruction>
+        <mnemonic>vpsllq</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDS.128.66.0F.WIG F3</opc>
+            <opr>Vx Ux Wx</opr>
+        </def>
+        <def>
+            <opc>/vex=NDD.128.66.0F.WIG 73 /reg=6</opc>
+            <opr>Hx Ux Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>vpsrldq</mnemonic>
         <class>avx</class>
         <def>
