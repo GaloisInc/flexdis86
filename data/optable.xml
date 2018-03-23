@@ -4798,6 +4798,19 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vmovq</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=128.F3.0F.WIG 7E</opc>
+        <opr>V W</opr>
+      </def>
+      <def>
+        <opc>/vex=128.66.0F.WIG D6</opc>
+        <opr>W V</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>movd</mnemonic>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
