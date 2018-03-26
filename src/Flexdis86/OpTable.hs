@@ -382,7 +382,7 @@ vexToBytes vp = short ++ long
               [ field 5 rxb .|. m
               | rxb <- [ 0 .. 7 ], m <- mmmmVals ]
   longByte2 = nub
-              [ w .|. field 3 vvvv .|. field 2 l .|. pp
+              [ field 7 w .|. field 3 vvvv .|. field 2 l .|. pp
               | w <- wVals, vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
 
   field amt x = shiftL x amt
