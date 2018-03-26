@@ -5839,6 +5839,15 @@
     </instruction>
 
     <instruction>
+        <mnemonic>vpinsrq</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDS.128.66.0F3A.W1 22</opc>
+            <opr>Vdq Hdq Ey Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>pmaddwd</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
