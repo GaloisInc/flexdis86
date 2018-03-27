@@ -9098,6 +9098,16 @@
     </instruction>
 
     <instruction>
+     <mnemonic>vpunpcklqdq</mnemonic>
+     <class>avx</class>
+     <def>
+       <opc>/vex=NDS.128.66.0F.WIG 6C</opc>
+       <opr>Vx Hx Wx</opr>
+     </def>
+    </instruction>
+
+
+    <instruction>
         <mnemonic>phaddw</mnemonic>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
