@@ -112,15 +112,19 @@ setBitTo bits bitNo val
   | val = B.setBit bits bitNo
   | otherwise = B.clearBit bits bitNo
 
+-- | Indicates if 64-bit operand size should be used.
 rexW :: Simple Lens REX Bool
 rexW = lens ((`B.testBit` 3) . unREX) (\(REX r) v -> REX (setBitTo r 3 v))
 
+-- | Extension of ModR/M reg field.
 rexR :: Simple Lens REX Bool
 rexR = lens ((`B.testBit` 2) . unREX) (\(REX r) v -> REX (setBitTo r 2 v))
 
+-- | Extension of SIB index field.
 rexX :: Simple Lens REX Bool
 rexX = lens ((`B.testBit` 1) . unREX) (\(REX r) v -> REX (setBitTo r 1 v))
 
+-- | Extension of ModR/M r/m field, SIB base field, or Opcode reg field.
 rexB :: Simple Lens REX Bool
 rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
 

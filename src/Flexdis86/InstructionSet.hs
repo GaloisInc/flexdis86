@@ -15,6 +15,7 @@ module Flexdis86.InstructionSet
   , Displacement(..)
   , displacementInt
   , AddrRef(..)
+  , module Flexdis86.Relocation
   ) where
 
 import           Control.Applicative
@@ -27,10 +28,11 @@ import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
 import           Prelude
 
 import           Flexdis86.Operand
-import           Flexdis86.Sizes
 import           Flexdis86.Prefixes
 import           Flexdis86.Register
+import           Flexdis86.Relocation
 import           Flexdis86.Segment
+import           Flexdis86.Sizes
 
 padToWidth :: Int -> String -> String
 padToWidth n s = if l > 0 then s ++ (replicate (n - l) ' ') else s
@@ -131,14 +133,14 @@ data AddrRef
   --
   -- In Intel syntax, this is the much more sensible [base register
   -- + displacement + offset register * scalar multiplier]
-  | IP_Offset_32 Segment Displacement
-  | Offset_32    Segment Word32
-    -- ^ A 32bit ofset relative to a segment.
-  | Offset_64    Segment Word64
-    -- ^ A 64bit ofset relative to a segment.
-  | Addr_64      Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
-  | IP_Offset_64 Segment Displacement
-  deriving (Show, Eq, Ord)
+  | IP_Offset_32 !Segment Displacement
+  | Offset_32    !Segment !Imm32
+    -- ^ A 32bit offset relative to a segment.
+  | Offset_64    !Segment !Word64
+    -- ^ A 64bit offset relative to a segment.
+  | Addr_64      !Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
+  | IP_Offset_64 !Segment Displacement
+  deriving (Show)
 
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
@@ -182,8 +184,6 @@ ppAddrRef addr =
            brackets $
              text (show r) <> text "+" <> text (show r') <> text "*" <> int n <> appendDisplacement off
 
-
-
 ------------------------------------------------------------------------
 -- Value
 
@@ -212,21 +212,29 @@ data Value
   | FPMem64 AddrRef
   | FPMem80 AddrRef
 
-  | ByteImm  Int8
+  | ByteImm  Word8
+    -- ^ A 8-bit immediate that should not need to be extended
+  | WordImm  Word16
+    -- ^ A 16-bit immediate that should not need to be extended
+  | DWordImm !Imm32
+    -- ^ A 32-bit immmediate that should not need to be extended
+  | QWordImm Word64
+    -- ^ A 64-bit intermediate that should not need to be extended
+
+  | ByteSignedImm  Int8
     -- ^ A 8-bit constant which may need to be sign extended to the appropriate
     -- size.
-  | WordImm  Int16
+  | WordSignedImm  Int16
     -- ^ A 16-bit intermediate that can be sign extended to the appropriate size.
-  | DWordImm Int32
+  | DWordSignedImm Int32
     -- ^ A 32-bit intermediate that can be sign extended to the appropriate size.
-  | QWordImm Int64
-    -- ^ A 64-bit intermediate that can be sign extended to the appropriate size.
+
   | ByteReg  Reg8
   | WordReg  Reg16
   | DWordReg Reg32
   | QWordReg Reg64
-  | JumpOffset OperandSize Int64
-  deriving (Show, Eq, Ord)
+  | JumpOffset !JumpSize !JumpOffset
+  deriving (Show)
 
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)
@@ -256,15 +264,18 @@ ppValue base v =
     FPMem32      addr -> text "DWORD PTR"   <+> ppAddrRef addr
     FPMem64      addr -> text "QWORD PTR"   <+> ppAddrRef addr
     FPMem80      addr -> text "TBYTE PTR"   <+> ppAddrRef addr
-    ByteImm      imm  -> ppImm imm
-    WordImm      imm  -> ppImm imm
-    DWordImm     imm  -> ppImm imm
-    QWordImm     imm  -> ppImm imm
+    ByteImm      i  -> text "0x" <> text (showHex i "")
+    WordImm      i  -> text "0x" <> text (showHex i "")
+    DWordImm     i  -> text (show i)
+    QWordImm     i  -> text "0x" <> text (showHex i "")
+    ByteSignedImm  i  -> ppImm i
+    WordSignedImm  i  -> ppImm i
+    DWordSignedImm i  -> ppImm i
     ByteReg      r    -> ppShowReg    r
     WordReg      r    -> ppShowReg    r
     DWordReg     r    -> ppShowReg    r
     QWordReg     r    -> ppShowReg    r
-    JumpOffset _ off  -> text (showHex (base+fromIntegral off) "")
+    JumpOffset _ off  -> text (showHex base ("+" ++ show off))
 
 
 ppImm :: (Integral w, Show w) => w -> Doc

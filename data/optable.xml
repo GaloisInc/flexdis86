@@ -183,7 +183,7 @@
         <def>
             <pfx>aso oso rexw rexr rexx rexb lock seg</pfx>
             <opc>83 /reg=0</opc>
-            <opr>Ev Ib</opr>
+            <opr>Ev sIb</opr>
         </def>
     </instruction>
 
@@ -7960,7 +7960,7 @@
         <def>
             <pfx>aso oso rexw rexr rexx rexb lock seg</pfx>
             <opc>83 /reg=5</opc>
-            <opr>Ev Ib</opr>
+            <opr>Ev sIb</opr>
         </def>
     </instruction>
 

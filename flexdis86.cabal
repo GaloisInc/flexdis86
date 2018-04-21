@@ -12,6 +12,7 @@ library
     base >= 4,
     ansi-wl-pprint,
     binary,
+    binary-symbols,
     bytestring,
     containers,
     directory,
@@ -30,6 +31,7 @@ library
     Flexdis86.Operand
     Flexdis86.Prefixes
     Flexdis86.Register
+    Flexdis86.Relocation
     Flexdis86.Segment
     Flexdis86.Sizes
 

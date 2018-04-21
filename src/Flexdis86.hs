@@ -9,6 +9,7 @@ module Flexdis86
   ( module Flexdis86.InstructionSet
   , module Flexdis86.Prefixes
   , module Flexdis86.Register
+  , module Flexdis86.Relocation
   , module Flexdis86.Segment
   , module Flexdis86.Operand
     -- * Disassembler
@@ -33,6 +34,7 @@ import           Flexdis86.InstructionSet
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
 import           Flexdis86.Register
+import           Flexdis86.Relocation
 import           Flexdis86.Segment
 
 -- | Parse instruction using byte reader.

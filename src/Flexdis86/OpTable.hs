@@ -27,6 +27,7 @@ module Flexdis86.OpTable
   , Mode(..)
   , defMode
   , reqAddrSize
+  , OperandSizeConstraint(..)
   , reqOpSize
   , defPrefix
   , requiredPrefix
@@ -419,6 +420,11 @@ vexToBytes vp = short ++ long
 ------------------------------------------------------------------------
 -- Instruction
 
+data OperandSizeConstraint
+   = OpSize16
+   | OpSize32
+   | OpSize64
+  deriving (Eq, Show)
 
 -- | The definition of an instruction.
 data Def = Def  { _defMnemonic :: String
@@ -435,7 +441,7 @@ data Def = Def  { _defMnemonic :: String
                 , _modeLimit :: ModeLimit
                 , _defMode   :: Maybe Mode
                 , _reqAddrSize :: Maybe SizeConstraint
-                , _reqOpSize :: Maybe SizeConstraint
+                , _reqOpSize :: Maybe OperandSizeConstraint
                 , _defPrefix :: [String]
                   -- ^ List of allowed prefixes.
                 , _requiredPrefix :: Maybe Word8
@@ -481,7 +487,7 @@ reqAddrSize :: Simple Lens Def (Maybe SizeConstraint)
 reqAddrSize = lens _reqAddrSize (\s v -> s { _reqAddrSize = v })
 
 -- | Expected operand size for instruction.
-reqOpSize :: Simple Lens Def (Maybe SizeConstraint)
+reqOpSize :: Simple Lens Def (Maybe OperandSizeConstraint)
 reqOpSize = lens _reqOpSize (\s v -> s { _reqOpSize = v })
 
 -- | Prefixes allowed on instruction.
@@ -562,9 +568,9 @@ parse_opcode nm = do
       , [(b,"")] <- readDec r
       , b `elem` [16, 32, 64::Int]
       -> case r of
-           "16" -> reqOpSize ?= Size16
-           "32" -> reqOpSize ?= Size32
-           "64" -> reqOpSize ?= Size64
+           "16" -> reqOpSize ?= OpSize16
+           "32" -> reqOpSize ?= OpSize32
+           "64" -> reqOpSize ?= OpSize64
            _ -> fail $ "Unexpected operand size: " ++ r
 
     _ | Just r <- stripPrefix "/reg=" nm
@@ -723,7 +729,7 @@ operandHandlerMap = Map.fromList
 
     -- Memory or register value stored in ModRM.rm
     -- As a  register has size VSize, and as memory has size WSize.
-  , (,) "MwRv" $ MXRX VSize WSize
+  , (,) "MwRv" $ MXRX WSize VSize
     -- As a  register has size DSize, and as memory has size BSize.
   , (,) "MbRd" $ MXRX BSize DSize
   , (,) "MbRv" $ MXRX BSize VSize

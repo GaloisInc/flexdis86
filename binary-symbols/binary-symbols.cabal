@@ -1,0 +1,18 @@
+Name:       binary-symbols
+Version:    0.1.0
+Author:     Galois Inc.
+Maintainer: jhendrix@galois.com
+Build-type: Simple
+Cabal-version: >= 1.10
+Synopsis: Common datatypes for binaries
+
+library
+  default-language: Haskell2010
+  build-depends:
+    base >= 4,
+    bytestring
+
+  hs-source-dirs: src
+  exposed-modules:
+    Data.BinarySymbols
+  GHC-options: -Wall -fno-ignore-asserts -O2

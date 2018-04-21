@@ -171,7 +171,9 @@ matchOperandType ops =
     (QWordImm _, OpType ImmediateSource ZSize) -> True
     (DWordImm _, OpType ImmediateSource RDQSize) -> True
     (QWordImm _, OpType ImmediateSource RDQSize) -> True
-    (JumpOffset sz1 _, OpType JumpImmediate sz2) -> sz1 == sz2
+    (JumpOffset JSize8 _,  OpType JumpImmediate BSize) -> True
+    (JumpOffset JSize16 _, OpType JumpImmediate ZSize) -> True
+    (JumpOffset JSize32 _, OpType JumpImmediate ZSize) -> True
     (QWordReg _, OpType ModRM_rm QSize) -> True
     (QWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm YSize) -> True
@@ -567,10 +569,14 @@ encodeImmediate rex oso vty =
   case vty of
     (ByteImm imm, ty) -> encodeByteImmediate rex oso (fromIntegral imm) ty
     (WordImm imm, ty) -> encodeWordImmediate rex oso (fromIntegral imm) ty
-    (DWordImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
+    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
+    (DWordImm _, _) -> error "Do not support symbolic immediates."
     (QWordImm imm, ty) -> encodeQWordImmediate rex oso (fromIntegral imm) ty
-    (JumpOffset BSize off, OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
-    (JumpOffset _ off, OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
+    (JumpOffset JSize8 (FixedOffset off),  OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
+    (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize)
+      | rex L.^. rexW || not oso   -> B.int32LE (fromIntegral off)
+    (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize)
+      | not (rex L.^. rexW) && oso -> B.int16LE (fromIntegral off)
     (JumpOffset _ _, _) -> error ("Unhandled jump offset immediate: " ++ show vty)
     _ -> mempty
 

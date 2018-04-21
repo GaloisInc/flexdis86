@@ -63,10 +63,6 @@ rex_b_bit = 0x01
 no_rex :: REX
 no_rex = REX 0
 
--- | Indicates if 64-bit operand size should be used.
-rex_w :: REX -> Bool
-rex_w r = unREX r `testBit` 3
-
 -- | Extension of ModR/M reg field.
 rex_r :: REX -> Word8
 rex_r r = (unREX r `shiftL` 1) .&. 0x8
@@ -138,7 +134,7 @@ sib_si index_reg sib | idx == rsp_idx = Nothing
 
 -- | Return parsed instruction.
 data ReadTable
-   = ReadTable Prefixes SizeConstraint String [OperandType] Def
+   = ReadTable Prefixes OperandSizeConstraint String [OperandType] Def
      -- ^ This indicates we read with the given operand size and size constraint
    | NoParse
   deriving (Show)
@@ -179,6 +175,15 @@ runParserGen p = runExcept p
 
 type PfxTableFn t = [(Prefixes, Def)] -> ParserGen t
 -- ^ Given a list of presfixes and a definition this?
+
+prefixOperandSizeConstraint :: Prefixes -> Def -> OperandSizeConstraint
+prefixOperandSizeConstraint pfx d
+  -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
+  | Just Default64 <- d^.defMode,
+    pfx^.prOSO == False = OpSize64
+  | (getREX pfx)^.rexW  = OpSize64
+  | pfx^.prOSO          = OpSize16
+  | otherwise           = OpSize32
 
 -- | Returns true if this definition supports the given operand size constaint.
 matchRequiredOpSize :: Prefixes -> Def -> Bool
@@ -245,15 +250,6 @@ partitionBy l = V.create $ do
   mapM_ go l
   return mv
 
-
-prefixOperandSizeConstraint :: Prefixes -> Def -> SizeConstraint
-prefixOperandSizeConstraint pfx d
-  -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
-  | Just Default64 <- d^.defMode,
-    pfx^.prOSO == False = Size64
-  | rex_w (getREX pfx)  = Size64
-  | pfx^.prOSO          = Size16
-  | otherwise           = Size32
 
 -- | Some instructions have multiple interpretations depending on the
 -- size of the operands.  This is represented by multiple instructions
@@ -614,31 +610,33 @@ disassembleInstruction tr0 = do
     ReadModRM t -> flip parseRegTable t =<< readModRM
 
 -- | Returns the size of a function.
-sizeFn :: SizeConstraint -> OperandSize -> SizeConstraint
+sizeFn :: OperandSizeConstraint -> OperandSize -> SizeConstraint
 sizeFn _ BSize = error "internal: sizeFn given BSize"
 sizeFn _ WSize = Size16
 sizeFn _ DSize = Size32
 sizeFn _ QSize = Size64
-sizeFn osz VSize = osz
-sizeFn _      OSize = Size128
-sizeFn _      QQSize = Size256
-sizeFn Size64 YSize = Size64
-sizeFn _      YSize = Size32
-sizeFn Size16 ZSize = Size16
-sizeFn _      ZSize = Size32
-sizeFn _    RDQSize = Size64
+sizeFn OpSize16 VSize   = Size16
+sizeFn OpSize32 VSize   = Size32
+sizeFn OpSize64 VSize   = Size64
+sizeFn _        OSize   = Size128
+sizeFn _        QQSize  = Size256
+sizeFn OpSize64 YSize   = Size64
+sizeFn _        YSize   = Size32
+sizeFn OpSize16 ZSize   = Size16
+sizeFn _        ZSize   = Size32
+sizeFn _        RDQSize = Size64
 
-regSizeFn :: SizeConstraint -> REX -> OperandSize -> Word8 -> Value
+regSizeFn :: OperandSizeConstraint -> REX -> OperandSize -> Word8 -> Value
 regSizeFn _ rex BSize = ByteReg . reg8 rex
 regSizeFn osz _ sz =
   case sizeFn osz sz of
-    Size16  -> WordReg  . Reg16
-    Size32  -> DWordReg . Reg32
-    Size64  -> QWordReg . Reg64
-    Size128 -> error "Unexpected register size function: Size128"
-    Size256 -> error "Unexpected register size function: Size256"
+    Size16 -> WordReg  . Reg16
+    Size32 -> DWordReg . Reg32
+    Size64 -> QWordReg . Reg64
+    Size128  -> error "Unexpected register size function: Size128"
+    Size256  -> error "Unexpected register size function: Size256"
 
-memSizeFn :: SizeConstraint -> OperandSize -> AddrRef -> Value
+memSizeFn :: OperandSizeConstraint -> OperandSize -> AddrRef -> Value
 memSizeFn _ BSize = Mem8
 memSizeFn osz sz =
   case sizeFn osz sz of
@@ -654,9 +652,14 @@ getREX p = case p ^. prVEX of
              Just vex -> vex ^. vexRex
              _        -> p ^. prREX
 
+readOffset :: ByteReader m => Segment -> Bool -> m AddrRef
+readOffset s aso
+  | aso       = Offset_32 s <$> readDImm
+  | otherwise = Offset_64 s <$> readQWord
+
 parseValue :: ByteReader m
            => Prefixes
-           -> SizeConstraint -- ^ Operand size
+           -> OperandSizeConstraint -- ^ Operand size
            -> Maybe ModRM
            -> OperandType
            -> m Value
@@ -690,34 +693,39 @@ parseValue p osz mmrm tp = do
     OpType ModRM_reg sz -> pure $ regSizeFn osz rex sz reg_with_rex
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
-    OpType ImmediateSource BSize -> ByteImm <$> readSByte
-    OpType ImmediateSource sz ->
-      case sizeFn osz sz of
-        Size16 ->  WordImm <$> readSWord
-        Size32 -> DWordImm <$> readSDWord
-        Size64 -> QWordImm <$> readSQWord
-        Size128 -> error "128-bit immediates are not supported."
-        Size256 -> error "256-bit immediates are not supported."
-    OpType OffsetSource sz
-        | BSize <- sz -> Mem8 <$> moffset
-        | otherwise -> case sizeFn osz sz of
-                         Size16 -> Mem16 <$> moffset
-                         Size32 -> Mem32 <$> moffset
-                         Size64 -> Mem64 <$> moffset
-                         Size128 -> error "128-bit offsets are not supported."
-                         Size256 -> error "256-bit offsets are not supported."
-      where s = sp `setDefault` DS
-            moffset | aso =  Offset_32 s <$> readDWord
-                    | otherwise = Offset_64 s <$> readQWord
-    OpType JumpImmediate BSize -> JumpOffset BSize . fromIntegral <$> readSByte
-    OpType JumpImmediate sz -> fmap (JumpOffset sz) $
-      case sizeFn osz sz of
-        Size16  -> fromIntegral <$> readSWord
-        Size32  -> fromIntegral <$> readSDWord
-        Size64  -> readSQWord
-        Size128 -> error "128-bit jump immediates are not supported."
-        Size256 -> error "256-bit jump immediates are not supported."
-
+    OpType ImmediateSource BSize ->
+      ByteImm <$> readByte
+    OpType ImmediateSource WSize ->
+       WordImm  <$> readWord
+    OpType ImmediateSource VSize ->
+      case osz of
+        OpSize16 ->  WordImm <$> readWord
+        OpSize32 -> DWordImm <$> readDImm
+        OpSize64 -> QWordImm <$> readQWord
+    OpType ImmediateSource ZSize ->
+      case osz of
+        OpSize16 ->  WordImm <$> readWord
+        _        -> DWordImm <$> readDImm
+    OpType ImmediateSource _ ->
+      error "Unsupported immediate source."
+    OpType OffsetSource BSize ->
+      Mem8 <$> readOffset (sp `setDefault` DS) aso
+    OpType OffsetSource VSize ->
+      case osz of
+        OpSize16 -> Mem16 <$> readOffset (sp `setDefault` DS) aso
+        OpSize32 -> Mem32 <$> readOffset (sp `setDefault` DS) aso
+        OpSize64 -> Mem64 <$> readOffset (sp `setDefault` DS) aso
+    OpType OffsetSource sz ->
+      error $ "Unsupported offset source size: " ++ show sz
+    OpType JumpImmediate BSize ->
+      JumpOffset JSize8 <$> readJump JSize8
+    OpType JumpImmediate ZSize ->
+      if osz == OpSize16 then
+        fmap (JumpOffset JSize16) $ readJump JSize16
+      else
+        fmap (JumpOffset JSize32) $ readJump JSize32
+    OpType JumpImmediate sz ->
+      error $ "Unsupported jump immediate size: " ++ show sz
     RG_C   -> return $ ControlReg (controlReg reg_with_rex)
     RG_dbg -> return $ DebugReg   (debugReg   reg_with_rex)
     RG_S   -> SegmentValue <$> segmentRegisterByIndex reg
@@ -776,17 +784,14 @@ parseValue p osz mmrm tp = do
     M_Implicit seg r sz -> do
       let a | aso       = Addr_32 seg (Just (Reg32 (reg64No r))) Nothing NoDisplacement
             | otherwise = Addr_64 seg (Just r)                   Nothing NoDisplacement
-      pure $ memSizeFn Size64 sz a
+      pure $ memSizeFn OpSize64 sz a
     IM_1 -> pure $ ByteImm 1
-    IM_SB -> ByteImm <$> readSByte
+    IM_SB -> ByteSignedImm <$> readSByte
     IM_SZ ->
       -- This reads 16-bits if operand size is 16bits and 32-bits otherwise.
       case osz of
-        Size16  ->  WordImm <$> readSWord
-        Size32  -> DWordImm <$> readSDWord
-        Size64  -> DWordImm <$> readSDWord
-        Size128 -> error $ "128-bit immediates are not supported."
-        Size256 -> error $ "256-bit immediates are not supported."
+        OpSize16  ->  WordSignedImm <$> readSWord
+        _         -> DWordSignedImm <$> readSDWord
 
 largeReg :: Prefixes -> Maybe OperandSize -> Word8 -> Value
 largeReg p mb num =
