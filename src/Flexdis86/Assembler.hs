@@ -578,11 +578,10 @@ encodeImmediate rex oso vty =
     (DWordSignedImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
 
     (JumpOffset JSize8 (FixedOffset off),  OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
-    (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize)
-      | rex L.^. rexW || not oso   -> B.int32LE (fromIntegral off)
-    (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize)
-      | not (rex L.^. rexW) && oso -> B.int16LE (fromIntegral off)
-    (JumpOffset _ _, _) -> error ("Unhandled jump offset immediate: " ++ show vty)
+    (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int16LE (fromIntegral off)
+    (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
+    (JumpOffset _ _, _) -> error $
+      "Unhandled jump offset immediate: " ++ show vty ++ "(rex=" ++ show rex ++ ", oso=" ++ show oso ++ ")"
     _ -> mempty
 
 encodeByteImmediate :: REX -> Bool -> Word8 -> OperandType -> B.Builder
