@@ -33,7 +33,7 @@ testCases = [ ("ret", mkI "ret" [])
               -- normally do the rewriting automatically (so we have
               -- to as well)
             , ("jmp .+20", mkI "jmp" j20)
-            , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.JSize16 (D.FixedOffset (2000 - 5))])
+            , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.JSize32 (D.FixedOffset (2000 - 5))])
 
             -- Warning (64-bit) xors here have multiple encodings --
             -- e.g. @xor %rdx, %rdx@ can be encoded as both 0x4831d2
