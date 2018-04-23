@@ -60,12 +60,12 @@ executable DumpInstr
   hs-source-dirs: utils
   main-is: DumpInstr.hs
 
-test-suite roundtrip-tests
+test-suite flexdis86-tests
   type: exitcode-stdio-1.0
   default-language: Haskell2010
   main-is: Main.hs
   hs-source-dirs:
-    tests/roundtrip-tests
+    tests
 
   ghc-options: -Wall
 
