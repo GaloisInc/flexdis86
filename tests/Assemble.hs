@@ -16,12 +16,15 @@ assembleTests :: T.TestTree
 assembleTests =
   T.testGroup "Assemble Tests" (map mkTest testCases)
 
+j20 :: [D.Value]
+j20 = [D.JumpOffset D.JSize8 (D.FixedOffset (20 - 2))]
+
 testCases :: [(String, Maybe D.InstructionInstance)]
 testCases = [ ("ret", mkI "ret" [])
             , ("int $0x3", mkI "int3" [])
             , ("push $0x8", mkI "push" [D.ByteImm 8])
             , ("pushw $0xfff", fmap setOSO $ mkI "push" [D.WordImm 0xfff])
-            , ("push $0x2000000", mkI "push" [D.DWordImm 0x2000000])
+            , ("push $0x2000000", mkI "push" [D.DWordImm (D.Imm32Concrete 0x2000000)])
               -- The subtraction here is gross, but required because
               -- the jump is relative to the IP, which is incremented
               -- past the jump by the time it executes.
@@ -29,8 +32,8 @@ testCases = [ ("ret", mkI "ret" [])
               -- This only affects us because the assembler would
               -- normally do the rewriting automatically (so we have
               -- to as well)
-            , ("jmp .+20", mkI "jmp" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.ZSize (2000 - 5)])
+            , ("jmp .+20", mkI "jmp" j20)
+            , ("jmp .+2000", mkI "jmp" [D.JumpOffset D.JSize32 (D.FixedOffset (2000 - 5))])
 
             -- Warning (64-bit) xors here have multiple encodings --
             -- e.g. @xor %rdx, %rdx@ can be encoded as both 0x4831d2
@@ -46,15 +49,15 @@ testCases = [ ("ret", mkI "ret" [])
             , ("sub (%rax),%rsp", mkI "sub" [D.QWordReg D.RSP, D.Mem64 (D.Addr_64 D.DS (Just D.RAX) Nothing D.NoDisplacement)])
 
             -- Instructions with mnemonic synonyms.
-            , ("jnb .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jnb .+20", mkI "jae" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jnb .+20", mkI "jnc" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jae .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jae .+20", mkI "jae" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jae .+20", mkI "jnc" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jnc .+20", mkI "jnb" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jnc .+20", mkI "jae" [D.JumpOffset D.BSize (20 - 2)])
-            , ("jnc .+20", mkI "jnc" [D.JumpOffset D.BSize (20 - 2)])
+            , ("jnb .+20", mkI "jnb" j20)
+            , ("jnb .+20", mkI "jae" j20)
+            , ("jnb .+20", mkI "jnc" j20)
+            , ("jae .+20", mkI "jnb" j20)
+            , ("jae .+20", mkI "jae" j20)
+            , ("jae .+20", mkI "jnc" j20)
+            , ("jnc .+20", mkI "jnb" j20)
+            , ("jnc .+20", mkI "jae" j20)
+            , ("jnc .+20", mkI "jnc" j20)
             ]
 
 setOSO :: D.InstructionInstance -> D.InstructionInstance

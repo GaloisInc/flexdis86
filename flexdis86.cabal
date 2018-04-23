@@ -60,28 +60,29 @@ executable DumpInstr
   hs-source-dirs: utils
   main-is: DumpInstr.hs
 
-test-suite roundtrip-tests
+test-suite flexdis86-tests
   type: exitcode-stdio-1.0
   default-language: Haskell2010
   main-is: Main.hs
   hs-source-dirs:
-    tests/roundtrip-tests
+    tests
 
   ghc-options: -Wall
 
   build-depends: flexdis86,
                  base,
                  bytestring,
-                 tasty >= 0.10 && < 0.13,
+                 tasty >= 0.10,
                  tasty-hunit,
                  process >= 1.2 && < 1.7,
                  lens,
                  temporary >= 1 && < 2,
                  elf-edit,
                  pretty-hex
+  other-modules:
+    Assemble
+    Roundtrip
+    Util
+
   if !os(darwin) && !os(windows)
      cpp-options: -DARCH_ELF
-     other-modules:
-       Assemble
-       Roundtrip
-       Util

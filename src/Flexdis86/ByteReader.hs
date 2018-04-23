@@ -25,7 +25,7 @@ import Prelude
 -- in the low-order bits and the second is stored in the high order bits.
 readLSB' :: (Monad m, Bits b, Num b)
          => b -- ^ Accumulator
-         -> Int -- ^ Number of bytes read so far
+         -> Int -- ^ Number of bits read so far
          -> m Word8 -- ^ Reader
          -> Int  -- ^ Number of bits to read
          -> m b
@@ -54,15 +54,15 @@ class (Applicative m, Monad m) => ByteReader m where
 
   -- | Read a 16-bit value with the least-significant byte first.
   readWord :: m Word16
-  readWord = readLSB readByte 2
+  readWord = readLSB readByte 16
 
   -- | Read a 32-bit value with the least-significant byte first.
   readDImm :: m Imm32
-  readDImm = Imm32Concrete <$> readLSB readByte 4
+  readDImm = Imm32Concrete <$> readLSB readByte 32
 
   -- | Read a 64-bit value with the least-significant byte first.
   readQWord :: m Word64
-  readQWord = readLSB readByte 8
+  readQWord = readLSB readByte 64
 
   -- | Invalid instruction when parsing
   invalidInstruction :: m a
@@ -75,7 +75,7 @@ class (Applicative m, Monad m) => ByteReader m where
   readSWord  = fromIntegral <$> readWord
 
   readSDWord :: m Int32
-  readSDWord = readLSB readByte 4
+  readSDWord = readLSB readByte 32
 
   -- | This reads a jump offset with the given number of bytes
   readJump :: JumpSize -> m JumpOffset

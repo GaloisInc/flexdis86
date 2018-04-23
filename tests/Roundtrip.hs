@@ -270,7 +270,7 @@ immediateTests =
 immediateOperandOpcodes :: [(String, [String])]
 immediateOperandOpcodes = [ ("push imm8", ["push $3"])
                           , ("push imm16", ["push $15000"])
-                          , ("push imm32", ["push $1000000000"])
+                          , ("push imm32", ["push $1234567990"])
                           , ("Relative short jump (jmp .+0x28)", ["jmp .+0x28"])
                           , ("Relative near jump (jmp .+0xfff)", ["jmp .+0xfff"])
                           ]
@@ -282,4 +282,4 @@ mkTest (name, insns) = T.testCase name $ do
 --    T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
     let instances = mapMaybe D.disInstruction disInsns
         assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe D.assembleInstruction instances)
-    T.assertEqual ("Assembled bytes\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
+    T.assertEqual ("Assembled bytes\n" ++ "\n" ++ show instances ++ "\n" ++ prettyHex assembledInsns) codeBytes assembledInsns

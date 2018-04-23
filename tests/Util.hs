@@ -12,8 +12,6 @@ import qualified Test.Tasty.HUnit as T
 
 import qualified Data.ElfEdit as E
 
-
-#ifdef ARCH_ELF
 start_sym_name :: String
 start_sym_name = "_start"
 
@@ -33,8 +31,6 @@ extractCodeSegment e = do
     [] -> error "extractCodeSegment: Could not find code segment"
     [textSection] -> return $ E.elfSectionData textSection
     _ -> error "extractCodeSegment: Too many text segments"
-#endif
-
 
 -- | Put the given assembly instructions into an assembly file,
 -- assemble it, then extract the bytes from the code segment.  Feed

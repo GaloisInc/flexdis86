@@ -66,7 +66,7 @@ mkInstruction :: (MonadPlus m)
               -- ^ Arguments
               -> m InstructionInstance
 mkInstruction ctx mnemonic args =
-  foldr (<|>) empty (map (findEncoding args) defs)
+   foldr (<|>) empty (map (findEncoding args) defs)
   where
     defs = fromMaybe [] $ M.lookup mnemonic (acDefs ctx)
 
@@ -75,7 +75,10 @@ findEncoding args def = do
   let opTypes = L.view defOperands def
   guard (length args == length opTypes)
   let argTypes = zip args opTypes
-  F.forM_ argTypes $ \at -> guard (matchOperandType at)
+  -- Always only consider case where operand size override is false.
+  -- NOTE. We could extend this to consider both options.
+  let oso = False
+  F.forM_ argTypes $ \at -> guard (matchOperandType oso at)
   let rex = mkREX args
   let vex = Nothing -- XXX: implement this
   return $ II { iiLockPrefix = NoLockPrefix
@@ -87,13 +90,13 @@ findEncoding args def = do
                                       , _prREX = rex
                                       , _prVEX = vex
                                       , _prASO = False
-                                      , _prOSO = False
+                                      , _prOSO = oso
                                       }
               , iiRequiredPrefix = L.view requiredPrefix def
-              , iiOpcode = L.view defOpcodes def
+              , iiOpcode      = L.view defOpcodes  def
               , iiRequiredMod = L.view requiredMod def
               , iiRequiredReg = L.view requiredReg def
-              , iiRequiredRM = L.view requiredRM def
+              , iiRequiredRM  = L.view requiredRM  def
               }
 
 -- | The REX prefix modifies instructions to operate over 64 bit operands.
@@ -152,8 +155,8 @@ addREXwFlag v r =
 
 -- | Return True if the given 'Value' can be encoded with the operand
 -- type (specified as a String).
-matchOperandType :: (Value, OperandType) -> Bool
-matchOperandType ops =
+matchOperandType :: Bool -> (Value, OperandType) -> Bool
+matchOperandType oso ops =
   case ops of
     (ByteImm _, OpType ImmediateSource BSize) -> True
     (WordImm _, OpType ImmediateSource WSize) -> True
@@ -172,8 +175,8 @@ matchOperandType ops =
     (DWordImm _, OpType ImmediateSource RDQSize) -> True
     (QWordImm _, OpType ImmediateSource RDQSize) -> True
     (JumpOffset JSize8 _,  OpType JumpImmediate BSize) -> True
-    (JumpOffset JSize16 _, OpType JumpImmediate ZSize) -> True
-    (JumpOffset JSize32 _, OpType JumpImmediate ZSize) -> True
+    (JumpOffset JSize16 _, OpType JumpImmediate ZSize) | oso == True  -> True
+    (JumpOffset JSize32 _, OpType JumpImmediate ZSize) | oso == False -> True
     (QWordReg _, OpType ModRM_rm QSize) -> True
     (QWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm YSize) -> True
@@ -567,17 +570,21 @@ encodeREXPrefix (REX rex) | rex == 0 = mempty
 encodeImmediate :: REX -> Bool -> (Value, OperandType) -> B.Builder
 encodeImmediate rex oso vty =
   case vty of
-    (ByteImm imm, ty) -> encodeByteImmediate rex oso (fromIntegral imm) ty
-    (WordImm imm, ty) -> encodeWordImmediate rex oso (fromIntegral imm) ty
-    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
-    (DWordImm _, _) -> error "Do not support symbolic immediates."
-    (QWordImm imm, ty) -> encodeQWordImmediate rex oso (fromIntegral imm) ty
+    (ByteImm imm, ty) -> encodeByteImmediate rex oso imm ty
+    (WordImm imm, ty) -> encodeWordImmediate rex oso imm ty
+    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso imm ty
+    (DWordImm Imm32SymbolOffset{}, _) -> error "Do not support symbolic immediates."
+    (QWordImm imm, ty) -> encodeQWordImmediate rex oso imm ty
+
+    (ByteSignedImm imm, ty)  -> encodeByteImmediate  rex oso (fromIntegral imm) ty
+    (WordSignedImm imm, ty)  -> encodeWordImmediate  rex oso (fromIntegral imm) ty
+    (DWordSignedImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
+
     (JumpOffset JSize8 (FixedOffset off),  OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
-    (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize)
-      | rex L.^. rexW || not oso   -> B.int32LE (fromIntegral off)
-    (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize)
-      | not (rex L.^. rexW) && oso -> B.int16LE (fromIntegral off)
-    (JumpOffset _ _, _) -> error ("Unhandled jump offset immediate: " ++ show vty)
+    (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int16LE (fromIntegral off)
+    (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
+    (JumpOffset _ _, _) -> error $
+      "Unhandled jump offset immediate: " ++ show vty ++ "(rex=" ++ show rex ++ ", oso=" ++ show oso ++ ")"
     _ -> mempty
 
 encodeByteImmediate :: REX -> Bool -> Word8 -> OperandType -> B.Builder
