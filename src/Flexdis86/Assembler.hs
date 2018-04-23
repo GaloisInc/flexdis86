@@ -567,11 +567,16 @@ encodeREXPrefix (REX rex) | rex == 0 = mempty
 encodeImmediate :: REX -> Bool -> (Value, OperandType) -> B.Builder
 encodeImmediate rex oso vty =
   case vty of
-    (ByteImm imm, ty) -> encodeByteImmediate rex oso (fromIntegral imm) ty
-    (WordImm imm, ty) -> encodeWordImmediate rex oso (fromIntegral imm) ty
-    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
-    (DWordImm _, _) -> error "Do not support symbolic immediates."
-    (QWordImm imm, ty) -> encodeQWordImmediate rex oso (fromIntegral imm) ty
+    (ByteImm imm, ty) -> encodeByteImmediate rex oso imm ty
+    (WordImm imm, ty) -> encodeWordImmediate rex oso imm ty
+    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso imm ty
+    (DWordImm Imm32SymbolOffset{}, _) -> error "Do not support symbolic immediates."
+    (QWordImm imm, ty) -> encodeQWordImmediate rex oso imm ty
+
+    (ByteSignedImm imm, ty)  -> encodeByteImmediate  rex oso (fromIntegral imm) ty
+    (WordSignedImm imm, ty)  -> encodeWordImmediate  rex oso (fromIntegral imm) ty
+    (DWordSignedImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
+
     (JumpOffset JSize8 (FixedOffset off),  OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
     (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize)
       | rex L.^. rexW || not oso   -> B.int32LE (fromIntegral off)
