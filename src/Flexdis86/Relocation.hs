@@ -41,6 +41,7 @@ data JumpOffset
     -- The computed value should be @addr(sym) + off - (initPC + ioff)@ where
     -- @initPC is the base address that @ioff@ is relative to.  In macaw-x86, @initPC@
     -- is the PC value of the instruction, but it can technically be other offsets.
+  deriving (Eq, Ord)
 
 data Imm32
    = Imm32Concrete !Word32
@@ -49,7 +50,7 @@ data Imm32
     -- ^ @Imm32SymbolOffset sym off@ denotes the value of @addr(sym) + off@.
     --
     -- This is required to be a 32-bit value.  If not, then the instruction is malformed.
-
+  deriving (Eq, Ord)
 
 instance Show Imm32 where
   showsPrec _ (Imm32Concrete c) = showString "0x" . showHex c

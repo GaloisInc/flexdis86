@@ -140,7 +140,7 @@ data AddrRef
     -- ^ A 64bit offset relative to a segment.
   | Addr_64      !Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
   | IP_Offset_64 !Segment Displacement
-  deriving (Show)
+  deriving (Show, Ord, Eq)
 
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
@@ -234,7 +234,7 @@ data Value
   | DWordReg Reg32
   | QWordReg Reg64
   | JumpOffset !JumpSize !JumpOffset
-  deriving (Show)
+  deriving (Show, Ord, Eq)
 
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)
