@@ -44,7 +44,7 @@ data SymbolVersion
 data SymbolIdentifier
    = SymbolRelocation !SymbolName !SymbolVersion
      -- ^ Denotes the address of the symbol that matches the name and version constraints.
-   | SectionBaseRelocation !SectionIndex
+   | SectionIdentifier !SectionIndex
      -- ^ Denotes the address of the section with the given address.
   deriving (Eq, Ord)
 
@@ -57,5 +57,5 @@ instance Show SymbolIdentifier where
         showString (BSC.unpack nm)
         . showChar '@' . showString (BSC.unpack symName)
         . showChar '(' . showString (BSC.unpack soName) . showChar ')'
-  showsPrec _ (SectionBaseRelocation idx) =
+  showsPrec _ (SectionIdentifier idx) =
     showString "section_" . shows idx

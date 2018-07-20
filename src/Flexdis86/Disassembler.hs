@@ -112,13 +112,14 @@ sib_base s = unSIB s .&. 0x7
 ------------------------------------------------------------------------
 -- Misc
 
-type AddrOpts = Segment -> Maybe Word8 -> Maybe (Int,Word8) -> Displacement -> AddrRef
-
-memRef_32 :: AddrOpts
-memRef_32 s b si o = Addr_32 s (Reg32 <$> b) (over _2 Reg32 <$> si) o
-
-memRef_64 :: AddrOpts
-memRef_64 s b si o = Addr_64 s (Reg64 <$> b) (over _2 Reg64 <$> si) o
+memRef :: Bool -- ^ ASO
+       -> Segment -- ^ Segment to load
+       -> Maybe Word8
+       -> Maybe (Int,Word8)
+       -> Displacement
+       -> AddrRef
+memRef True  s b si o = Addr_32 s (Reg32 <$> b) (over _2 Reg32 <$> si) o
+memRef False s b si o = Addr_64 s (Reg64 <$> b) (over _2 Reg64 <$> si) o
 
 rsp_idx :: Word8
 rsp_idx = 4
@@ -529,7 +530,7 @@ readSIB = SIB <$> readByte
 
 -- | Read 32bit value
 read_disp32 :: ByteReader m => m Displacement
-read_disp32 = Disp32 <$> readSDWord
+read_disp32 = Disp32 <$> readDImm
 
 -- | Read an 8bit value and sign extend to 32-bits.
 read_disp8 :: ByteReader m => m Displacement
@@ -673,9 +674,10 @@ parseValue p osz mmrm tp = do
   let reg = modRM_reg modRM
   let reg_with_rex :: Word8
       reg_with_rex = rex_r rex .|. reg
+      -- This reads a
       addr :: ByteReader m => m AddrRef
       addr = case modRM_mod modRM of
-               0 -> readNoOffset aso p modRM
+               0 -> readNoOffset p modRM
                1 -> readWithOffset read_disp8  aso p modRM
                2 -> readWithOffset read_disp32 aso p modRM
                _ -> fail $ "internal: parseValue given modRM to register with operand type: " ++ show tp
@@ -811,15 +813,12 @@ largeReg p mb num =
   useXMM = XMMReg (xmmReg num)
   useYMM = YMMReg (ymmReg num)
 
--- FIXME: remove aso, it is in p
 readNoOffset :: ByteReader m
-             => Bool -- ^ Address size override
-             -> Prefixes
+             => Prefixes
              -> ModRM
              -> m AddrRef
-readNoOffset aso p modRM = do
-  let memRef | aso = memRef_32
-             | otherwise = memRef_64
+readNoOffset p modRM = do
+  let aso = p^.prASO
   let rm = modRM_rm modRM
   let rex = getREX p
       sp = p^.prSP
@@ -830,19 +829,22 @@ readNoOffset aso p modRM = do
     let base = sib_base sib
     let si = sib_si index_reg sib
     if base == rbp_idx then do
-      memRef (sp `setDefault` DS) Nothing si <$> read_disp32
+      memRef aso (sp `setDefault` DS) Nothing si <$> read_disp32
      else do
       let seg | base == rsp_idx = sp `setDefault` SS
               | otherwise       = sp `setDefault` DS
-      return $ memRef seg (Just (base_reg base)) si NoDisplacement
+      return $ memRef aso seg (Just (base_reg base)) si NoDisplacement
   else if rm == rbp_idx then do
-    let ip_offset | aso = IP_Offset_32
-                  | otherwise = IP_Offset_64
     let seg = sp `setDefault` SS
-    ip_offset seg <$> read_disp32
+    disp <- read_disp32
+    pure $!
+      if aso then
+        IP_Offset_32 seg disp
+       else
+        IP_Offset_64 seg disp
   else do
     let seg = sp `setDefault` DS
-    return $ memRef seg (Just (base_reg rm)) Nothing NoDisplacement
+    return $ memRef aso seg (Just (base_reg rm)) Nothing NoDisplacement
 
 readWithOffset :: ByteReader m
                => m Displacement
@@ -852,8 +854,6 @@ readWithOffset :: ByteReader m
                -> m AddrRef
 readWithOffset readDisp aso p modRM = do
   let sp = p^.prSP
-  let memRef | aso = memRef_32
-             | otherwise = memRef_64
   let rex = getREX p
   let rm = modRM_rm modRM
   let base_reg  = (rex_b rex .|.)
@@ -868,7 +868,7 @@ readWithOffset readDisp aso p modRM = do
           | base == rbp_idx = SS
           | otherwise       = DS
   o <- readDisp
-  return $ memRef (sp `setDefault` seg) (Just (base_reg base)) si o
+  return $ memRef aso (sp `setDefault` seg) (Just (base_reg base)) si o
 
 -- | Information about a disassembled instruction at a given address
 data DisassembledAddr = DAddr { disOffset :: Int

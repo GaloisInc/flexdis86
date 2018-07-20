@@ -43,22 +43,29 @@ data JumpOffset
     -- is the PC value of the instruction, but it can technically be other offsets.
   deriving (Eq, Ord)
 
+-- | A 32-bit value which could either be a specific number, or a relocation that should
+-- be computed at later load/link time.
 data Imm32
-   = Imm32Concrete !Word32
+   = Imm32Concrete !Int32
     -- ^ @Imm32Concrete c@ denotes the value of @c@,
-   | Imm32SymbolOffset !SymbolIdentifier !Int64
-    -- ^ @Imm32SymbolOffset sym off@ denotes the value of @addr(sym) + off@.
+   | Imm32SymbolOffset !SymbolIdentifier !Int64 !Bool
+    -- ^ @Imm32SymbolOffset sym off signed@ denotes the value of @addr(sym) + off@.
     --
-    -- This is required to be a 32-bit value.  If not, then the instruction is malformed.
+    -- We can assume that the computed value is in `[0..2^32-)` if `signed` is false,
+    -- and `[-2^31..2^31)` if `signed` is true.  If not, the relocation fail before
+    -- we start disassembling.
   deriving (Eq, Ord)
 
 instance Show Imm32 where
-  showsPrec _ (Imm32Concrete c) = showString "0x" . showHex c
-  showsPrec _ (Imm32SymbolOffset s o)
+  showsPrec _ (Imm32Concrete c)
+    | c <  0 = showString "-0x" . showHex (negate c)
+    | c >= 0 = showString "0x" . showHex c
+  showsPrec _ (Imm32SymbolOffset s o isSigned)
     = showString "[roff"
     . shows s
     . showChar ','
     . shows o
+    . (if isSigned then showString ",S" else id)
     . showChar ']'
 
 showOff :: Int64 -> ShowS

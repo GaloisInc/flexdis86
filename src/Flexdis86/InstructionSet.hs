@@ -13,7 +13,6 @@ module Flexdis86.InstructionSet
   , ppInstruction
   , Value(..)
   , Displacement(..)
-  , displacementInt
   , AddrRef(..)
   , module Flexdis86.Relocation
   ) where
@@ -49,26 +48,14 @@ ppPunctuate _ [] = PP.empty
 -- | Displacement in an indirect memory reference.
 --
 -- These can be encoded as either 8 or 32 bits
-data Displacement = Disp32 Int32
+data Displacement = Disp32 Imm32
                   | Disp8 Int8
                   | NoDisplacement
                   deriving (Show)
 
--- | Convert a displacement to an int32.
-displacementInt :: Displacement -> Int32
-displacementInt d =
-  case d of
-    NoDisplacement -> 0
-    Disp32 o -> o
-    Disp8 o -> fromIntegral o
-
 prettyDisplacement :: Displacement -> Doc
 prettyDisplacement NoDisplacement = text "0"
-prettyDisplacement (Disp32 x) =
-  if x >= 0 then
-    text ("0x" ++ showHex x "")
-   else
-    text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
+prettyDisplacement (Disp32 x) = text (show x)
 prettyDisplacement (Disp8 x) =
   if x >= 0 then
     text ("0x" ++ showHex x "")
@@ -79,46 +66,12 @@ prettyDisplacement (Disp8 x) =
 appendDisplacement :: Displacement -> Doc
 appendDisplacement NoDisplacement = text ""
 appendDisplacement (Disp32 x)
-  | x >  0    = text ("+0x" ++ showHex x "")
-  | x == 0    = text ""
-  | otherwise = text ("-0x" ++ showHex (negate (fromIntegral x :: Int64)) "")
+  | Imm32Concrete 0 <- x = text ""
+  | otherwise = text (show x)
 appendDisplacement (Disp8 x)
   | x >  0    = text ("+0x" ++ showHex x "")
   | x == 0    = text ""
   | otherwise = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
-
-instance Eq Displacement where
-  x == y = displacementInt x == displacementInt y
-
-instance Ord Displacement where
-  compare x y = compare (displacementInt x) (displacementInt y)
-
-instance Num Displacement where
-  negate = fromInteger . negate . toInteger
-  x + y = fromInteger (toInteger x + toInteger y)
-  x - y = fromInteger (toInteger x - toInteger y)
-  x * y = fromInteger (toInteger x * toInteger y)
-  abs    = fromInteger . abs    . toInteger
-  signum = fromInteger . signum . toInteger
-  fromInteger i
-    | i == 0                    = NoDisplacement
-    | toInteger (minBound::Int8 ) <= i && i < toInteger (maxBound::Int8)  =
-        Disp8 (fromInteger i)
-    | toInteger (minBound::Int32) <= i && i < toInteger (maxBound::Int32) =
-        Disp32 (fromInteger i)
-    | otherwise                 = error "Displacement out of range."
-
-instance Real Displacement where
-  toRational = toRational . displacementInt
-
-instance Enum Displacement where
-  toEnum = fromIntegral
-  fromEnum = fromIntegral . displacementInt
-
-instance Integral Displacement where
-  x `quotRem` y = (fromInteger q, fromInteger r)
-    where (q,r) = toInteger x `quotRem` toInteger y
-  toInteger = toInteger . displacementInt
 
 -- | A references to an address in memory.
 data AddrRef
@@ -140,7 +93,7 @@ data AddrRef
     -- ^ A 64bit offset relative to a segment.
   | Addr_64      !Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
   | IP_Offset_64 !Segment Displacement
-  deriving (Show, Ord, Eq)
+  deriving (Show)
 
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
@@ -234,7 +187,7 @@ data Value
   | DWordReg Reg32
   | QWordReg Reg64
   | JumpOffset !JumpSize !JumpOffset
-  deriving (Show, Ord, Eq)
+  deriving (Show)
 
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)

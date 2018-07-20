@@ -375,11 +375,11 @@ withMode v k =
           Addr_64 _ (Just _) _ NoDisplacement -> k noDisplacement mempty
           Addr_32 _ (Just _) _ NoDisplacement -> k noDisplacement mempty
 
-          Addr_64 _ Nothing _ (Disp32 d) -> k noDisplacement (B.int32LE d)
-          Addr_32 _ Nothing _ (Disp32 d) -> k noDisplacement (B.int32LE d)
+          Addr_64 _ Nothing _ (Disp32 (Imm32Concrete d)) -> k noDisplacement (B.int32LE d)
+          Addr_32 _ Nothing _ (Disp32 (Imm32Concrete d)) -> k noDisplacement (B.int32LE d)
 
-          Addr_64 _ _ _ (Disp32 d) -> k disp32 (B.int32LE d)
-          Addr_32 _ _ _ (Disp32 d) -> k disp32 (B.int32LE d)
+          Addr_64 _ _ _ (Disp32 (Imm32Concrete d)) -> k disp32 (B.int32LE d)
+          Addr_32 _ _ _ (Disp32 (Imm32Concrete d)) -> k disp32 (B.int32LE d)
 
           Addr_64 _ _ _ (Disp8 d) -> k disp8 (B.int8 d)
           Addr_32 _ _ _ (Disp8 d) -> k disp8 (B.int8 d)
@@ -387,8 +387,8 @@ withMode v k =
           _ -> error ("mkMode: Unsupported memory ref type " ++ show v)
       | Just comps <- ripRefComponents v ->
         case comps of
-          IP_Offset_32 _ (Disp32 d) -> k noDisplacement (B.int32LE d)
-          IP_Offset_64 _ (Disp32 d) -> k noDisplacement (B.int32LE d)
+          IP_Offset_32 _ (Disp32 (Imm32Concrete d)) -> k noDisplacement (B.int32LE d)
+          IP_Offset_64 _ (Disp32 (Imm32Concrete d)) -> k noDisplacement (B.int32LE d)
           _ -> error ("mkMode: Unsupported rip offset type " ++ show v)
 
       | otherwise -> error ("mkMode: Unsupported mode for " ++ show v)
@@ -572,7 +572,7 @@ encodeImmediate rex oso vty =
   case vty of
     (ByteImm imm, ty) -> encodeByteImmediate rex oso imm ty
     (WordImm imm, ty) -> encodeWordImmediate rex oso imm ty
-    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso imm ty
+    (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
     (DWordImm Imm32SymbolOffset{}, _) -> error "Do not support symbolic immediates."
     (QWordImm imm, ty) -> encodeQWordImmediate rex oso imm ty
 
