@@ -1,8 +1,10 @@
-Name:       binary-symbols
-Version:    0.1.0
-Author:     Galois Inc.
-Maintainer: jhendrix@galois.com
-Build-type: Simple
+Name:         binary-symbols
+Version:      0.1.0
+Author:       Galois Inc.
+Maintainer:   jhendrix@galois.com
+Copyright:    (c) Galois, Inc 2018
+License:      BSD3
+Build-type:   Simple
 Cabal-version: >= 1.10
 Synopsis: Common datatypes for binaries
 
