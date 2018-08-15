@@ -29,18 +29,21 @@ data JumpSize
    | JSize32
  deriving (Eq, Ord, Show)
 
--- | A jump target
+-- | This describes an amount to add to the PC to jump to a new location.
 data JumpOffset
   = FixedOffset !Int64
     -- ^ This denotes a static offset with the given size.
-  | RelativeOffset !SymbolIdentifier !Word32 !Int64
-    -- ^ @RelativeOffset sym ioff off@ denotes a relative address.
+  | RelativeOffset !Word32 !SymbolIdentifier !Int64
+    -- ^ @RelativeOffset ioff sym off@ denotes a relative address.
     --
     -- @ioff@ stores the number of bytes read in the instruction
     -- before reading the relative offset.
     -- The computed value should be @addr(sym) + off - (initPC + ioff)@ where
     -- @initPC is the base address that @ioff@ is relative to.  In macaw-x86, @initPC@
     -- is the PC value of the instruction, but it can technically be other offsets.
+    --
+    -- Since this is added to the current PC value, which will point to the end of the instruction,
+    -- the effective address written will be addr(sym) + off + (instructionLength - ioff)
   deriving (Eq, Ord)
 
 -- | A 32-bit value which could either be a specific number, or a relocation that should

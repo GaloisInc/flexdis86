@@ -192,11 +192,9 @@ data Value
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)
 
-ppValue :: Word64 -- ^ Base address for offset printing.
-                  -- This should be the address of the next instruction.
-        -> Value
+ppValue :: Value
         -> Doc
-ppValue base v =
+ppValue v =
   case v of
     ControlReg   r    -> text (show r)
     DebugReg     r    -> text (show r)
@@ -228,7 +226,7 @@ ppValue base v =
     WordReg      r    -> ppShowReg    r
     DWordReg     r    -> ppShowReg    r
     QWordReg     r    -> ppShowReg    r
-    JumpOffset _ off  -> text (showHex base ("+" ++ show off))
+    JumpOffset _ off  -> text ("pc+" ++ show off)
 
 
 ppImm :: (Integral w, Show w) => w -> Doc
@@ -269,13 +267,11 @@ instance Functor InstructionInstanceF where
 nonHex1Instrs :: [String]
 nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]
 
--- | This pretty prints an instruction using Intel syntax.
-ppInstruction :: Word64
-                 -- ^ Base address for printing instruction offsets.
-                 -- This should be the address of the next instruction.
-              -> InstructionInstance
+-- | This pretty prints an instruction using close to Intel syntax.
+-- Jump offsets refer to PC rather than the relative address.
+ppInstruction :: InstructionInstance
               -> Doc
-ppInstruction base i =
+ppInstruction i =
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
       args = fst <$> iiArgs i
       op = iiOp i
@@ -284,11 +280,11 @@ ppInstruction base i =
         -- special casem for one-bit shift instructions
      (_, [dst, ByteImm 1])
        | op `elem` nonHex1Instrs ->
-           text (padToWidth 6 op) <+> ppValue base dst <> comma <> text "1"
+           text (padToWidth 6 op) <+> ppValue dst <> comma <> text "1"
      -- objdump prints as nop
      ("xchg", [DWordReg EAX, DWordReg EAX]) -> text "nop"
      _ -> case (args, iiLockPrefix i) of
             ([], NoLockPrefix) -> text op
-            (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue base <$> args)
+            (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue <$> args)
             ([], _) -> sLockPrefix <+> text op
-            (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppValue base <$> args)
+            (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppValue <$> args)

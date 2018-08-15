@@ -47,6 +47,5 @@ main = do args <- getArgs
           let bs = BS.pack $ map (fst . head) nums
 
           case runSimpleByteReader disassembleInstruction bs of
-           Right ii -> print ii >> print (ppInstruction 0 ii)
+           Right ii -> print ii >> print (ppInstruction ii)
            Left e   -> error ("No parse: " ++ e)
-
