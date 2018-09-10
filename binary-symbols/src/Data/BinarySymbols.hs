@@ -9,6 +9,7 @@ module Data.BinarySymbols
   ( SymbolIdentifier(..)
   , SymbolVersion(..)
   , SectionIndex
+  , SegmentIndex
   , SymbolName
   ) where
 
@@ -21,6 +22,9 @@ import           Data.Word
 -- A section index is a number that should uniquely identify a section
 -- within such a file.
 type SectionIndex = Word16
+
+-- | The index of a memory segment.
+type SegmentIndex = Word16
 
 type SymbolName = BSC.ByteString
 
@@ -43,9 +47,11 @@ data SymbolVersion
 -- | An identifier that represents some offset in a binary.
 data SymbolIdentifier
    = SymbolRelocation !SymbolName !SymbolVersion
-     -- ^ Denotes the address of the symbol that matches the name and version constraints.
+     -- ^ Denotes the address of the symbol that matches the name and
+     -- version constraints.
    | SectionIdentifier !SectionIndex
      -- ^ Denotes the address of the section with the given address.
+   | SegmentBaseAddr !SegmentIndex
   deriving (Eq, Ord)
 
 instance Show SymbolIdentifier where
@@ -59,3 +65,5 @@ instance Show SymbolIdentifier where
         . showChar '(' . showString (BSC.unpack soName) . showChar ')'
   showsPrec _ (SectionIdentifier idx) =
     showString "section_" . shows idx
+  showsPrec _ (SegmentBaseAddr idx) =
+    showString "segment_" . shows idx
