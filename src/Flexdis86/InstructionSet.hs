@@ -51,7 +51,7 @@ ppPunctuate _ [] = PP.empty
 data Displacement = Disp32 Imm32
                   | Disp8 Int8
                   | NoDisplacement
-                  deriving (Show)
+                  deriving (Show, Eq, Ord)
 
 prettyDisplacement :: Displacement -> Doc
 prettyDisplacement NoDisplacement = text "0"
@@ -93,7 +93,7 @@ data AddrRef
     -- ^ A 64bit offset relative to a segment.
   | Addr_64      !Segment (Maybe Reg64) (Maybe (Int, Reg64)) Displacement
   | IP_Offset_64 !Segment Displacement
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 ppAddrRef :: AddrRef -> Doc
 ppAddrRef addr =
@@ -187,7 +187,7 @@ data Value
   | DWordReg Reg32
   | QWordReg Reg64
   | JumpOffset !JumpSize !JumpOffset
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)
