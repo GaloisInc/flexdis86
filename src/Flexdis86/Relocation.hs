@@ -61,7 +61,8 @@ data Imm32
 
 instance Show Imm32 where
   showsPrec _ (Imm32Concrete c)
-    | c <  0 = showString "-0x" . showHex (negate c)
+    -- convert to Integer before negate (negate minBound == minBound :: Int32)
+    | c <  0 = showString "-0x" . showHex (negate $ toInteger c)
     | c >= 0 = showString "0x" . showHex c
   showsPrec _ (Imm32SymbolOffset s o isSigned)
     = showString "[roff"
@@ -73,7 +74,8 @@ instance Show Imm32 where
 
 showOff :: Int64 -> ShowS
 showOff i
-  | i < 0 = showChar '-' . showHex (negate i)
+  -- convert to Integer before negate (negate minBound == minBound :: Int64)
+  | i < 0 = showChar '-' . showHex (negate $ toInteger i)
   | otherwise = showHex i
 
 instance Show JumpOffset where
