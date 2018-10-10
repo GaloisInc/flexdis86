@@ -584,6 +584,7 @@ encodeImmediate rex oso vty =
     (DWordSignedImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
 
     (Mem32 (Offset_64 _ o), ty) -> encodeQWordImmediate rex oso o ty
+    (Mem64 (Offset_64 _ o), ty) -> encodeQWordImmediate rex oso o ty
 
     (JumpOffset JSize8 (FixedOffset off),  OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
     (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int16LE (fromIntegral off)

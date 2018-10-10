@@ -221,6 +221,7 @@ twoOperandOpcodes = [ ("test reg reg (eax)", ["test %eax, %eax"])
                     -- This movabs variant is interesting because the eax/rax
                     -- destinations have a special encoding
                     , ("movabs 0xe000ed04,%eax", ["movabs 0xe000ed04,%eax"])
+                    , ("movabs 0xe000ed04,%rax", ["movabs 0xe000ed04,%rax"])
                     -- This is a normal movabs
                     , ("movabs $0xaaaaaaaaaaaaaaa9,%rdx", ["movabs $0xaaaaaaaaaaaaaaa9,%rdx"])
                     , ("test %rdi,%rdi", ["test %rdi,%rdi"])
