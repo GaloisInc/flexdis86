@@ -15,6 +15,8 @@ module Flexdis86.Assembler
   , assembleInstruction
   ) where
 
+import           GHC.Stack
+
 import           Control.Applicative
 import           Control.Arrow ( second )
 import qualified Control.Lens as L
@@ -193,7 +195,7 @@ matchOperandType oso ops =
     _ -> False
 
 -- | Create a bytestring builder from an instruction instance.
-assembleInstruction :: MonadPlus m => InstructionInstance -> m B.Builder
+assembleInstruction :: (HasCallStack, MonadPlus m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
   return $ mconcat [ prefixBytes
                    , opcode
@@ -224,7 +226,7 @@ If a REX prefix is set, we are in 64 bit mode.
 --
 -- The arguments all determine these together, so we really need to
 -- build a combined byte string.
-encodeModRMDisp :: (Alternative m) => InstructionInstance -> m B.Builder
+encodeModRMDisp :: (Alternative m, HasCallStack) => InstructionInstance -> m B.Builder
 encodeModRMDisp ii
   | not (hasModRM ii) = empty
   | otherwise = encodeOperandModRM ii req <|> empty
@@ -248,6 +250,7 @@ operandTypeRequiresModRM ot =
     OpType ImmediateSource _ -> False
     OpType (Opcode_reg _) _ -> False
     OpType (Reg_fixed _) _ -> False
+    OpType OffsetSource _ -> False
     _ -> True
 
 isImplicitRegister :: OperandType -> Bool
@@ -257,7 +260,7 @@ isImplicitRegister t =
     _ -> False
 
 -- | Build a ModRM byte based on the operands of the instruction.
-encodeOperandModRM :: (Alternative m) => InstructionInstance -> Word8 -> m B.Builder
+encodeOperandModRM :: (Alternative m, HasCallStack) => InstructionInstance -> Word8 -> m B.Builder
 encodeOperandModRM ii reqModRM =
   case filter (isNotImmediate . fst) (iiArgs ii) of
     [] | reqModRM == 0 -> empty
@@ -458,7 +461,7 @@ ripRefComponents v =
     _ -> Nothing
 
 -- | Encode a value operand as a three bit RM nibble
-encodeValue :: Value -> Word8
+encodeValue :: HasCallStack => Value -> Word8
 encodeValue v =
   case v of
     ByteReg r8 -> 0x7 .&. reg8ToRM r8
@@ -580,6 +583,8 @@ encodeImmediate rex oso vty =
     (WordSignedImm imm, ty)  -> encodeWordImmediate  rex oso (fromIntegral imm) ty
     (DWordSignedImm imm, ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
 
+    (Mem32 (Offset_64 _ o), ty) -> encodeQWordImmediate rex oso o ty
+
     (JumpOffset JSize8 (FixedOffset off),  OpType JumpImmediate BSize) -> B.int8 (fromIntegral off)
     (JumpOffset JSize16 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int16LE (fromIntegral off)
     (JumpOffset JSize32 (FixedOffset off), OpType JumpImmediate ZSize) -> B.int32LE (fromIntegral off)
@@ -614,6 +619,9 @@ encodeDWordImmediate rex oso dw ty =
     OpType ImmediateSource DSize -> B.word32LE dw
     OpType ImmediateSource VSize -> B.word32LE dw
     OpType ImmediateSource ZSize -> B.word32LE dw
+    OpType OffsetSource DSize -> B.word32LE dw
+    OpType OffsetSource VSize -> B.word32LE dw
+    OpType OffsetSource ZSize -> B.word32LE dw
     IM_SZ -> B.word32LE dw
     IM_SB -> B.word8 (fromIntegral dw)
     IM_1 -> mempty
@@ -624,6 +632,7 @@ encodeQWordImmediate rex oso qw ty =
   case ty of
     OpType ImmediateSource QSize -> B.word64LE qw
     OpType ImmediateSource VSize -> B.word64LE qw
+    OpType OffsetSource VSize -> B.word64LE qw
     IM_SB -> B.word8 (fromIntegral qw)
     IM_1 -> mempty
     _ -> error ("Unhandled qword immediate encoding: " ++ show (ty, rex, oso))
