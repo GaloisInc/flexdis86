@@ -60,10 +60,12 @@ data Imm32
   deriving (Eq, Ord)
 
 instance Show Imm32 where
-  showsPrec _ (Imm32Concrete c)
-    -- convert to Integer before negate (negate minBound == minBound :: Int32)
-    | c <  0 = showString "-0x" . showHex (negate $ toInteger c)
-    | c >= 0 = showString "0x" . showHex c
+  showsPrec _ (Imm32Concrete c) =
+    if c < 0 then
+      -- convert to Integer before negate (negate minBound == minBound :: Int32)
+      showString "-0x" . showHex (negate $ toInteger c)
+     else
+      showString "0x" . showHex c
   showsPrec _ (Imm32SymbolOffset s o isSigned)
     = showString "[roff"
     . shows s
