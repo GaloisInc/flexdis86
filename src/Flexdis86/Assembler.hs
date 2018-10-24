@@ -510,7 +510,31 @@ isNotImmediate val =
     DWordImm {} -> False
     QWordImm {} -> False
     JumpOffset {} -> False
-    _ -> True
+    ByteSignedImm {} -> False
+    WordSignedImm {} -> False
+    DWordSignedImm {} -> False
+    ControlReg {} -> True
+    DebugReg {} -> True
+    MMXReg {} -> True
+    XMMReg {} -> True
+    YMMReg {} -> True
+    SegmentValue {} -> True
+    X87Register {} -> True
+    FarPointer {} -> True
+    VoidMem {} -> True
+    Mem8 {} -> True
+    Mem16 {} -> True
+    Mem32 {} -> True
+    Mem64 {} -> True
+    Mem128 {} -> True
+    Mem256 {} -> True
+    FPMem32 {} -> True
+    FPMem64 {} -> True
+    FPMem80 {} -> True
+    ByteReg {} -> True
+    WordReg {} -> True
+    DWordReg {} -> True
+    QWordReg {} -> True
 
 -- | We represent the high registers (e.g., ah) as 16+regnum.
 --

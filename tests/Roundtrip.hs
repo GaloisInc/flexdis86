@@ -278,6 +278,7 @@ immediateOperandOpcodes = [ ("push imm8", ["push $3"])
                           , ("push imm32", ["push $1234567990"])
                           , ("Relative short jump (jmp .+0x28)", ["jmp .+0x28"])
                           , ("Relative near jump (jmp .+0xfff)", ["jmp .+0xfff"])
+                          , ("imul   $0xffffffe8,%ebx,%ebx", ["imul   $0xffffffe8,%ebx,%ebx"])
                           ]
 
 mkTest :: (String, [String]) -> T.TestTree
