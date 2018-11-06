@@ -927,5 +927,8 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
 mkX64Disassembler :: BS.ByteString -> Either String NextOpcodeTable
 mkX64Disassembler bs = do
   tbl <- parseOpTable bs
-  OpcodeTable v <- runParserGen $ mkOpcodeTable (filter defSupported tbl)
-  pure v
+  mOpTbl <- runParserGen $ mkOpcodeTable (filter defSupported tbl)
+  case mOpTbl of
+    OpcodeTable v -> pure v
+    SkipModRM {} -> Left "Unexpected SkipModRM as a top-level disassemble result"
+    ReadModRM {} -> Left "Unexpected ReadModRM as a top-level disassemble result"
