@@ -11,7 +11,9 @@ module Flexdis86.InstructionSet
     InstructionInstance
   , InstructionInstanceF(..)
   , ppInstruction
+  , ppInstructionWith
   , Value(..)
+  , ppValue
   , Displacement(..)
   , AddrRef(..)
   , module Flexdis86.Relocation
@@ -288,3 +290,20 @@ ppInstruction i =
             (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue <$> args)
             ([], _) -> sLockPrefix <+> text op
             (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppValue <$> args)
+
+ppInstructionWith :: (a -> Doc)
+                  -> InstructionInstanceF a
+                  -> Doc
+ppInstructionWith ppv i =
+  -- FIXME Too much copy-and-paste, but not clear how to abstract
+  -- given the special cases
+  let sLockPrefix = ppLockPrefix (iiLockPrefix i)
+      args = iiArgs i
+      op = iiOp i
+  in
+   case (op, args) of
+     _ -> case (args, iiLockPrefix i) of
+            ([], NoLockPrefix) -> text op
+            (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppv <$> args)
+            ([], _) -> sLockPrefix <+> text op
+            (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppv <$> args)
