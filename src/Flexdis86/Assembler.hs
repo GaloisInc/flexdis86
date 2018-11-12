@@ -176,6 +176,9 @@ matchOperandType oso ops =
     (QWordImm _, OpType ImmediateSource ZSize) -> True
     (DWordImm _, OpType ImmediateSource RDQSize) -> True
     (QWordImm _, OpType ImmediateSource RDQSize) -> True
+    (ByteSignedImm _, IM_SB) -> True
+    (WordSignedImm _, IM_SZ) | oso == True -> True
+    (DWordSignedImm _, IM_SZ) | oso == False -> True
     (JumpOffset JSize8 _,  OpType JumpImmediate BSize) -> True
     (JumpOffset JSize16 _, OpType JumpImmediate ZSize) | oso == True  -> True
     (JumpOffset JSize32 _, OpType JumpImmediate ZSize) | oso == False -> True
