@@ -2,6 +2,8 @@ Name:          flexdis86
 Version:       0.1.3
 Author:        Galois Inc.
 Maintainer:    jhendrix@galois.com, tristan@galois.com
+License:       BSD3
+License-file:  LICENSE
 Build-type:    Simple
 Cabal-version: >= 1.10
 Synopsis: A disassembler and assembler for x86
