@@ -3,3 +3,4 @@ deps
 dist
 cabal.sandbox.config
 TAGS
+stack.yaml
