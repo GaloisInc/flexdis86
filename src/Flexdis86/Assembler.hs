@@ -182,6 +182,7 @@ matchOperandType oso ops =
     (JumpOffset JSize8 _,  OpType JumpImmediate BSize) -> True
     (JumpOffset JSize16 _, OpType JumpImmediate ZSize) | oso == True  -> True
     (JumpOffset JSize32 _, OpType JumpImmediate ZSize) | oso == False -> True
+    (DWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm QSize) -> True
     (QWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm YSize) -> True
@@ -190,6 +191,7 @@ matchOperandType oso ops =
     (Mem64 _, OpType ModRM_rm VSize) -> True
     (Mem64 _, OpType ModRM_rm YSize) -> True
     (Mem64 _, OpType ModRM_rm RDQSize) -> True
+    (DWordReg _, OpType ModRM_reg VSize) -> True
     (QWordReg _, OpType ModRM_reg QSize) -> True
     (QWordReg _, OpType ModRM_reg VSize) -> True
     (QWordReg _, OpType ModRM_reg YSize) -> True
