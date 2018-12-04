@@ -50,8 +50,12 @@ data SymbolIdentifier
      -- ^ Denotes the address of the symbol that matches the name and
      -- version constraints.
    | SectionIdentifier !SectionIndex
-     -- ^ Denotes the address of the section with the given address.
+     -- ^ Denotes the address of the section with the given index.
    | SegmentBaseAddr !SegmentIndex
+     -- ^ This denotes the address of the segment with the given
+     -- index.
+   | LoadBaseAddr
+     -- ^ This denotes the base load address of a shared executable.
   deriving (Eq, Ord)
 
 instance Show SymbolIdentifier where
