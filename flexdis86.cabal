@@ -7,6 +7,7 @@ License-file:  LICENSE
 Build-type:    Simple
 Cabal-version: >= 1.10
 Synopsis: A disassembler and assembler for x86
+extra-source-files: data/optable.xml
 
 library
   default-language: Haskell2010
