@@ -1,7 +1,11 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
-module Util ( withAssembledCode ) where
+module Util
+  ( AsmFlavor(..)
+  , withAssembledCode
+  ) where
 
+import           Control.Monad ( when )
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import qualified System.Exit as IO
@@ -32,12 +36,16 @@ extractCodeSegment e = do
     [textSection] -> return $ E.elfSectionData textSection
     _ -> error "extractCodeSegment: Too many text segments"
 
+data AsmFlavor = Intel | Att deriving (Eq, Show)
+
 -- | Put the given assembly instructions into an assembly file,
 -- assemble it, then extract the bytes from the code segment.  Feed
 -- those bytes to a callback.
-withAssembledCode :: [String] -> (B.ByteString -> IO ()) -> IO ()
-withAssembledCode insns k = do
+withAssembledCode :: AsmFlavor -> [String] -> (B.ByteString -> IO ()) -> IO ()
+withAssembledCode flavor insns k = do
   IO.withSystemTempFile "asm.s" $ \fname h -> do
+    when (flavor == Intel) $ do
+      IO.hPutStrLn h "  .intel_syntax noprefix"
     mapM_ (IO.hPutStrLn h) [ "  .global " ++ start_sym_name
                            , "  .text"
                            , start_sym_name ++ ":"

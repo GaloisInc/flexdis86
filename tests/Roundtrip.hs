@@ -1,3 +1,8 @@
+-- | Test that the result of assembling an ASM string using GCC is
+-- unchanged when we disassemble and reassembling it using Flexdis86.
+--
+-- Note that ASM below is in AT&T syntax, but Intel syntax is also
+-- supported by the underlying 'withAssembledCode'.
 module Roundtrip ( roundtripTests ) where
 
 import qualified Data.ByteString.Lazy.Builder as B
@@ -9,7 +14,7 @@ import qualified Test.Tasty.HUnit as T
 import qualified Flexdis86 as D
 import           Hexdump
 
-import           Util ( withAssembledCode )
+import           Util ( AsmFlavor(..), withAssembledCode )
 
 roundtripTests :: T.TestTree
 roundtripTests = T.testGroup "Roundtrip Tests"
@@ -283,7 +288,7 @@ immediateOperandOpcodes = [ ("push imm8", ["push $3"])
 
 mkTest :: (String, [String]) -> T.TestTree
 mkTest (name, insns) = T.testCase name $ do
-  withAssembledCode insns $ \codeBytes -> do
+  withAssembledCode Att insns $ \codeBytes -> do
     let disInsns = D.disassembleBuffer codeBytes
 --    T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
     let instances = mapMaybe D.disInstruction disInsns
