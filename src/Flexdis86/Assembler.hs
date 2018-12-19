@@ -7,6 +7,7 @@ The Flexdis assembler.
 -}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE BinaryLiterals #-}
 module Flexdis86.Assembler
   ( AssemblerContext
   , mkX64Assembler
@@ -81,7 +82,7 @@ findEncoding args def = do
   -- NOTE. We could extend this to consider both options.
   let oso = False
   F.forM_ argTypes $ \at -> guard (matchOperandType oso at)
-  let rex = mkREX args
+  let rex = mkREX argTypes
   let vex = Nothing -- XXX: implement this
   return $ II { iiLockPrefix = NoLockPrefix
               , iiAddrSize = Size16 -- ???: why is this always Size16? Can we do better based on args?
@@ -120,22 +121,44 @@ findEncoding args def = do
 --
 -- FIXME: Knowing what is r/m and what is reg is kind of difficult.
 -- What we have here mostly works for now, but it will be more
--- complicated in the limit.
-mkREX :: [Value] -> REX
-mkREX vs =
-  case vs of
-    [] -> REX 0
-    [QWordReg rno] -> setREXFlagIf rexB rno rx0
-    [QWordReg r1, QWordReg r2] -> setREXFlagIf rexB r2 $ setREXFlagIf rexR r1 rx0
-    [QWordReg rno, _] -> setREXFlagIf rexB rno rx0
-    _ -> rx0
+-- complicated in the limit. See e.g. 'addREXbFlag' for weird "knowing
+-- what is rm" case.
+mkREX :: [(Value, OperandType)] -> REX
+mkREX vos =
+  -- If we didn't set any of the variable REX bits -- i.e. we didn't
+  -- set any of W, R, X, or B -- then we don't set the REX at all.
+  case foldr setFlags rex0 vos of
+    rex1 | rex1 == rex0 -> REX 0
+         | otherwise -> rex1
   where
-    rx0 = foldr addREXwFlag (REX 0) vs
+    rex0 = REX 0b01000000
+    setFlags (arg, ty) = addREXrFlag arg ty .
+                         addREXbFlag arg ty .
+                         addREXwFlag arg
 
 setREXFlagIf :: L.ASetter t t a Bool -> Reg64 -> t -> t
 setREXFlagIf flg (Reg64 rno) rex
   | rno >= 8 = L.set flg True rex
   | otherwise = rex
+
+-- | Set REX.r when the arg is MODRM.reg and and is one of r8 thru
+-- r15.
+addREXrFlag :: Value -> OperandType -> REX -> REX
+addREXrFlag v o rex =
+  case (v, o) of
+    (QWordReg reg, OpType ModRM_reg _) -> setREXFlagIf rexR reg rex
+    _ -> rex
+
+-- | Set REX.b when the arg is MODRM.rm and and is one of r8 thru r15.
+addREXbFlag :: Value -> OperandType -> REX -> REX
+addREXbFlag v o rex =
+  case (v, o) of
+    (QWordReg reg, OpType ModRM_rm _)       -> setREXFlagIf rexB reg rex
+    -- This case is suspect. Conathan put it here so that the
+    -- @movq $0x190000000,%r11@ test would pass, but it's not clear why
+    -- this @OpType@ is a MODRM.rm.
+    (QWordReg reg, OpType (Opcode_reg _) _) -> setREXFlagIf rexB reg rex
+    _ -> rex
 
 addREXwFlag :: Value -> REX -> REX
 addREXwFlag v r =
