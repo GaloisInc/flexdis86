@@ -81,7 +81,8 @@ test-suite flexdis86-tests
                  lens,
                  temporary >= 1 && < 2,
                  elf-edit,
-                 pretty-hex
+                 pretty-hex,
+                 pretty-show
   other-modules:
     Assemble
     Roundtrip

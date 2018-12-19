@@ -4,10 +4,12 @@
 module Assemble ( assembleTests ) where
 
 import qualified Control.Lens as L
-import qualified Data.ByteString.Lazy.Builder as B
 import qualified Data.ByteString.Lazy as LB
+import qualified Data.ByteString.Lazy.Builder as B
+import           Data.Maybe ( mapMaybe )
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
+import           Text.Show.Pretty ( ppShow )
 
 import qualified Flexdis86 as D
 import           Flexdis86.Prefixes ( prOSO )
@@ -84,10 +86,19 @@ mkTest (flavor, asm, Just inst) = T.testCase asm $ do
   withAssembledCode flavor [asm] $ \codeBytes -> do
     let Just bldr = (D.assembleInstruction inst)
         sbs = LB.toStrict (B.toLazyByteString bldr)
+        disAddrs = D.disassembleBuffer codeBytes
+        disInsts = mapMaybe D.disInstruction disAddrs
+        disString = case disInsts of
+          [i] -> ppShow i
+          _ -> "(disassembly failed)"
         msg = unlines [ "Assembled bytes"
                       , "Expected"
                       , prettyHex codeBytes
                       , "but got"
                       , prettyHex sbs
+                      , "Expected"
+                      , disString
+                      , "but got"
+                      , ppShow inst
                       ]
     T.assertEqual msg codeBytes sbs
