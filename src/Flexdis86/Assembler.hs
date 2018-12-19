@@ -84,7 +84,7 @@ findEncoding args def = do
   let rex = mkREX args
   let vex = Nothing -- XXX: implement this
   return $ II { iiLockPrefix = NoLockPrefix
-              , iiAddrSize = Size16
+              , iiAddrSize = Size16 -- ???: why is this always Size16? Can we do better based on args?
               , iiOp = L.view defMnemonic def
               , iiArgs = zip args opTypes
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
@@ -157,6 +157,44 @@ addREXwFlag v r =
 
 -- | Return True if the given 'Value' can be encoded with the operand
 -- type (specified as a String).
+--
+-- If 'mkInstruction' is failing due to 'matchOperandType' returning
+-- false, you can figure out what argument patterns to add by using
+-- @:/utils/dump.sh@ to see how flexdis86 encodes the instruction in
+-- question. E.g. for @or eax, eax@:
+--
+-- @
+-- $ stack utils/dump.sh "or eax,eax"
+-- 09 c0                   or     eax,eax
+-- II
+--   { iiLockPrefix = NoLockPrefix
+--   , iiAddrSize = Size64
+--   , iiOp = "or"
+--   , iiArgs =
+--       [ ( DWordReg eax , OpType ModRM_rm VSize )
+--       , ( DWordReg eax , OpType ModRM_reg VSize )
+--       ]
+--   , iiPrefixes =
+--       Prefixes
+--         { _prLockPrefix = NoLockPrefix
+--         , _prSP = SegmentPrefix { unwrapSegmentPrefix = 0 }
+--         , _prREX = 0
+--         , _prVEX = Nothing
+--         , _prASO = False
+--         , _prOSO = False
+--         }
+--   , iiRequiredPrefix = Nothing
+--   , iiOpcode = [ 9 ]
+--   , iiRequiredMod = Nothing
+--   , iiRequiredReg = Nothing
+--   , iiRequiredRM = Nothing
+--   }
+-- or     eax,eax
+-- @
+--
+-- Which tells us the encodings are
+--
+-- >   iiArgs = [(DWordReg eax,OpType ModRM_rm VSize),(DWordReg eax,OpType ModRM_reg VSize)]
 matchOperandType :: Bool -> (Value, OperandType) -> Bool
 matchOperandType oso ops =
   case ops of

@@ -51,8 +51,9 @@ testCases = [ (Att, "ret", mkI "ret" [])
             , (Intel, "xor rdx, rdx", mkI "xor" [D.QWordReg D.RDX, D.QWordReg D.RDX])
             , (Intel, "xor rbx, rbx", mkI "xor" [D.QWordReg D.RBX, D.QWordReg D.RBX])
             , (Intel, "xor rcx, rcx", mkI "xor" [D.QWordReg D.RCX, D.QWordReg D.RCX])
-            , (Intel, "xor r8, r8", mkI "xor" [D.QWordReg (D.Reg64 8), D.QWordReg (D.Reg64 8)])
-            , (Att, "movq $0x190000000,%r11", mkI "mov" [D.QWordReg (D.Reg64 11), D.QWordImm 0x190000000])
+            , (Intel, "xor r8, r8", mkI "xor" [D.QWordReg D.R8, D.QWordReg D.R8])
+            , (Intel, "xor eax, ebx", mkI "xor" [D.DWordReg D.EAX, D.DWordReg D.EBX])
+            , (Att, "movq $0x190000000,%r11", mkI "mov" [D.QWordReg D.R11, D.QWordImm 0x190000000])
             , (Att, "movq $0x190000000,%rbx", mkI "mov" [D.QWordReg D.RBX, D.QWordImm 0x190000000])
             -- For each of the next two tests, the mkInstruction
             -- output from one assembles to the GCC output of the
