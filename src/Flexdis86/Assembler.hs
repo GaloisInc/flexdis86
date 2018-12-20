@@ -85,7 +85,9 @@ findEncoding args def = do
   let rex = mkREX argTypes
   let vex = Nothing -- XXX: implement this
   return $ II { iiLockPrefix = NoLockPrefix
-              , iiAddrSize = Size16 -- ???: why is this always Size16? Can we do better based on args?
+              -- ???: why is this always Size16? Can we do better
+              -- based on args or def?
+              , iiAddrSize = Size16
               , iiOp = L.view defMnemonic def
               , iiArgs = zip args opTypes
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
@@ -329,29 +331,56 @@ isImplicitRegister t =
 
 -- | Build a ModRM byte based on the operands of the instruction.
 encodeOperandModRM :: (Alternative m, HasCallStack) => InstructionInstance -> Word8 -> m B.Builder
-encodeOperandModRM ii reqModRM =
-  case filter (isNotImmediate . fst) (iiArgs ii) of
-    [] | reqModRM == 0 -> empty
-       | otherwise -> pure $ B.word8 reqModRM
-    [(_, M_Implicit {}), (_, M_Implicit {})] -> empty
-    [(_, M_Implicit {})] -> empty
+encodeOperandModRM ii reqModRM
+  | [] <- filter (isNotImmediate . fst) (iiArgs ii)
+  , reqModRM /= 0
+  = pure $ B.word8 reqModRM
+  | otherwise
+  = case (rrv_rm rrv, rrv_reg rrv) of
+      (Nothing, Nothing) -> empty
+      (Nothing, Just _) -> error $
+        "encodeOperandModRM: unexpected RmRegValues: " ++ show rrv
+      (Just (vrm, _), Nothing) ->
+        pure $ withMode vrm $ \mode disp ->
+          let rm = encodeValue vrm
+          in withSIB mode rm vrm $ \sib ->
+               mkModRM ii mode 0 rm <> sib <> disp
+      (Just (vrm, _), Just (vreg, _)) ->
+        pure $ withMode vrm $ \mode disp ->
+          let rm = encodeValue vrm
+          in withSIB mode rm vrm $ \sib ->
+               mkModRM ii mode (encodeValue vreg) rm <> sib <> disp
+  where
+    rrv = findRmRegValues (iiArgs ii)
+
+-- | The arguments (if any) that should be encoded into the rm and reg
+-- bits of the ModRM byte and the corresponding bits in the REX
+-- prefix.
+data RmRegValues =
+  RmRegValues { rrv_rm :: Maybe (Value, OperandType)
+              , rrv_reg :: Maybe (Value, OperandType) }
+  deriving (Eq, Show)
+
+-- | Find the arguments that should be encoded as rm and reg.
+findRmRegValues :: [(Value, OperandType)] -> RmRegValues
+findRmRegValues args =
+  case filter (isNotImmediate . fst) args of
+    [] -> emptyRm
+    [(_, M_Implicit {}), (_, M_Implicit {})] -> emptyRm
+    [(_, M_Implicit {})] -> emptyRm
     [(_, M_Implicit {}), (_, ot)]
-      | isImplicitRegister ot -> empty
+      | isImplicitRegister ot -> emptyRm
     [(_, ot), (_, M_Implicit {})]
-      | isImplicitRegister ot -> empty
-    [(_, M_Implicit {}), _] -> error ("Unexpected implicit " ++ show ii)
-    [_, (_, M_Implicit {})] -> error ("Unexpected implicit " ++ show ii)
-    [(op1, _)] ->
-      pure $ withMode op1 $ \mode disp ->
-        let rm = encodeValue op1
-        in withSIB mode rm op1 $ \sib ->
-             mkModRM ii mode 0 rm <> sib <> disp
-    [op1, op2] ->
-      pure $ withRMFirst op1 op2 $ \vrm vreg -> withMode vrm $ \mode disp ->
-        let rm = encodeValue vrm
-        in withSIB mode rm vrm $ \sib ->
-             mkModRM ii mode (encodeValue vreg) rm <> sib <> disp
-    _ -> empty
+      | isImplicitRegister ot -> emptyRm
+    [imp@(_, M_Implicit {}), _] -> error ("Unexpected implicit (1): " ++ show imp)
+    [_, imp@(_, M_Implicit {})] -> error ("Unexpected implicit (2): " ++ show imp)
+    [arg1] -> RmRegValues { rrv_rm = Just arg1, rrv_reg = Nothing }
+    [arg1, arg2] ->
+      let (rm, reg) = withRMFirst arg1 arg2
+      in RmRegValues { rrv_rm = Just rm, rrv_reg = Just reg }
+    _ -> emptyRm
+    where
+      emptyRm = RmRegValues Nothing Nothing
 
 -- | Re-order the arguments such that the RM operand is the first
 -- argument of the callback.
@@ -362,21 +391,23 @@ encodeOperandModRM ii reqModRM =
 -- encoded in R/M, we need to swap the order so that
 -- 'encodeOperandModRM' puts it in the right field.  Otherwise, we
 -- preserve the original order.
-withRMFirst :: (Value, OperandType) -> (Value, OperandType) -> (Value -> Value -> a) -> a
-withRMFirst (v1, _v1ty) (v2, v2ty) k =
+withRMFirst :: (Value, OperandType)
+            -> (Value, OperandType)
+            -> ((Value, OperandType), (Value, OperandType)) {-^(rm, reg)-}
+withRMFirst a1 a2@(_v2, v2ty) =
   case v2ty of
-    OpType ModRM_rm _ -> k v2 v1
-    OpType ModRM_rm_mod3 _ -> k v2 v1
-    RG_XMM_rm {} -> k v2 v1
-    RM_XMM {} -> k v2 v1
-    M_FP -> k v2 v1
-    M -> k v2 v1
-    M_X {} -> k v2 v1
-    M_FloatingPoint {} -> k v2 v1
-    MXRX {} -> k v2 v1
-    RM_MMX -> k v2 v1
-    RG_MMX_rm -> k v2 v1
-    _ -> k v1 v2
+    OpType ModRM_rm _ -> (a2, a1)
+    OpType ModRM_rm_mod3 _ -> (a2, a1)
+    RG_XMM_rm {} -> (a2, a1)
+    RM_XMM {} -> (a2, a1)
+    M_FP -> (a2, a1)
+    M -> (a2, a1)
+    M_X {} -> (a2, a1)
+    M_FloatingPoint {} -> (a2, a1)
+    MXRX {} -> (a2, a1)
+    RM_MMX -> (a2, a1)
+    RG_MMX_rm -> (a2, a1)
+    _ -> (a1, a2)
 
 hasScaledIndex :: Value -> Bool
 hasScaledIndex v
