@@ -106,20 +106,29 @@ findEncoding args def = do
 
 -- | The REX prefix modifies instructions to operate over 64 bit operands.
 --
--- The format of the byte is:
+-- On 32-bit X86 there are 8 GPRs, so 3 bits are sufficient to encode
+-- a reference to one of them. On 64-bit X86 there are 16 GPRs, so 4
+-- bits are needed to reference one of them. For backwards
+-- compatibility, X86_64 encodes references to 64-bit registers using
+-- 3 bits in the ModRM byte (part of 32-bit x86) and 1 bit in the REX
+-- prefix (new in 64-bit x86).
 --
--- > 0100WRXB
+-- The format of the REX byte is:
+--
+-- > 0b0100WRXB
 --
 -- W is 1 if the operands are 64 bit sized.  We set that with a fold
 -- over all of the arguments; if any argument is 64 bits, we set W.
 --
--- R is an extension to the reg field, so we set that if the reg is
--- a reference to a register requiring the extra bit (r8 or higher).
+-- R is a 1-bit extension to the 3-bit reg field of the ModRM byte,
+-- containing the high order bit of the register number referenced by
+-- the ModRM reg field.
 --
 -- X is an extension to the SIB field, and isn't supported yet... FIXME
 --
--- B is an extension to the r/m field, so we set that if the r/m
--- refers to r8 or greater.
+-- R is a 1-bit extension to the 3-bit r/m field of the ModRM byte,
+-- containing the high order bit of the register number referenced by
+-- the ModRM r/m field.
 mkREX :: [(Value, OperandType)] -> REX
 mkREX vos =
   -- If we didn't set any of the variable REX bits -- i.e. we didn't
