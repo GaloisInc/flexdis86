@@ -37,6 +37,7 @@ import           Data.Word ( Word8 )
 import           Numeric ( showHex )
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
+import           Text.Printf
 
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -129,7 +130,7 @@ rexB :: Simple Lens REX Bool
 rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
 
 instance Show REX where
-  showsPrec _ (REX rex) = showHex rex
+  show (REX rex) = printf "0b%08b" rex
 
 -- | Includes segment prefix and branch override hints.
 newtype SegmentPrefix = SegmentPrefix { unwrapSegmentPrefix :: Word8 }
