@@ -2617,17 +2617,17 @@
         <class>X87</class>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>db /mod=!11 /reg=5</opc>
+            <opc>db /reg=5</opc>
             <opr>Mt</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>dd /mod=!11 /reg=0</opc>
+            <opc>dd /reg=0</opc>
             <opr>M64fp</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>d9 /mod=!11 /reg=0</opc>
+            <opc>d9 /reg=0</opc>
             <opr>M32fp</opr>
         </def>
         <def>

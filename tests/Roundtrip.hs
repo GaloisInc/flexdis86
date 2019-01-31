@@ -140,6 +140,7 @@ singleOperandOpcodes = [ ("increment r8/ah", ["inc %ah"])
                        , ("rep stos %rax,%es:(%rdi)", ["rep stos %rax,%es:(%rdi)"])
                        , ("jmpq   *0x4096a0(,%rax,8)", ["jmpq   *0x4096a0(,%rax,8)"])
                        , ("nopl (%rax)", ["nopl (%rax)"])
+                       , ("fldt   0x1d90(%rsp)", ["fldt   0x1d90(%rsp)"])
                        ]
 
 addressingModeTests :: T.TestTree
