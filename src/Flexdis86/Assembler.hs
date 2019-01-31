@@ -14,6 +14,7 @@ module Flexdis86.Assembler
   , assemblerContext
   , mkInstruction
   , assembleInstruction
+  , InstructionEncodingException(..)
   ) where
 
 import           GHC.Stack
@@ -21,6 +22,7 @@ import           GHC.Stack
 import           Control.Applicative
 import           Control.Arrow ( second )
 import qualified Control.Lens as L
+import qualified Control.Monad.Catch as C
 import           Control.Monad ( MonadPlus(..), guard )
 import           Data.Bits
 import qualified Data.ByteString as B
@@ -252,11 +254,12 @@ matchOperandType oso ops =
     _ -> False
 
 -- | Create a bytestring builder from an instruction instance.
-assembleInstruction :: (HasCallStack, MonadPlus m) => InstructionInstance -> m B.Builder
+assembleInstruction :: (HasCallStack, C.MonadThrow m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
+  mdisp <- encodeModRMDisp ii
   return $ mconcat [ prefixBytes
                    , opcode
-                   , fromMaybe mempty (encodeModRMDisp ii)
+                   , fromMaybe mempty mdisp
                    , mconcat (map (encodeImmediate rex oso) (iiArgs ii))
                    ]
   where
@@ -283,10 +286,12 @@ If a REX prefix is set, we are in 64 bit mode.
 --
 -- The arguments all determine these together, so we really need to
 -- build a combined byte string.
-encodeModRMDisp :: (Alternative m, HasCallStack) => InstructionInstance -> m B.Builder
+encodeModRMDisp :: (C.MonadThrow m, Alternative f, HasCallStack) => InstructionInstance -> m (f B.Builder)
 encodeModRMDisp ii
-  | not (hasModRM ii) = empty
-  | otherwise = encodeOperandModRM ii req <|> empty
+  | not (hasModRM ii) = return empty
+  | otherwise = do
+      aModRM <- encodeOperandModRM ii req
+      return (aModRM <|> empty)
   where
     req = encodeRequiredModRM ii
 
@@ -317,26 +322,27 @@ isImplicitRegister t =
     _ -> False
 
 -- | Build a ModRM byte based on the operands of the instruction.
-encodeOperandModRM :: (Alternative m, HasCallStack) => InstructionInstance -> Word8 -> m B.Builder
+encodeOperandModRM :: (C.MonadThrow m, Alternative f, HasCallStack) => InstructionInstance -> Word8 -> m (f B.Builder)
 encodeOperandModRM ii reqModRM
   | [] <- filter (isNotImmediate . fst) (iiArgs ii)
   , reqModRM /= 0
-  = pure $ B.word8 reqModRM
+  = return (pure (B.word8 reqModRM))
   | otherwise
   = case (rrv_rm rrv, rrv_reg rrv) of
-      (Nothing, Nothing) -> empty
+      (Nothing, Nothing) -> return empty
       (Nothing, Just _) -> error $
         "encodeOperandModRM: unexpected RmRegValues: " ++ show rrv
-      (Just (vrm, _), Nothing) ->
-        pure $ withMode vrm $ \mode disp ->
-          let rm = encodeValue vrm
-          in withSIB mode rm vrm $ \sib ->
-               mkModRM ii mode 0 rm <> sib <> disp
-      (Just (vrm, _), Just (vreg, _)) ->
-        pure $ withMode vrm $ \mode disp ->
-          let rm = encodeValue vrm
-          in withSIB mode rm vrm $ \sib ->
-               mkModRM ii mode (encodeValue vreg) rm <> sib <> disp
+      (Just (vrm, _), Nothing) -> do
+        rm <- encodeValue vrm
+        withMode vrm $ \mode disp -> do
+          withSIB mode rm vrm $ \sib -> do
+            return (pure (mkModRM ii mode 0 rm <> sib <> disp))
+      (Just (vrm, _), Just (vreg, _)) -> do
+        rm <- encodeValue vrm
+        regVal <- encodeValue vreg
+        withMode vrm $ \mode disp ->
+          withSIB mode rm vrm $ \sib ->
+            return (pure (mkModRM ii mode regVal rm <> sib <> disp))
   where
     rrv = findRmRegValues (iiArgs ii)
 
@@ -499,6 +505,7 @@ disp32 = 0x2
 memRefComponents :: Value -> Maybe AddrRef
 memRefComponents v =
   case v of
+    Mem256 addr@(Addr_64 {}) -> Just addr
     Mem128 addr@(Addr_64 {}) -> Just addr
     Mem64 addr@(Addr_64 {}) -> Just addr
     Mem32 addr@(Addr_64 {}) -> Just addr
@@ -509,6 +516,7 @@ memRefComponents v =
     FPMem64 addr@(Addr_64 {}) -> Just addr
     FPMem80 addr@(Addr_64 {}) -> Just addr
 
+    Mem256 addr@(Addr_32 {}) -> Just addr
     Mem128 addr@(Addr_32 {}) -> Just addr
     Mem64 addr@(Addr_32 {}) -> Just addr
     Mem32 addr@(Addr_32 {}) -> Just addr
@@ -546,45 +554,52 @@ ripRefComponents v =
 
     _ -> Nothing
 
+data InstructionEncodingException = UnsupportedMemRefType Value
+                                  | UnsupportedRIPOffset Value
+                                  | UnknownValueType Value
+  deriving (Show)
+
+instance C.Exception InstructionEncodingException
+
 -- | Encode a value operand as a three bit RM nibble
-encodeValue :: HasCallStack => Value -> Word8
+encodeValue :: (HasCallStack, C.MonadThrow m) => Value -> m Word8
 encodeValue v =
   case v of
-    ByteReg r8 -> 0x7 .&. reg8ToRM r8
-    WordReg (Reg16 rno) -> 0x7 .&. rno
-    DWordReg (Reg32 rno) -> 0x7 .&. rno
-    QWordReg (Reg64 rno) -> 0x7 .&. rno
-    X87Register rno -> 0x7 .&. fromIntegral rno
-    MMXReg (MMXR rno) -> rno
-    XMMReg (XMMR rno) -> rno
+    ByteReg r8 -> return (0x7 .&. reg8ToRM r8)
+    WordReg (Reg16 rno) -> return (0x7 .&. rno)
+    DWordReg (Reg32 rno) -> return (0x7 .&. rno)
+    QWordReg (Reg64 rno) -> return (0x7 .&. rno)
+    X87Register rno -> return (0x7 .&. fromIntegral rno)
+    MMXReg (MMXR rno) -> return rno
+    XMMReg (XMMR rno) -> return rno
     _ | Just comps <- memRefComponents v ->
         case comps of
           -- We just need to mask some bits off of the reg64 numbers
-          Addr_64 _ (Just (Reg64 rno)) Nothing _ -> 0x7 .&. rno
-          Addr_32 _ (Just (Reg32 rno)) Nothing _ -> rno
+          Addr_64 _ (Just (Reg64 rno)) Nothing _ -> return (0x7 .&. rno)
+          Addr_32 _ (Just (Reg32 rno)) Nothing _ -> return rno
 
           -- A scaled index with no base indicates that we need a SIB
-          Addr_64 _ _ (Just _) _ -> 0x4
-          Addr_32 _ _ (Just _) _ -> 0x4
+          Addr_64 _ _ (Just _) _ -> return 0x4
+          Addr_32 _ _ (Just _) _ -> return 0x4
 
           -- There is another type of scaled index that is less
           -- apparent: if the segment is fs or gs, the displacement is
           -- used as a scaled index from that register.
-          Addr_64 seg Nothing Nothing _ | seg `elem` [FS, GS] -> 0x04
-          Addr_32 seg Nothing Nothing _ | seg `elem` [FS, GS] -> 0x04
+          Addr_64 seg Nothing Nothing _ | seg `elem` [FS, GS] -> return 0x04
+          Addr_32 seg Nothing Nothing _ | seg `elem` [FS, GS] -> return 0x04
 
           -- If there is no base and no index at all, 0x5 indicates
           -- that ModR/M is followed by a raw displacement.
-          Addr_64 _ Nothing Nothing _ -> 0x5
-          Addr_32 _ Nothing Nothing _ -> 0x5
+          Addr_64 _ Nothing Nothing _ -> return 0x5
+          Addr_32 _ Nothing Nothing _ -> return 0x5
 
-          _ -> error ("encodeValue: Unsupported memRef type " ++ show v)
+          _ -> C.throwM (UnsupportedMemRefType v)
       | Just comps <- ripRefComponents v ->
         case comps of
-          IP_Offset_64 {} -> 0x5
-          IP_Offset_32 {} -> 0x5
-          _ -> error ("encodeValue: Unsupported rip offset " ++ show v)
-      | otherwise -> error ("encodeValue: Unknown value type " ++ show v)
+          IP_Offset_64 {} -> return 0x5
+          IP_Offset_32 {} -> return 0x5
+          _ -> C.throwM (UnsupportedRIPOffset v)
+      | otherwise -> C.throwM (UnknownValueType v)
 
 -- If there is a displacement, I think we need to return 0b101 here.
 

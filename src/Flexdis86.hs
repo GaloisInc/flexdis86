@@ -21,6 +21,7 @@ module Flexdis86
     -- * Assembler
   , mkInstruction
   , A.assembleInstruction
+  , A.InstructionEncodingException(..)
   ) where
 
 import           Control.Monad ( MonadPlus )
