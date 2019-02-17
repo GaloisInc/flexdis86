@@ -407,7 +407,7 @@ xmmRegIdx (XMMR w) = fromIntegral w
 ------------------------------------------------------------------------
 -- YMMReg
 
--- | There are 16 128-bit XMM registers
+-- | There are 16 256-bit YMM registers
 newtype YMMReg = YMMR Word8
   deriving (Eq, Ord)
 
