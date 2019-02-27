@@ -23,7 +23,7 @@ import           Control.Applicative
 import           Control.Arrow ( second )
 import qualified Control.Lens as L
 import qualified Control.Monad.Catch as C
-import           Control.Monad ( MonadPlus(..), guard )
+import           Control.Monad ( MonadPlus(..), guard, when )
 import           Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Builder as B
@@ -256,6 +256,8 @@ matchOperandType oso ops =
 -- | Create a bytestring builder from an instruction instance.
 assembleInstruction :: (HasCallStack, C.MonadThrow m) => InstructionInstance -> m B.Builder
 assembleInstruction ii = do
+  when (isJust (L.view prVEX pfxs)) $ do
+    C.throwM VEXUnsupported
   mdisp <- encodeModRMDisp ii
   return $ mconcat [ prefixBytes
                    , opcode
@@ -557,6 +559,7 @@ ripRefComponents v =
 data InstructionEncodingException = UnsupportedMemRefType Value
                                   | UnsupportedRIPOffset Value
                                   | UnknownValueType Value
+                                  | VEXUnsupported
   deriving (Show)
 
 instance C.Exception InstructionEncodingException
