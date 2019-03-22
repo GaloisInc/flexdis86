@@ -1,0 +1,3 @@
+[submodule "deps/elf-edit"]
+	path = deps/elf-edit
+	url = git@github.com:GaloisInc/elf-edit.git
