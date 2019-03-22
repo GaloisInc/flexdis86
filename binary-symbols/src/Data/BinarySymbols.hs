@@ -71,3 +71,5 @@ instance Show SymbolIdentifier where
     showString "section_" . shows idx
   showsPrec _ (SegmentBaseAddr idx) =
     showString "segment_" . shows idx
+  showsPrec _ LoadBaseAddr =
+    showString "base_addr"

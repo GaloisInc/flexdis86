@@ -6,7 +6,6 @@ import           Control.Monad (when)
 import           Control.Monad.Except
 import           Control.Monad.State
 import qualified Data.ByteString as BS
-import           Data.Maybe (catMaybes)
 import           Numeric (readHex)
 import           System.Environment (getArgs)
 import           System.Exit (exitFailure)
