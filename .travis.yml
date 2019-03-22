@@ -15,15 +15,23 @@ before_install:
 
 matrix:
   include:
-  - env: GHCVER=8.2.1 STACK_YAML=stack-8.2.yaml
+  - env: STACK_YAML=stack-8.4.yaml
     addons:
       apt:
         sources:
         - hvr-ghc
         packages:
-        - ghc-8.2.1
+        - ghc-8.4.4
+        - build-essential
+  - env: STACK_YAML=stack-8.6.yaml
+    addons:
+      apt:
+        sources:
+        - hvr-ghc
+        packages:
+        - ghc-8.6.4
         - build-essential
 
 script:
- - stack --no-terminal --system-ghc build flexdis86
- - stack --no-terminal --system-ghc test flexdis86
+ - stack --no-terminal --system-ghc build flexdis86 --ghc-options="-Wall -Werror"
+ - stack --no-terminal --system-ghc test  flexdis86 --ghc-options="-Wall -Werror"
