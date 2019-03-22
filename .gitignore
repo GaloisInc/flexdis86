@@ -1,5 +1,4 @@
 .stack-work
-deps
 dist
 cabal.sandbox.config
 TAGS
