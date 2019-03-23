@@ -1,7 +1,5 @@
 # Building with Stack
 
-To build with Stack, first symlink to one of the provided YAML
-files. For example
+Flexdis is meant to build with stack.  For example,
 
-    ln -fs stack-8.2.yaml stack.yaml
-    stack build
+    stack --stack-yaml stack-8.6.yaml build

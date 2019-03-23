@@ -9,21 +9,7 @@ cache:
 matrix:
   include:
   - env: STACK_YAML=stack-8.4.yaml
-    addons:
-      apt:
-        sources:
-        - hvr-ghc
-        packages:
-        - ghc-8.4.4
-        - build-essential
   - env: STACK_YAML=stack-8.6.yaml
-    addons:
-      apt:
-        sources:
-        - hvr-ghc
-        packages:
-        - ghc-8.6.4
-        - build-essential
 
 before_install:
 # Download and unpack the stack executable
@@ -41,6 +27,6 @@ before_install:
 
 script:
  # Setup GHC using stack
- - travis_wait stack --stack-yaml stack.yaml setup
+ - travis_wait stack setup
  - stack --no-terminal --system-ghc build flexdis86 --ghc-options="-Wall -Werror"
  - stack --no-terminal --system-ghc test  flexdis86 --ghc-options="-Wall -Werror"
