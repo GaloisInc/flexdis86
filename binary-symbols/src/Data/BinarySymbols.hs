@@ -64,8 +64,8 @@ instance Show VersionedSymbol where
     showString (BSC.unpack nm)
       . case ver of
           UnversionedSymbol -> id
-          ObjectDefaultSymbol    ver -> showString "@@" . showString (BSC.unpack ver)
-          ObjectNonDefaultSymbol ver -> showString  "@" . showString (BSC.unpack ver)
+          ObjectDefaultSymbol    v -> showString "@@" . showString (BSC.unpack v)
+          ObjectNonDefaultSymbol v -> showString  "@" . showString (BSC.unpack v)
           VersionedSymbol symName soName
             -> showChar '@' . showString (BSC.unpack symName)
              . showChar '(' . showString (BSC.unpack soName) . showChar ')'
