@@ -7,6 +7,7 @@ This declares types needed to support relocations.
 -}
 module Data.BinarySymbols
   ( SymbolIdentifier(..)
+  , VersionedSymbol(..)
   , SymbolVersion(..)
   , SectionIndex
   , SegmentIndex
@@ -32,10 +33,19 @@ type SymbolName = BSC.ByteString
 data SymbolVersion
    = UnversionedSymbol
      -- ^ The symbol had no or the default *global* version information.
-   | ObjectSymbol
+   | ObjectDefaultSymbol !BSC.ByteString
+     -- ^ The symbol comes from an object file and thus just
+     -- has a version string associated with it (but we need the
+     -- map file to know).
+     --
+     -- Default symbols are the ones used in linking against other objects.
+   | ObjectNonDefaultSymbol !BSC.ByteString
      -- ^ The symbol comes from an object file and hence does not
      -- have GNU version information.  Version information
      -- may be part of the symbol name however.
+     --
+     -- Nondefault symbols will not be used in linking objects, but
+     -- may appear in the final library and be linked dynamically.
    | VersionedSymbol !BSC.ByteString !BSC.ByteString
      -- ^ A symbol with version information from version information
      -- in a shared library or executable.
@@ -43,6 +53,22 @@ data SymbolVersion
      -- The first value is the name of the shared object.  The second
      -- is the version associated with the symbol.
   deriving (Eq, Ord, Show)
+
+-- | A symbol name along with version information.
+data VersionedSymbol = VerSym { versymName :: !BSC.ByteString
+                              , versymVersion :: !SymbolVersion
+                              }
+
+instance Show VersionedSymbol where
+  showsPrec _ (VerSym nm ver) =
+    showString (BSC.unpack nm)
+      . case ver of
+          UnversionedSymbol -> id
+          ObjectDefaultSymbol    v -> showString "@@" . showString (BSC.unpack v)
+          ObjectNonDefaultSymbol v -> showString  "@" . showString (BSC.unpack v)
+          VersionedSymbol symName soName
+            -> showChar '@' . showString (BSC.unpack symName)
+             . showChar '(' . showString (BSC.unpack soName) . showChar ')'
 
 -- | An identifier that represents some offset in a binary.
 data SymbolIdentifier
@@ -59,14 +85,8 @@ data SymbolIdentifier
   deriving (Eq, Ord)
 
 instance Show SymbolIdentifier where
-  showsPrec _ (SymbolRelocation nm ver) =
-    case ver of
-      UnversionedSymbol -> showString (BSC.unpack nm)
-      ObjectSymbol -> showString (BSC.unpack nm)
-      VersionedSymbol symName soName ->
-        showString (BSC.unpack nm)
-        . showChar '@' . showString (BSC.unpack symName)
-        . showChar '(' . showString (BSC.unpack soName) . showChar ')'
+  showsPrec p (SymbolRelocation nm ver) =
+    showsPrec p (VerSym nm ver)
   showsPrec _ (SectionIdentifier idx) =
     showString "section_" . shows idx
   showsPrec _ (SegmentBaseAddr idx) =
