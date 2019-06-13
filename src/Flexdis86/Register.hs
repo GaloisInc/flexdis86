@@ -259,6 +259,7 @@ pattern EDI = Reg32 7
 ------------------------------------------------------------------------
 -- Reg64
 
+-- | One of the 16 64-bit general purpose registers.
 newtype Reg64 = Reg64 { unReg64 :: Word8 }
   deriving (Eq, Ord)
 
