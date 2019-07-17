@@ -8,7 +8,6 @@ module Util
 import           Control.Monad ( when )
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
-import qualified System.Exit as IO
 import qualified System.IO as IO
 import qualified System.IO.Temp as IO
 import qualified System.Process as P
@@ -22,12 +21,7 @@ start_sym_name = "_start"
 readCodeSegment :: FilePath -> IO B.ByteString
 readCodeSegment fp = do
   bytes <- B.readFile fp
-  case E.parseElf bytes of
-    E.ElfHeaderError off msg -> error ("Failed to parse ELF header at offset " ++ show off ++ ": " ++ msg)
-    E.Elf32Res [] someElf -> extractCodeSegment someElf
-    E.Elf64Res [] someElf -> extractCodeSegment someElf
-    E.Elf32Res errs _ -> error ("Errors while parsing ELF file: " ++ show errs)
-    E.Elf64Res errs _ -> error ("Errors while parsing ELF file: " ++ show errs)
+  E.parseElfOrDie extractCodeSegment extractCodeSegment bytes
 
 extractCodeSegment :: E.Elf w -> IO B.ByteString
 extractCodeSegment e = do
