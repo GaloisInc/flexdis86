@@ -5,6 +5,7 @@ Maintainer  :  jhendrix@galois.com
 
 This declares types needed to support relocations.
 -}
+{-# LANGUAGE DeriveGeneric #-}
 module Data.BinarySymbols
   ( SymbolIdentifier(..)
   , VersionedSymbol(..)
@@ -15,7 +16,9 @@ module Data.BinarySymbols
   ) where
 
 import qualified Data.ByteString.Char8 as BSC
+import           Data.Hashable
 import           Data.Word
+import           GHC.Generics
 
 -- | Sections are regions of an executable, object, or shared library
 -- file.
@@ -52,7 +55,9 @@ data SymbolVersion
      --
      -- The first value is the name of the shared object.  The second
      -- is the version associated with the symbol.
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
+
+instance Hashable SymbolVersion
 
 -- | A symbol name along with version information.
 data VersionedSymbol = VerSym { versymName :: !BSC.ByteString
@@ -82,7 +87,9 @@ data SymbolIdentifier
      -- index.
    | LoadBaseAddr
      -- ^ This denotes the base load address of a shared executable.
-  deriving (Eq, Ord)
+  deriving (Eq, Generic, Ord)
+
+instance Hashable SymbolIdentifier
 
 instance Show SymbolIdentifier where
   showsPrec p (SymbolRelocation nm ver) =
