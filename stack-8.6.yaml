@@ -1,5 +1,4 @@
-resolver: lts-9.21
-
+resolver: lts-13.13
 packages:
 - '.'
 - binary-symbols

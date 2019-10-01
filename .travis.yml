@@ -1,29 +1,32 @@
 sudo: false
-language: c
+language: minimal
+git:
+  submodules: false # Do not clone submodules until later.
 cache:
   directories:
   - $HOME/.stack
+
+matrix:
+  include:
+  - env: STACK_YAML=stack-8.4.yaml
+  - env: STACK_YAML=stack-8.6.yaml
 
 before_install:
 # Download and unpack the stack executable
 - mkdir -p ~/.local/bin
 - export PATH=$HOME/.local/bin:$PATH
 - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
-- export PATH=/opt/ghc/$GHCVER/bin:$PATH
-- mkdir -p deps
-- git clone https://github.com/GaloisInc/elf-edit.git deps/elf-edit
 
-matrix:
-  include:
-  - env: GHCVER=8.2.1 STACK_YAML=stack-8.2.yaml
-    addons:
-      apt:
-        sources:
-        - hvr-ghc
-        packages:
-        - ghc-8.2.1
-        - build-essential
+# Changes ssh paths into http path, so that we can do a read-only clone of
+# our submodules without worrying about ssh keys.
+- sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
+- git submodule update --init
+
+# Download stack
+- travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 
 script:
- - stack --no-terminal --system-ghc build flexdis86
- - stack --no-terminal --system-ghc test flexdis86
+ # Setup GHC using stack
+ - travis_wait stack setup
+ - stack --no-terminal --system-ghc build flexdis86 --ghc-options="-Wall -Werror"
+ - stack --no-terminal --system-ghc test  flexdis86 --ghc-options="-Wall -Werror"
