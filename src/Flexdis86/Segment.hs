@@ -49,6 +49,8 @@ pattern FS = Segment 4
 pattern GS :: Segment
 pattern GS = Segment 5
 
+{-# COMPLETE ES, CS, SS, DS, FS, GS #-}
+
 instance Show Segment where
   show ES = "es"
   show CS = "cs"
@@ -66,7 +68,6 @@ segmentRegisterByIndex r
 
 segmentRegNo :: Segment -> Word8
 segmentRegNo (Segment r) = r
-
 
 -- | Return default segment for register
 defaultSeg64 :: Reg64 -> Segment
