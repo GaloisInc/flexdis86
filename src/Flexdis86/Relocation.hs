@@ -11,6 +11,7 @@ module Flexdis86.Relocation
   , JumpOffset(..)
     -- * Immediates
   , Imm32(..)
+  , UImm64(..)
   ) where
 
 
@@ -46,8 +47,8 @@ data JumpOffset
     -- the effective address written will be addr(sym) + off + (instructionLength - ioff)
   deriving (Eq, Ord)
 
--- | A 32-bit value which could either be a specific number, or a relocation that should
--- be computed at later load/link time.
+-- | A 32-bit value which could either be a specific number, or a
+-- relocation that should be computed at later load/link time.
 data Imm32
    = Imm32Concrete !Int32
     -- ^ @Imm32Concrete c@ denotes the value of @c@,
@@ -55,8 +56,8 @@ data Imm32
     -- ^ @Imm32SymbolOffset sym off signed@ denotes the value of @addr(sym) + off@.
     --
     -- We can assume that the computed value is in `[0..2^32-)` if `signed` is false,
-    -- and `[-2^31..2^31)` if `signed` is true.  If not, the relocation fail before
-    -- we start disassembling.
+    -- and `[-2^31..2^31)` if `signed` is true.  If not, the relocation should fail
+    -- to apply prior to program execution.
   deriving (Eq, Ord)
 
 instance Show Imm32 where
@@ -72,6 +73,27 @@ instance Show Imm32 where
     . showChar ','
     . shows o
     . (if isSigned then showString ",S" else id)
+    . showChar ']'
+
+-- | A 32-bit value which could either be a specific number, or a
+-- relocation that should be computed at later load/link time.
+data UImm64
+   = UImm64Concrete !Word64
+    -- ^ @UImm64Concrete c@ denotes the value of @c@,
+   | UImm64SymbolOffset !SymbolIdentifier !Int64
+    -- ^ @UImm64SymbolOffset sym off@ denotes the value of @addr(sym) + off@.
+    --
+    -- We can assume that the computed value is in `[0..2^64-)`.  If not, the
+    -- relocation should fail to apply prior to program execution.
+  deriving (Eq, Ord)
+
+instance Show UImm64 where
+  showsPrec _ (UImm64Concrete c) = showString "0x" . showHex c
+  showsPrec _ (UImm64SymbolOffset s o)
+    = showString "[areloc"
+    . shows s
+    . showChar ','
+    . shows o
     . showChar ']'
 
 showOff :: Int64 -> ShowS
