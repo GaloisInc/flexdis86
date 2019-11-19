@@ -705,7 +705,7 @@ encodeImmediate rex oso vty =
     (WordImm imm, ty) -> encodeWordImmediate rex oso imm ty
     (DWordImm (Imm32Concrete imm), ty) -> encodeDWordImmediate rex oso (fromIntegral imm) ty
     (DWordImm Imm32SymbolOffset{}, _) -> error "Do not support symbolic immediates."
-    (QWordImm imm, ty) -> encodeQWordImmediate rex oso imm ty
+    (QWordImm (UImm64Concrete imm), ty) -> encodeQWordImmediate rex oso imm ty
 
     (ByteSignedImm imm, ty)  -> encodeByteImmediate  rex oso (fromIntegral imm) ty
     (WordSignedImm imm, ty)  -> encodeWordImmediate  rex oso (fromIntegral imm) ty

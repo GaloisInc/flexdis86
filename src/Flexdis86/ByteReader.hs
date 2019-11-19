@@ -16,6 +16,7 @@ import Data.Binary.Get (Get, getWord8)
 import Data.Bits
 import Data.Int
 import Data.Word
+import GHC.Stack
 
 import Flexdis86.Relocation
 
@@ -50,7 +51,7 @@ readLSB = readLSB' 0 0
 -- | A reader monad for reading values from a stream.
 class (Applicative m, Monad m) => ByteReader m where
   -- | Read a byte.
-  readByte :: m Word8
+  readByte :: HasCallStack => m Word8
 
   -- | Read a 16-bit value with the least-significant byte first.
   readWord :: m Word16
@@ -60,8 +61,12 @@ class (Applicative m, Monad m) => ByteReader m where
   readDImm :: m Imm32
   readDImm = Imm32Concrete <$> readLSB readByte 32
 
+  -- | Read a 32-bit value with the least-significant byte first.
+  readQUImm :: HasCallStack => m UImm64
+  readQUImm = UImm64Concrete <$> readLSB readByte 64
+
   -- | Read a 64-bit value with the least-significant byte first.
-  readQWord :: m Word64
+  readQWord :: HasCallStack => m Word64
   readQWord = readLSB readByte 64
 
   -- | Invalid instruction when parsing
