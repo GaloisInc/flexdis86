@@ -226,6 +226,9 @@ data CPURequirement
    | AESNI
 
    | AVX    -- ^ Advanced vector extensions
+
+   -- | Bit manipulation instructions
+   | BMI2
   deriving (Eq,Ord, Show)
 
 insClassMap :: Map.Map String CPURequirement
@@ -241,6 +244,7 @@ insClassMap = Map.fromList
   , (,) "sse4.2" SSE4_2
   , (,) "aesni" AESNI
   , (,) "avx" AVX
+  , (,) "bmi2" BMI2
   ]
 
 -- | Returns a CPU requirement, possible given a requirement from the outer
