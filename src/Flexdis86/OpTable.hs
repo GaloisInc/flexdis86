@@ -535,7 +535,7 @@ defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
 defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87,AVX])
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87, AVX, BMI2])
                  && x64Compatible d
 
 addOpcode :: MonadState Def m => Word8 -> m ()
@@ -604,7 +604,7 @@ parse_opcode nm = do
             requiredReg ?= maskFin8 (b `shiftR` 3)
 
     _ | Just r <- stripPrefix "/vex=" nm
-      -> do setDefCPUReq AVX
+      -> do -- setDefCPUReq AVX
             vexPrefixes .= vexToBytes (parseVex r)
 
     _  ->  fail $ "Unexpected opcode: " ++ show nm
@@ -823,6 +823,8 @@ operandHandlerMap = Map.fromList
   , (,) "Wdq" $ RM_XMM (Just OSize)
   , (,) "Wqq" $ RM_XMM (Just QQSize)
 
+  , (,) "Hd"  $ OpType VVVV DSize
+  , (,) "Hq"  $ OpType VVVV QSize
   , (,) "Hx"  $ VVVV_XMM Nothing
   , (,) "Hdq" $ VVVV_XMM (Just OSize)
   , (,) "Hqq" $ VVVV_XMM (Just QQSize)

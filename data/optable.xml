@@ -9807,12 +9807,12 @@
       <mnemonic>mulx</mnemonic>
       <class>bmi2</class>
       <def>
-        <opc>/vex=128.F2.0F38.W0 F6</opc>
-        <opr>V W</opr>
+        <opc>/vex=NDD.128.F2.0F38.W0 F6</opc>
+        <opr>Gd Hd Ed</opr>
       </def>
       <def>
-        <opc>/vex=128.F2.0F38.W1 F6</opc>
-        <opr>V W</opr>
+        <opc>/vex=NDD.128.F2.0F38.W1 F6</opc>
+        <opr>Gq Hq Eq</opr>
       </def>
     </instruction>
 

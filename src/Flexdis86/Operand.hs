@@ -35,6 +35,8 @@ data OperandSource
    | Opcode_reg !Word8
      -- ^ A fixed register that is not affected by REX.
    | Reg_fixed !Word8
+     -- ^ A register that is read from the VVVV field of the VEX prefix.
+   | VVVV
      -- ^ An immediate value read in from the instruction stream.
    | ImmediateSource
      -- ^ An offset value read in from the instruction stream.
@@ -86,7 +88,7 @@ data OperandType
      -- | A SSE XMM/YMM register or 64 bit address from ModRM.rm
    | RM_XMM (Maybe OperandSize)
 
-    -- | An XMM/YMM register from the VVVV fiewld of the VEX prefix.
+     -- | An XMM/YMM register from the VVVV field of the VEX prefix.
    | VVVV_XMM (Maybe OperandSize)
 
      -- | A specific segment
