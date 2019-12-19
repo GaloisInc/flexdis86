@@ -9817,6 +9817,26 @@
     </instruction>
 
     <instruction>
+      <mnemonic>adcx</mnemonic>
+      <class>adx</class>
+      <def>
+        <pfx>rexr rexw rexb</pfx>
+        <opc>/sse=66 0F 38 F6</opc>
+        <opr>Gv Ev</opr>
+      </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>adox</mnemonic>
+      <class>adx</class>
+      <def>
+        <pfx>rexr rexw rexb</pfx>
+        <opc>/sse=F3 0F 38 F6</opc>
+        <opr>Gv Ev</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>invalid</mnemonic>
     </instruction>
 
