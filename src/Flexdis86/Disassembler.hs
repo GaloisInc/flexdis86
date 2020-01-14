@@ -36,6 +36,7 @@ import           Data.Maybe
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import           Data.Word
+import           GHC.Stack
 
 import           Prelude
 
@@ -658,7 +659,7 @@ readOffset s aso
   | aso       = Offset_32 s <$> readDImm
   | otherwise = Offset_64 s <$> readQWord
 
-parseValue :: ByteReader m
+parseValue :: (ByteReader m, HasCallStack)
            => Prefixes
            -> OperandSizeConstraint -- ^ Operand size
            -> Maybe ModRM
@@ -703,7 +704,7 @@ parseValue p osz mmrm tp = do
       case osz of
         OpSize16 ->  WordImm <$> readWord
         OpSize32 -> DWordImm <$> readDImm
-        OpSize64 -> QWordImm <$> readQWord
+        OpSize64 -> QWordImm <$> readQUImm
     OpType ImmediateSource ZSize ->
       case osz of
         OpSize16 ->  WordImm <$> readWord

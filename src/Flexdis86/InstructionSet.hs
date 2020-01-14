@@ -173,7 +173,7 @@ data Value
     -- ^ A 16-bit immediate that should not need to be extended
   | DWordImm !Imm32
     -- ^ A 32-bit immmediate that should not need to be extended
-  | QWordImm Word64
+  | QWordImm !UImm64
     -- ^ A 64-bit intermediate that should not need to be extended
 
   | ByteSignedImm  Int8
@@ -220,7 +220,7 @@ ppValue v =
     ByteImm      i  -> text "0x" <> text (showHex i "")
     WordImm      i  -> text "0x" <> text (showHex i "")
     DWordImm     i  -> text (show i)
-    QWordImm     i  -> text "0x" <> text (showHex i "")
+    QWordImm     i  -> text (show i)
     ByteSignedImm  i  -> ppImm i
     WordSignedImm  i  -> ppImm i
     DWordSignedImm i  -> ppImm i
