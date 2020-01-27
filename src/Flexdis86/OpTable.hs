@@ -608,7 +608,7 @@ parse_opcode nm = do
             requiredReg ?= maskFin8 (b `shiftR` 3)
 
     _ | Just r <- stripPrefix "/vex=" nm
-      -> do -- setDefCPUReq AVX
+      -> do setDefCPUReq AVX
             vexPrefixes .= vexToBytes (parseVex r)
 
     _  ->  fail $ "Unexpected opcode: " ++ show nm
