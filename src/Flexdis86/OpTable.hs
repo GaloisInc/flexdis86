@@ -226,6 +226,12 @@ data CPURequirement
    | AESNI
 
    | AVX    -- ^ Advanced vector extensions
+
+   -- | Bit manipulation instructions
+   | BMI2
+
+   -- | Multi-precision add-carry instructions
+   | ADX
   deriving (Eq,Ord, Show)
 
 insClassMap :: Map.Map String CPURequirement
@@ -241,6 +247,8 @@ insClassMap = Map.fromList
   , (,) "sse4.2" SSE4_2
   , (,) "aesni" AESNI
   , (,) "avx" AVX
+  , (,) "bmi2" BMI2
+  , (,) "adx" ADX
   ]
 
 -- | Returns a CPU requirement, possible given a requirement from the outer
@@ -531,7 +539,7 @@ defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
 defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87,AVX])
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87, AVX, BMI2, ADX])
                  && x64Compatible d
 
 addOpcode :: MonadState Def m => Word8 -> m ()
@@ -819,6 +827,8 @@ operandHandlerMap = Map.fromList
   , (,) "Wdq" $ RM_XMM (Just OSize)
   , (,) "Wqq" $ RM_XMM (Just QQSize)
 
+  , (,) "Hd"  $ OpType VVVV DSize
+  , (,) "Hq"  $ OpType VVVV QSize
   , (,) "Hx"  $ VVVV_XMM Nothing
   , (,) "Hdq" $ VVVV_XMM (Just OSize)
   , (,) "Hqq" $ VVVV_XMM (Just QQSize)

@@ -215,6 +215,7 @@ modRMOperand nm =
         ModRM_reg       -> True
         Opcode_reg _    -> False
         Reg_fixed _     -> False
+        VVVV            -> False
         ImmediateSource -> False
         OffsetSource    -> False
         JumpImmediate   -> False
@@ -696,6 +697,9 @@ parseValue p osz mmrm tp = do
     OpType ModRM_reg sz -> pure $ regSizeFn osz rex sz reg_with_rex
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
+    OpType VVVV sz
+      | Just vx <- p ^. prVEX -> pure $ regSizeFn osz rex sz $ complement (vx ^. vexVVVV) .&. 0xF
+      | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
     OpType ImmediateSource BSize ->
       ByteImm <$> readByte
     OpType ImmediateSource WSize ->
