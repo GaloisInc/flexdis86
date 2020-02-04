@@ -14,6 +14,8 @@ module Flexdis86.InstructionSet
   , ppInstructionWith
   , Value(..)
   , ppValue
+  , qwordFromInteger
+  , qwordFromIntegral
   , Displacement(..)
   , AddrRef(..)
   , module Flexdis86.Relocation
@@ -190,6 +192,14 @@ data Value
   | QWordReg Reg64
   | JumpOffset !JumpSize !JumpOffset
   deriving (Show, Eq, Ord)
+
+-- | Create a QWord immediate.
+qwordFromInteger :: Integer -> Value
+qwordFromInteger = QWordImm . UImm64Concrete . fromInteger
+
+-- | Create a QWord immediate.
+qwordFromIntegral :: Integral a => a -> Value
+qwordFromIntegral = QWordImm . UImm64Concrete . fromIntegral
 
 ppShowReg :: Show r => r -> Doc
 ppShowReg r = text (show r)
