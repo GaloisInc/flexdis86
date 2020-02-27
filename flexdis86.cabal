@@ -76,6 +76,7 @@ test-suite flexdis86-tests
   build-depends: flexdis86,
                  base,
                  bytestring,
+                 directory >=1.3 && < 2,
                  tasty >= 0.10,
                  tasty-hunit,
                  process >= 1.2 && < 1.7,
@@ -86,6 +87,7 @@ test-suite flexdis86-tests
                  pretty-show
   other-modules:
     Assemble
+    Binaries
     Roundtrip
     Util
 

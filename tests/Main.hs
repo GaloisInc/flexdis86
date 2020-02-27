@@ -6,11 +6,13 @@ import qualified Test.Tasty as T
 
 #if defined(ARCH_ELF)
 import Assemble ( assembleTests )
+import Binaries ( binaryTests )
 import Roundtrip ( roundtripTests )
 
 elfCases :: [T.TestTree]
 elfCases =
   [ assembleTests
+  , binaryTests
   , roundtripTests
   ]
 #else

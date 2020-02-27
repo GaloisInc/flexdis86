@@ -1,3 +1,6 @@
 [submodule "deps/elf-edit"]
 	path = deps/elf-edit
 	url = git@github.com:GaloisInc/elf-edit.git
+[submodule "deps/sample-binaries"]
+	path = deps/sample-binaries
+	url = https://github.com/GaloisInc/sample-binaries
