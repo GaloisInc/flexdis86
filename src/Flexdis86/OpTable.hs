@@ -44,6 +44,7 @@ module Flexdis86.OpTable
   ) where
 
 import           Control.Applicative
+import qualified Control.Monad.Fail as MF
 import           Control.Lens
 import           Control.Monad.State
 import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
@@ -98,6 +99,8 @@ instance Monad ElemParser where
   return = pure
   m >>= h = EP $ \s -> do (v,s') <- unEP m s
                           unEP (h v) s'
+
+instance MF.MonadFail ElemParser where
   fail e = EP $ \s -> Left $ show (esLine s) ++ ": " ++  e
 
 instance MonadState ElemState ElemParser where
@@ -551,7 +554,7 @@ setDefCPUReq r = do
   when (creq == Base) $ defCPUReq .= r
 
 -- | Parse opcode value
-parse_opcode :: MonadState Def m => String -> m ()
+parse_opcode :: (MonadState Def m, MF.MonadFail m) => String -> m ()
 parse_opcode nm = do
   case readHex nm of
     [(v,"")] -> addOpcode v
