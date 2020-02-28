@@ -61,7 +61,7 @@ vexLens :: (Word8 -> a) ->
            (Word8 -> Word8 -> a) ->
            (Word8 -> a -> Word8) ->
            (Word8 -> Word8 -> a -> (Word8,Word8)) ->
-           Simple Lens VEX a
+           Lens' VEX a
 vexLens get1 get2 upd1 upd2 = lens getter updater
   where getter vex = case vex of
                        VEX2 b     -> get1 b
@@ -72,7 +72,7 @@ vexLens get1 get2 upd1 upd2 = lens getter updater
                                         in VEX3 b1' b2'
 
 -- | Are we using 256-bit vectors
-vex256 :: Simple Lens VEX Bool
+vex256 :: Lens' VEX Bool
 vex256 = vexLens gt (\_ b2 -> gt b2)
                  st (\b1 b2 a -> (b1, st b2 a))
   where
@@ -81,7 +81,7 @@ vex256 = vexLens gt (\_ b2 -> gt b2)
 
 
 -- | REX info from VEX prefix
-vexRex :: Simple Lens VEX REX
+vexRex :: Lens' VEX REX
 vexRex = vexLens gt1 gt2 st1 st2
   where
   gt1 b      = REX (0x40 B..|. B.shiftR (B.complement b B..&. 0x80) 5)
@@ -95,7 +95,7 @@ vexRex = vexLens gt1 gt2 st1 st2
 
 -- | The VVVV field.  We return it as is.  Note that when used to encode
 -- registers, the byte needs to be complemented.
-vexVVVV :: Simple Lens VEX Word8
+vexVVVV :: Lens' VEX Word8
 vexVVVV = vexLens gt (\_ b2 -> gt b2)
                   st (\b1 b2 v -> (b1, st b2 v))
   where
@@ -114,19 +114,19 @@ setBitTo bits bitNo val
   | otherwise = B.clearBit bits bitNo
 
 -- | Indicates if 64-bit operand size should be used.
-rexW :: Simple Lens REX Bool
+rexW :: Lens' REX Bool
 rexW = lens ((`B.testBit` 3) . unREX) (\(REX r) v -> REX (setBitTo r 3 v))
 
 -- | Extension of ModR/M reg field.
-rexR :: Simple Lens REX Bool
+rexR :: Lens' REX Bool
 rexR = lens ((`B.testBit` 2) . unREX) (\(REX r) v -> REX (setBitTo r 2 v))
 
 -- | Extension of SIB index field.
-rexX :: Simple Lens REX Bool
+rexX :: Lens' REX Bool
 rexX = lens ((`B.testBit` 1) . unREX) (\(REX r) v -> REX (setBitTo r 1 v))
 
 -- | Extension of ModR/M r/m field, SIB base field, or Opcode reg field.
-rexB :: Simple Lens REX Bool
+rexB :: Lens' REX Bool
 rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
 
 instance Show REX where
@@ -136,22 +136,22 @@ instance Show REX where
 newtype SegmentPrefix = SegmentPrefix { unwrapSegmentPrefix :: Word8 }
   deriving (Eq, Show)
 
-prLockPrefix :: Simple Lens Prefixes LockPrefix
+prLockPrefix :: Lens' Prefixes LockPrefix
 prLockPrefix = lens _prLockPrefix (\s v -> s { _prLockPrefix = v })
 
-prSP :: Simple Lens Prefixes SegmentPrefix
+prSP :: Lens' Prefixes SegmentPrefix
 prSP = lens _prSP (\s v -> s { _prSP = v})
 
-prREX :: Simple Lens Prefixes REX
+prREX :: Lens' Prefixes REX
 prREX = lens _prREX (\s v -> s { _prREX = v })
 
-prVEX :: Simple Lens Prefixes (Maybe VEX)
+prVEX :: Lens' Prefixes (Maybe VEX)
 prVEX = lens _prVEX (\s v -> s { _prVEX = v })
 
-prASO :: Simple Lens Prefixes Bool
+prASO :: Lens' Prefixes Bool
 prASO = lens _prASO (\s v -> s { _prASO = v })
 
-prOSO :: Simple Lens Prefixes Bool
+prOSO :: Lens' Prefixes Bool
 prOSO = lens _prOSO (\s v -> s { _prOSO = v })
 
 prAddrSize :: Prefixes -> SizeConstraint
