@@ -4,6 +4,7 @@ module Main where
 
 import           Control.Monad (when)
 import           Control.Monad.Except
+import qualified Control.Monad.Fail as Fail
 import           Control.Monad.State
 import qualified Data.ByteString as BS
 import           Numeric (readHex)
@@ -25,6 +26,8 @@ instance ByteReader SimpleByteReader where
 instance Monad SimpleByteReader where
   return v      = SBR (return v)
   (SBR v) >>= f = SBR $ v >>= unSBR . f
+
+instance Fail.MonadFail SimpleByteReader where
   fail s        = SBR $ throwError s
 
 
