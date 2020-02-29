@@ -6,7 +6,7 @@ Maintainer  :  jhendrix@galois.com
 This declares the parser for optable.xml file, which is used to define the
 instruction set.
 -}
-
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -99,6 +99,9 @@ instance Monad ElemParser where
   return = pure
   m >>= h = EP $ \s -> do (v,s') <- unEP m s
                           unEP (h v) s'
+#if !(MIN_VERSION_base(4,13,0))
+  fail = MF.fail
+#endif
 
 instance MF.MonadFail ElemParser where
   fail e = EP $ \s -> Left $ show (esLine s) ++ ": " ++  e

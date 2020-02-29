@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Main where
@@ -26,6 +27,10 @@ instance ByteReader SimpleByteReader where
 instance Monad SimpleByteReader where
   return v      = SBR (return v)
   (SBR v) >>= f = SBR $ v >>= unSBR . f
+#if !(MIN_VERSION_base(4,13,0))
+  fail = Fail.fail
+#endif
+
 
 instance Fail.MonadFail SimpleByteReader where
   fail s        = SBR $ throwError s
