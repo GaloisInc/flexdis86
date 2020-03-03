@@ -6,7 +6,7 @@ Maintainer  :  jhendrix@galois.com
 This declares the parser for optable.xml file, which is used to define the
 instruction set.
 -}
-
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -44,6 +44,7 @@ module Flexdis86.OpTable
   ) where
 
 import           Control.Applicative
+import qualified Control.Monad.Fail as MF
 import           Control.Lens
 import           Control.Monad.State
 import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
@@ -98,6 +99,11 @@ instance Monad ElemParser where
   return = pure
   m >>= h = EP $ \s -> do (v,s') <- unEP m s
                           unEP (h v) s'
+#if !(MIN_VERSION_base(4,13,0))
+  fail = MF.fail
+#endif
+
+instance MF.MonadFail ElemParser where
   fail e = EP $ \s -> Left $ show (esLine s) ++ ": " ++  e
 
 instance MonadState ElemState ElemParser where
@@ -464,76 +470,76 @@ data Def = Def  { _defMnemonic :: String
                 } deriving (Eq, Show)
 
 -- | Canonical mnemonic for definition.
-defMnemonic :: Simple Lens Def String
+defMnemonic :: Lens' Def String
 defMnemonic = lens _defMnemonic (\s v -> s { _defMnemonic = v })
 
 -- | Additional mnemonics, not including the canonical mnemonic.
 --
 -- Used e.g. by jump instructions.
-defMnemonicSynonyms :: Simple Lens Def [String]
+defMnemonicSynonyms :: Lens' Def [String]
 defMnemonicSynonyms =
   lens _defMnemonicSynonyms (\s v -> s { _defMnemonicSynonyms = v })
 
 -- | CPU requirements on the definition.
-defCPUReq :: Simple Lens Def CPURequirement
+defCPUReq :: Lens' Def CPURequirement
 defCPUReq = lens _defCPUReq (\s v -> s { _defCPUReq = v })
 
 -- | Vendor requirements on the definition.
-defVendor :: Simple Lens Def (Maybe Vendor)
+defVendor :: Lens' Def (Maybe Vendor)
 defVendor = lens _defVendor (\s v -> s { _defVendor = v })
 
 -- | Restrictions on the mode of the CPU.
-modeLimit :: Simple Lens Def ModeLimit
+modeLimit :: Lens' Def ModeLimit
 modeLimit = lens _modeLimit (\s v -> s { _modeLimit = v })
 
 -- | Modifications to x64 mode.
-defMode :: Simple Lens Def (Maybe Mode)
+defMode :: Lens' Def (Maybe Mode)
 defMode = lens _defMode (\s v -> s { _defMode = v })
 
 -- | Expected address size for instruction.
-reqAddrSize :: Simple Lens Def (Maybe SizeConstraint)
+reqAddrSize :: Lens' Def (Maybe SizeConstraint)
 reqAddrSize = lens _reqAddrSize (\s v -> s { _reqAddrSize = v })
 
 -- | Expected operand size for instruction.
-reqOpSize :: Simple Lens Def (Maybe OperandSizeConstraint)
+reqOpSize :: Lens' Def (Maybe OperandSizeConstraint)
 reqOpSize = lens _reqOpSize (\s v -> s { _reqOpSize = v })
 
 -- | Prefixes allowed on instruction.
-defPrefix :: Simple Lens Def [String]
+defPrefix :: Lens' Def [String]
 defPrefix = lens _defPrefix (\s v -> s { _defPrefix = v })
 
 -- | Prefixe required by an instruction, if any.
-requiredPrefix :: Simple Lens Def (Maybe Word8)
+requiredPrefix :: Lens' Def (Maybe Word8)
 requiredPrefix = lens _requiredPrefix (\s v -> s { _requiredPrefix = v })
 
 -- | Opcodes on instruction.
-defOpcodes :: Simple Lens Def [Word8]
+defOpcodes :: Lens' Def [Word8]
 defOpcodes = lens _defOpcodes (\s v -> s { _defOpcodes = v })
 
 -- | Constraint on the modRM.mod value.
-requiredMod :: Simple Lens Def (Maybe ModConstraint)
+requiredMod :: Lens' Def (Maybe ModConstraint)
 requiredMod = lens _requiredMod (\s v -> s { _requiredMod = v })
 
 -- | Indicates if instruction must have ModR/M value with the
 -- given value in the reg field.
-requiredReg :: Simple Lens Def (Maybe Fin8)
+requiredReg :: Lens' Def (Maybe Fin8)
 requiredReg = lens _requiredReg (\s v -> s { _requiredReg = v })
 
 -- | Indicates if instruction must have ModR/M value with the
 -- given value in the rm field.
-requiredRM :: Simple Lens Def (Maybe Fin8)
+requiredRM :: Lens' Def (Maybe Fin8)
 requiredRM = lens _requiredRM (\s v -> s { _requiredRM = v })
 
 -- | An x87 FPU opcode expected in the low 6-bits of a ModRM byte
 -- following instruction.
-x87ModRM :: Simple Lens Def (Maybe Fin64)
+x87ModRM :: Lens' Def (Maybe Fin64)
 x87ModRM = lens _x87ModRM (\s v -> s { _x87ModRM = v })
 
-vexPrefixes :: Simple Lens Def [[Word8]]
+vexPrefixes :: Lens' Def [[Word8]]
 vexPrefixes = lens _vexPrefixes (\s v -> s { _vexPrefixes = v })
 
 -- | Operand descriptions.
-defOperands :: Simple Lens Def [OperandType]
+defOperands :: Lens' Def [OperandType]
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 
 -- | Return true if this definition is one supported by flexdis86.
@@ -551,7 +557,7 @@ setDefCPUReq r = do
   when (creq == Base) $ defCPUReq .= r
 
 -- | Parse opcode value
-parse_opcode :: MonadState Def m => String -> m ()
+parse_opcode :: (MonadState Def m, MF.MonadFail m) => String -> m ()
 parse_opcode nm = do
   case readHex nm of
     [(v,"")] -> addOpcode v

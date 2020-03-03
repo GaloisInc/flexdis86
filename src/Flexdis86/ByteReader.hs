@@ -71,7 +71,7 @@ class (Applicative m, Monad m) => ByteReader m where
 
   -- | Invalid instruction when parsing
   invalidInstruction :: m a
-  invalidInstruction = fail "Invalid instruction"
+  invalidInstruction = error "Invalid instruction"
 
   readSByte :: m Int8
   readSByte  = fromIntegral <$> readByte

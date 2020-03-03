@@ -682,7 +682,7 @@ parseValue p osz mmrm tp = do
                0 -> readNoOffset p modRM
                1 -> readWithOffset read_disp8  aso p modRM
                2 -> readWithOffset read_disp32 aso p modRM
-               _ -> fail $ "internal: parseValue given modRM to register with operand type: " ++ show tp
+               _ -> error $ "internal: parseValue given modRM to register with operand type: " ++ show tp
       rm_reg :: Word8
       rm_reg = rex_b rex .|. modRM_rm modRM
 
@@ -693,7 +693,7 @@ parseValue p osz mmrm tp = do
       | otherwise            -> memSizeFn osz sz <$> addr
     OpType ModRM_rm_mod3 sz
       | modRM_mod modRM == 3 -> pure $ regSizeFn osz rex sz rm_reg
-      | otherwise -> fail $ "Unexpected memory operand in parseValue"
+      | otherwise -> error "Unexpected memory operand in parseValue"
     OpType ModRM_reg sz -> pure $ regSizeFn osz rex sz reg_with_rex
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r

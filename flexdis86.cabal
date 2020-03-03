@@ -20,7 +20,7 @@ library
     containers,
     directory,
     filepath,
-    lens,
+    lens >= 3.8,
     mtl,
     template-haskell,
     vector,

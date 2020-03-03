@@ -64,7 +64,7 @@ instance Show Segment where
 segmentRegisterByIndex :: Monad m => Word8 -> m Segment
 segmentRegisterByIndex r
   | r < 6 = return (Segment r)
-  | otherwise = fail "Invalid segment register."
+  | otherwise = error "Invalid segment register."
 
 segmentRegNo :: Segment -> Word8
 segmentRegNo (Segment r) = r
