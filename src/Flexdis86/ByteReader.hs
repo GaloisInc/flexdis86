@@ -12,6 +12,7 @@ module Flexdis86.ByteReader
   ) where
 
 import Control.Applicative
+import qualified Control.Monad.Fail as MF
 import Data.Binary.Get (Get, getWord8)
 import Data.Bits
 import Data.Int
@@ -49,7 +50,7 @@ readLSB :: (Monad m, Bits b, Num b)
 readLSB = readLSB' 0 0
 
 -- | A reader monad for reading values from a stream.
-class (Applicative m, Monad m) => ByteReader m where
+class (Applicative m, Monad m, MF.MonadFail m) => ByteReader m where
   -- | Read a byte.
   readByte :: HasCallStack => m Word8
 
@@ -71,7 +72,7 @@ class (Applicative m, Monad m) => ByteReader m where
 
   -- | Invalid instruction when parsing
   invalidInstruction :: m a
-  invalidInstruction = error "Invalid instruction"
+  invalidInstruction = fail "Invalid instruction"
 
   readSByte :: m Int8
   readSByte  = fromIntegral <$> readByte

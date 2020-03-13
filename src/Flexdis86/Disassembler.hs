@@ -676,13 +676,17 @@ parseValue p osz mmrm tp = do
   let reg = modRM_reg modRM
   let reg_with_rex :: Word8
       reg_with_rex = rex_r rex .|. reg
-      -- This reads a
+      -- This reads an address reference
       addr :: ByteReader m => m AddrRef
       addr = case modRM_mod modRM of
                0 -> readNoOffset p modRM
                1 -> readWithOffset read_disp8  aso p modRM
                2 -> readWithOffset read_disp32 aso p modRM
-               _ -> error $ "internal: parseValue given modRM to register with operand type: " ++ show tp
+               unknownrm ->
+                 -- This case has been observed to be 3 in the wild, but it is
+                 -- likely that it was due to decoding an invalid instruction
+                 -- during code discovery
+                 fail $ "internal: parseValue given modRM to register with operand type: " ++ show tp ++ " at value " ++ show unknownrm
       rm_reg :: Word8
       rm_reg = rex_b rex .|. modRM_rm modRM
 
@@ -693,7 +697,7 @@ parseValue p osz mmrm tp = do
       | otherwise            -> memSizeFn osz sz <$> addr
     OpType ModRM_rm_mod3 sz
       | modRM_mod modRM == 3 -> pure $ regSizeFn osz rex sz rm_reg
-      | otherwise -> error "Unexpected memory operand in parseValue"
+      | otherwise -> fail "Unexpected memory operand in parseValue"
     OpType ModRM_reg sz -> pure $ regSizeFn osz rex sz reg_with_rex
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
