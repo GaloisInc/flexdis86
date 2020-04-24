@@ -294,4 +294,11 @@ mkTest (name, insns) = T.testCase name $ do
 --    T.assertEqual "Disassembled instruction count" (length insns) (length disInsns)
     let instances = mapMaybe D.disInstruction disInsns
         assembledInsns = LB.toStrict $ B.toLazyByteString $ mconcat (mapMaybe D.assembleInstruction instances)
-    T.assertEqual ("Assembled bytes\n" ++ "\n" ++ show instances ++ "\n" ++ prettyHex assembledInsns) codeBytes assembledInsns
+    let msg = unlines [ "Assembled bytes:"
+                      , prettyHex assembledInsns
+                      , "Original bytes:"
+                      , prettyHex codeBytes
+                      , "Instruction instances:"
+                      , show instances
+                      ]
+    T.assertEqual msg codeBytes assembledInsns
