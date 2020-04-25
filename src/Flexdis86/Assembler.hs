@@ -5,6 +5,8 @@ Maintainer  : tristan@galois.com
 
 The Flexdis assembler.
 -}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE BinaryLiterals #-}
@@ -253,29 +255,64 @@ matchOperandType oso ops =
     (QWordReg (Reg64 rno), OpType (Opcode_reg rcode) VSize) -> rno `mod` 8 == rcode
     _ -> False
 
+
+-- | An 'AssembledInstruction' contains the bytes of an assembled instruction.
+--
+-- The use of a derived 'Foldable' instance means that the order of the fields
+-- of this record and 'AssembledModRmSibDisp' *must not change*.
+--
+-- This type is not exposed outside this module, and is mostly useful for
+-- debugging when assembly goes wrong.
+data AssembledInstruction a =
+  AssembledInstruction
+    { legacyPrefixes :: a
+    , assembledRequiredPrefix :: a
+    , rexPrefix :: a
+    , opcode :: a
+    , modRmSibDisp :: Maybe (AssembledModRmSibDisp a)
+    , immediates :: [a]
+    } deriving (Functor, Traversable, Foldable, Show)
+
+data AssembledModRmSibDisp a =
+  AssembledModRmSibDisp
+    { modRm :: a
+    , sib :: Maybe a
+    , disp :: Maybe a
+    }
+  deriving (Functor, Traversable, Foldable, Show)
+
 -- | Create a bytestring builder from an instruction instance.
 assembleInstruction :: (HasCallStack, C.MonadThrow m) => InstructionInstance -> m B.Builder
-assembleInstruction ii = do
+assembleInstruction ii = F.fold <$> mkAssembledInstruction ii
+
+mkAssembledInstruction ::
+  (HasCallStack, C.MonadThrow m) =>
+  InstructionInstance ->
+  m (AssembledInstruction B.Builder)
+mkAssembledInstruction ii = do
   when (isJust (L.view prVEX pfxs)) $ do
     C.throwM VEXUnsupported
   mdisp <- encodeModRMDisp ii
-  return $ mconcat [ prefixBytes
-                   , opcode
-                   , fromMaybe mempty mdisp
-                   , mconcat (map (encodeImmediate rex oso) (iiArgs ii))
-                   ]
+  return $
+    AssembledInstruction
+      { legacyPrefixes =
+          mconcat [ if spfx == no_seg_prefix
+                    then mempty
+                    else B.word8 (unwrapSegmentPrefix spfx)
+                  , if L.view prASO pfxs then B.word8 0x67 else mempty
+                  , if oso then B.word8 0x66 else mempty
+                  , encodeLockPrefix (L.view prLockPrefix pfxs)
+                  ]
+      , assembledRequiredPrefix = encodeRequiredPrefix (iiRequiredPrefix ii)
+      , rexPrefix = encodeREXPrefix rex
+      , opcode = B.byteString (B.pack (iiOpcode ii))
+      , modRmSibDisp = mdisp
+      , immediates = map (encodeImmediate rex oso) (iiArgs ii)
+      }
   where
     rex = L.view prREX pfxs
     oso = L.view prOSO pfxs
     spfx = L.view prSP pfxs
-    prefixBytes = mconcat [ if spfx == no_seg_prefix then mempty else B.word8 (unwrapSegmentPrefix spfx)
-                          , if L.view prASO pfxs then B.word8 0x67 else mempty
-                          , if oso then B.word8 0x66 else mempty
-                          , encodeLockPrefix (L.view prLockPrefix pfxs)
-                          , encodeRequiredPrefix (iiRequiredPrefix ii)
-                          , encodeREXPrefix rex
-                          ]
-    opcode = B.byteString (B.pack (iiOpcode ii))
     pfxs = iiPrefixes ii
 
 {-
@@ -288,12 +325,13 @@ If a REX prefix is set, we are in 64 bit mode.
 --
 -- The arguments all determine these together, so we really need to
 -- build a combined byte string.
-encodeModRMDisp :: (C.MonadThrow m, Alternative f, HasCallStack) => InstructionInstance -> m (f B.Builder)
+encodeModRMDisp ::
+  (C.MonadThrow m, Alternative f, HasCallStack) =>
+  InstructionInstance ->
+  m (f (AssembledModRmSibDisp B.Builder))
 encodeModRMDisp ii
-  | not (hasModRM ii) = return empty
-  | otherwise = do
-      aModRM <- encodeOperandModRM ii req
-      return (aModRM <|> empty)
+  | not (hasModRM ii) = pure empty
+  | otherwise = encodeOperandModRM ii req
   where
     req = encodeRequiredModRM ii
 
@@ -324,11 +362,19 @@ isImplicitRegister t =
     _ -> False
 
 -- | Build a ModRM byte based on the operands of the instruction.
-encodeOperandModRM :: (C.MonadThrow m, Alternative f, HasCallStack) => InstructionInstance -> Word8 -> m (f B.Builder)
+encodeOperandModRM ::
+  (C.MonadThrow m, Alternative f, HasCallStack) =>
+  InstructionInstance ->
+  Word8 ->
+  m (f (AssembledModRmSibDisp B.Builder))
 encodeOperandModRM ii reqModRM
   | [] <- filter (isNotImmediate . fst) (iiArgs ii)
   , reqModRM /= 0
-  = return (pure (B.word8 reqModRM))
+  = return (pure $ AssembledModRmSibDisp
+                     { modRm = B.word8 reqModRM
+                     , sib = Nothing
+                     , disp = Nothing
+                     })
   | otherwise
   = case (rrv_rm rrv, rrv_reg rrv) of
       (Nothing, Nothing) -> return empty
@@ -336,15 +382,21 @@ encodeOperandModRM ii reqModRM
         "encodeOperandModRM: unexpected RmRegValues: " ++ show rrv
       (Just (vrm, _), Nothing) -> do
         rm <- encodeValue vrm
-        withMode vrm $ \mode disp -> do
-          withSIB mode rm vrm $ \sib -> do
-            return (pure (mkModRM ii mode 0 rm <> sib <> disp))
+        withMode vrm $ \mode disp' -> do
+          withSIB mode rm vrm $ \sib' -> do
+            return (pure (AssembledModRmSibDisp
+                            (mkModRM ii mode 0 rm)
+                            (Just sib')
+                            (Just disp')))
       (Just (vrm, _), Just (vreg, _)) -> do
         rm <- encodeValue vrm
         regVal <- encodeValue vreg
-        withMode vrm $ \mode disp ->
-          withSIB mode rm vrm $ \sib ->
-            return (pure (mkModRM ii mode regVal rm <> sib <> disp))
+        withMode vrm $ \mode disp' ->
+          withSIB mode rm vrm $ \sib' ->
+              return (pure (AssembledModRmSibDisp
+                              (mkModRM ii mode regVal rm)
+                              (Just sib')
+                              (Just disp')))
   where
     rrv = findRmRegValues (iiArgs ii)
 
