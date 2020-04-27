@@ -445,7 +445,7 @@ mkSIB seg mScaleIdx mBase =
     -- With no base, the base part of the SIB is 0x5, according to the table (the [*] column).
     (Just (scale, ix), Nothing) ->
       B.word8 ((round (logBase 2 (fromIntegral scale) :: Double) `shiftL` 6) .|. ((ix .&. 0x7) `shiftL` 3) .|. 0x5)
-    (Nothing, Nothing) | seg `elem` [FS, GS] -> B.word8 0x25
+    (Nothing, Nothing) | seg `elem` [DS, FS, GS] -> B.word8 0x25
     other -> error ("Unexpected inputs to mkSIB: " ++ show other)
 
 requiresSIB :: Word8 -> Bool
@@ -591,10 +591,9 @@ encodeValue v =
           Addr_64 seg Nothing Nothing _ | seg `elem` [FS, GS] -> return 0x04
           Addr_32 seg Nothing Nothing _ | seg `elem` [FS, GS] -> return 0x04
 
-          -- If there is no base and no index at all, 0x5 indicates
-          -- that ModR/M is followed by a raw displacement.
-          Addr_64 _ Nothing Nothing _ -> return 0x5
-          Addr_32 _ Nothing Nothing _ -> return 0x5
+          -- 0x4 indicates that the Mod/RM byte will be followed by a SIB
+          Addr_64 _ Nothing Nothing _ -> return 0x4
+          Addr_32 _ Nothing Nothing _ -> return 0x4
 
           _ -> C.throwM (UnsupportedMemRefType v)
       | Just comps <- ripRefComponents v ->
