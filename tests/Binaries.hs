@@ -2,16 +2,17 @@
 
 module Binaries ( binaryTests ) where
 
+import qualified Data.ByteString as LB
 import           Data.ElfEdit as ElfEdit
 import           Data.Foldable ( for_ )
-import qualified Data.ByteString as LB
 import           Data.Maybe ( catMaybes, fromMaybe )
-import qualified Test.Tasty as T
-import qualified Test.Tasty.HUnit as T
 import qualified System.Directory as Directory
 import           System.Environment ( lookupEnv )
-import           System.IO.Temp ( withSystemTempFile )
+import           System.FilePath ( (</>) )
 import qualified System.IO as IO
+import           System.IO.Temp ( withSystemTempFile )
+import qualified Test.Tasty as T
+import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
 
@@ -37,7 +38,7 @@ binaryTests = T.testCase "Disassemble/reassemble binaries" $ do
     (length bins > 0)
   for_ bins $ \binPath -> do
     let minLength = 0
-    codeBytes <- getTextSection (binDir ++ binPath)
+    codeBytes <- getTextSection (binDir </> binPath)
     let disBuf = D.disassembleBuffer codeBytes
     T.assertBool
       ("Disassembled something in " ++ binPath)
