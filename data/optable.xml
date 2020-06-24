@@ -9837,6 +9837,20 @@
     </instruction>
 
     <instruction>
+      <mnemonic>endbr32</mnemonic>
+      <def>
+        <opc>F3 0F 1E FB</opc>
+      </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>endbr64</mnemonic>
+      <def>
+        <opc>F3 0F 1E FA</opc>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>invalid</mnemonic>
     </instruction>
 

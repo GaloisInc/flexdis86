@@ -33,6 +33,8 @@ zeroOperandTests =
 
 zeroOperandOpcodeTests :: [(String, [String])]
 zeroOperandOpcodeTests = [ ("ret", ["ret"])
+                         , ("endbr32", ["endbr32"])
+                         , ("endbr64", ["endbr64"])
                          , ("x87 wait", ["wait"])
                          , ("int3", ["int $0x3"])
                            -- FIXME: This gets rendered as xor eax,eax
