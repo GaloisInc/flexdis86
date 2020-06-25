@@ -72,6 +72,10 @@ zeroOperandOpcodeTests = [ ("ret", ["ret"])
                          , ("convert byte to dword", ["cwde"])
                          , ("convert byte to qword", ["cdqe"])
                          , ("ExamineModR/M", ["fxam"])
+                         -- These two tests pass, but do not work in the CI
+                         -- setup because the assembler is too old.
+                         -- , ("endbr32", ["endbr32"])
+                         -- , ("endbr64", ["endbr64"])
                          ]
 
 singleOperandTests :: T.TestTree
