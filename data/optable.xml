@@ -9836,6 +9836,7 @@
       </def>
     </instruction>
 
+    <!-- These are CFI instructions coming to Intel processors -->
     <instruction>
       <mnemonic>endbr32</mnemonic>
       <def>
