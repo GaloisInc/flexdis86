@@ -5514,6 +5514,18 @@
       </def>
     </instruction>
 
+    <instruction>
+      <mnemonic>vpaddq</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG D4</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG D4</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+    </instruction>
 
     <instruction>
         <mnemonic>paddsb</mnemonic>
