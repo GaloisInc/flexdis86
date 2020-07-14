@@ -5514,6 +5514,18 @@
       </def>
     </instruction>
 
+    <instruction>
+      <mnemonic>vpaddq</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG D4</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG D4</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+    </instruction>
 
     <instruction>
         <mnemonic>paddsb</mnemonic>
@@ -8917,6 +8929,32 @@
             <pfx>rexb</pfx>
             <opc>/sse=66 0f 73 /reg=3</opc>
             <opr>U Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>vpsrld</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDD.128.66.0F.WIG 72 /reg=2</opc>
+            <opr>Hx Ux Ib</opr>
+        </def>
+        <def>
+            <opc>/vex=NDD.256.66.0F.WIG 72 /reg=2</opc>
+            <opr>Hx Ux Ib</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>vpsrlq</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDD.128.66.0F.WIG 73 /reg=2</opc>
+            <opr>Hx Ux Ib</opr>
+        </def>
+        <def>
+            <opc>/vex=NDD.256.66.0F.WIG 73 /reg=2</opc>
+            <opr>Hx Ux Ib</opr>
         </def>
     </instruction>
 
