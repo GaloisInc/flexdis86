@@ -545,7 +545,7 @@ defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
 defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE4_1, SSE4_2, X87, AESNI, AVX, BMI2, ADX])
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE3_atom, SSE4_1, SSE4_2, X87, AESNI, AVX, BMI2, ADX])
                  && x64Compatible d
 
 addOpcode :: MonadState Def m => Word8 -> m ()
