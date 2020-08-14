@@ -5502,6 +5502,19 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vpaddb</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG FC</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+      <def>
+        <opc>/vex=NDS.256.66.0F.WIG FC</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+    </instruction>
+
+    <instruction>
       <mnemonic>vpaddd</mnemonic>
       <class>avx</class>
       <def>
@@ -8495,6 +8508,15 @@
     </instruction>
 
     <instruction>
+      <mnemonic>vxorps</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.0F.WIG 57</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>xcryptecb</mnemonic>
         <def>
             <opc>0f a7 /mod=11 /rm=0 /reg=1</opc>
@@ -9136,14 +9158,22 @@
     </instruction>
 
     <instruction>
-     <mnemonic>vpunpcklqdq</mnemonic>
-     <class>avx</class>
-     <def>
-       <opc>/vex=NDS.128.66.0F.WIG 6C</opc>
-       <opr>Vx Hx Wx</opr>
-     </def>
+      <mnemonic>vpunpcklqdq</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG 6C</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
     </instruction>
 
+    <instruction>
+      <mnemonic>vpunpckhqdq</mnemonic>
+      <class>avx</class>
+      <def>
+        <opc>/vex=NDS.128.66.0F.WIG 6D</opc>
+        <opr>Vx Hx Wx</opr>
+      </def>
+    </instruction>
 
     <instruction>
         <mnemonic>phaddw</mnemonic>
