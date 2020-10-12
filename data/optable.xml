@@ -5757,6 +5757,15 @@
     </instruction>
 
     <instruction>
+        <mnemonic>vpcmpgtd</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDS.128.66.0F.WIG 66</opc>
+            <opr>Vx Hx Ux</opr>
+        </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>pextrb</mnemonic>
         <def>
             <pfx>aso rexx rexr rexb</pfx>
