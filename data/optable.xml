@@ -4802,11 +4802,11 @@
       <class>avx</class>
       <def>
         <opc>/vex=128.F3.0F.WIG 7E</opc>
-        <opr>V W</opr>
+        <opr>V MqU</opr>
       </def>
       <def>
         <opc>/vex=128.66.0F.WIG D6</opc>
-        <opr>W V</opr>
+        <opr>MqU V</opr>
       </def>
     </instruction>
 
