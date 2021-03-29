@@ -8709,6 +8709,37 @@
     </instruction>
 
     <!--
+    SHA
+      -->
+
+    <instruction>
+      <mnemonic>sha256rnds2</mnemonic>
+      <class>sha</class>
+      <def>
+        <opc>0f 38 cb</opc>
+        <opr>V W</opr>
+      </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>sha256msg1</mnemonic>
+      <class>sha</class>
+      <def>
+        <opc>0f 38 cc</opc>
+        <opr>V W</opr>
+      </def>
+    </instruction>
+
+    <instruction>
+      <mnemonic>sha256msg2</mnemonic>
+      <class>sha</class>
+      <def>
+        <opc>0f 38 cd</opc>
+        <opr>V W</opr>
+      </def>
+    </instruction>
+
+    <!--
     SMX
       -->
 

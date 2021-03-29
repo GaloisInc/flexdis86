@@ -230,6 +230,8 @@ data CPURequirement
    | SSE4_2
      -- | AES new instructions.
    | AESNI
+     -- | SHA extension
+   | SHA
 
    | AVX    -- ^ Advanced vector extensions
 
@@ -252,6 +254,7 @@ insClassMap = Map.fromList
   , (,) "sse4.1" SSE4_1
   , (,) "sse4.2" SSE4_2
   , (,) "aesni" AESNI
+  , (,) "sha" SHA
   , (,) "avx" AVX
   , (,) "bmi2" BMI2
   , (,) "adx" ADX
@@ -545,7 +548,7 @@ defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
 defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE3_atom, SSE4_1, SSE4_2, X87, AESNI, AVX, BMI2, ADX])
+                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE3_atom, SSE4_1, SSE4_2, X87, AESNI, SHA, AVX, BMI2, ADX])
                  && x64Compatible d
 
 addOpcode :: MonadState Def m => Word8 -> m ()
