@@ -241,6 +241,7 @@ matchOperandType oso ops =
     (QWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm YSize) -> True
     (QWordReg _, OpType ModRM_rm RDQSize) -> True
+    (VoidMem _, M) -> True
     (Mem64 _, OpType ModRM_rm QSize) -> True
     (Mem64 _, OpType ModRM_rm VSize) -> True
     (Mem64 _, OpType ModRM_rm YSize) -> True
