@@ -28,7 +28,7 @@ import qualified Control.Monad.Catch as C
 import           Control.Monad ( MonadPlus(..), guard, when )
 import           Data.Bits
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy.Builder as B
+import qualified Data.ByteString.Builder as B
 import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import           Data.Maybe ( fromMaybe, isJust )
