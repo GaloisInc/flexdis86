@@ -28,7 +28,7 @@ import qualified Control.Monad.Catch as C
 import           Control.Monad ( MonadPlus(..), guard, when )
 import           Data.Bits
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy.Builder as B
+import qualified Data.ByteString.Builder as B
 import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import           Data.Maybe ( fromMaybe, isJust )
@@ -241,6 +241,7 @@ matchOperandType oso ops =
     (QWordReg _, OpType ModRM_rm VSize) -> True
     (QWordReg _, OpType ModRM_rm YSize) -> True
     (QWordReg _, OpType ModRM_rm RDQSize) -> True
+    (VoidMem _, M) -> True
     (Mem64 _, OpType ModRM_rm QSize) -> True
     (Mem64 _, OpType ModRM_rm VSize) -> True
     (Mem64 _, OpType ModRM_rm YSize) -> True
