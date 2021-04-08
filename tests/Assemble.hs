@@ -5,7 +5,7 @@ module Assemble ( assembleTests ) where
 
 import qualified Control.Lens as L
 import qualified Data.ByteString.Lazy as LB
-import qualified Data.ByteString.Lazy.Builder as B
+import qualified Data.ByteString.Builder as B
 import           Data.Maybe ( mapMaybe )
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T

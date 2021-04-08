@@ -1,0 +1,6 @@
+packages:
+  flexdis86.cabal
+  binary-symbols
+  deps/elf-edit
+
+tests: true

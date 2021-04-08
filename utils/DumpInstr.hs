@@ -3,7 +3,6 @@
 
 module Main where
 
-import           Control.Monad (when)
 import           Control.Monad.Except
 import qualified Control.Monad.Fail as Fail
 import           Control.Monad.State

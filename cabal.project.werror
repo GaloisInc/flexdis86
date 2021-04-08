@@ -1,0 +1,2 @@
+package flexdis86
+  ghc-options: -Werror
