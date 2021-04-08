@@ -5,7 +5,7 @@
 -- supported by the underlying 'withAssembledCode'.
 module Roundtrip ( roundtripTests ) where
 
-import qualified Data.ByteString.Lazy.Builder as B
+import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as LB
 import           Data.Maybe ( mapMaybe )
 import qualified Test.Tasty as T

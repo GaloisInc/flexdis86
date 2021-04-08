@@ -58,7 +58,6 @@ instance Show Segment where
   show DS = "ds"
   show FS = "fs"
   show GS = "gs"
-  show _ = error "internal: illegal segment value"
 
 -- | Return segment register by index or fail.
 segmentRegisterByIndex :: Monad m => Word8 -> m Segment
