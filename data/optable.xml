@@ -4838,7 +4838,7 @@
         <class>sse</class>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
-            <opc>0f 16 /mod=!11</opc>
+            <opc>0f 16</opc>
             <opr>V Mq</opr>
         </def>
         <def>

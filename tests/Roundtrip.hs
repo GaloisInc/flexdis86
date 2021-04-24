@@ -266,6 +266,9 @@ mmxOperandOpcodes = [ ("Load a value into an mmx register", ["movq (%eax), %mm2"
                     , ("mmx xor (reg -> reg)", ["pxor %mm3, %mm0"])
                     , ("mmx xor (mem -> reg)", ["pxor (%rcx), %mm4"])
                     , ("movaps %xmm4,0x90(%rsp)", ["movaps %xmm4,0x90(%rsp)"])
+                    , ("movdqa %xmm14,%xmm12", ["movdqa %xmm14,%xmm12"])
+                    , ("movhps -0x150(%rbp),%xmm0", ["movhps -0x150(%rbp),%xmm0"])
+                    , ("movhps 0x8(%rsp),%xmm0", ["movhps 0x8(%rsp),%xmm0"])
                     ]
 
 sseTests :: T.TestTree
