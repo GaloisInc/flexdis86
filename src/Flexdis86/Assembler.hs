@@ -626,8 +626,13 @@ encodeValue v =
     DWordReg (Reg32 rno) -> return (0x7 .&. rno)
     QWordReg (Reg64 rno) -> return (0x7 .&. rno)
     X87Register rno -> return (0x7 .&. fromIntegral rno)
-    MMXReg (MMXR rno) -> return rno
-    XMMReg (XMMR rno) -> return rno
+
+    -- NOTE: While there are more than 8 registers in both of these classes, the
+    -- extra bit (if required, to denote the registers 8-15) is provided by the
+    -- REX prefix byte and is not encoded here.
+    MMXReg (MMXR rno) -> return (0x7 .&. rno)
+    XMMReg (XMMR rno) -> return (0x7 .&. rno)
+
     _ | Just comps <- memRefComponents v ->
         case comps of
           -- We just need to mask some bits off of the reg64 numbers
