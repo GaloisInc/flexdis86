@@ -4191,13 +4191,13 @@
     <instruction>
         <mnemonic>jmp</mnemonic>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso oso repnz rexw rexr rexx rexb</pfx>
             <opc>ff /reg=4</opc>
             <opr>Ev</opr>
             <mode>def64</mode>
         </def>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso oso repnz rexw rexr rexx rexb</pfx>
             <opc>ff /reg=5</opc>
             <opr>Fv</opr>
         </def>
