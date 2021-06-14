@@ -5,6 +5,7 @@ Maintainer  : jhendrix@galois.com
 
 Defines a datatype for segments and supporting operations.
 -}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Safe #-}
 module Flexdis86.Segment
@@ -21,7 +22,10 @@ module Flexdis86.Segment
   , isDefaultSeg64
   ) where
 
+import qualified Control.DeepSeq as DS
 import Data.Word ( Word8 )
+import GHC.Generics
+
 import Flexdis86.Register
 
 ------------------------------------------------------------------------
@@ -29,7 +33,9 @@ import Flexdis86.Register
 
 -- | Refers to a memory segment.
 newtype Segment = Segment { _unSegment :: Word8 }
-  deriving (Eq, Ord)
+  deriving (Eq, Generic, Ord)
+
+instance DS.NFData Segment
 
 pattern ES :: Segment
 pattern ES = Segment 0

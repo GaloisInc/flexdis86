@@ -29,6 +29,7 @@ import           Control.Monad ( MonadPlus(..), guard, when )
 import           Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as B
+import qualified Data.ByteString.Char8 as BC
 import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import           Data.Maybe ( fromMaybe, isJust )
@@ -46,7 +47,7 @@ import           Flexdis86.Segment
 import           Flexdis86.Sizes
 
 data AssemblerContext =
-  AssemblerContext { acDefs :: M.Map String [Def]
+  AssemblerContext { acDefs :: M.Map B.ByteString [Def]
                    }
   deriving (Show)
 
@@ -75,7 +76,7 @@ mkInstruction :: (MonadPlus m)
 mkInstruction ctx mnemonic args =
    foldr (<|>) empty (map (findEncoding args) defs)
   where
-    defs = fromMaybe [] $ M.lookup mnemonic (acDefs ctx)
+    defs = M.findWithDefault [] (BC.pack mnemonic) (acDefs ctx)
 
 findEncoding :: (MonadPlus m) => [Value] -> Def -> m InstructionInstance
 findEncoding args def = do

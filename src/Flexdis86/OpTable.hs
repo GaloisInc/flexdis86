@@ -7,6 +7,7 @@ This declares the parser for optable.xml file, which is used to define the
 instruction set.
 -}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -43,21 +44,21 @@ module Flexdis86.OpTable
   , parseOpTable
   ) where
 
-import           Control.Applicative
+import qualified Control.DeepSeq as DS
 import qualified Control.Monad.Fail as MF
 import           Control.Lens
 import           Control.Monad.State
 import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
 import           Data.Char
 import           Data.List
 import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Word
+import           GHC.Generics
 import           Numeric (readDec, readHex)
 import           Text.XML.Light
-
-import           Prelude
 
 import           Flexdis86.Operand
 import           Flexdis86.Register
@@ -197,7 +198,9 @@ data Mode
    = Default64
      -- | Instruction is invalid in x64 mode.
    | Invalid64
-  deriving (Eq,Ord,Show)
+  deriving (Eq, Generic, Ord,Show)
+
+instance DS.NFData Mode
 
 -- | Parse a mode for the instruction.
 parse_mode :: ElemParser (Maybe Mode)
@@ -240,7 +243,9 @@ data CPURequirement
 
    -- | Multi-precision add-carry instructions
    | ADX
-  deriving (Eq,Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
+
+instance DS.NFData CPURequirement
 
 insClassMap :: Map.Map String CPURequirement
 insClassMap = Map.fromList
@@ -275,7 +280,9 @@ parse_CPURequirement c = do
 
 -- | Defines whether instuction is vendor specific.
 data Vendor = AMD | Intel
-  deriving (Eq,Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
+
+instance DS.NFData Vendor
 
 parse_vendor :: Maybe Vendor -> ElemParser (Maybe Vendor)
 parse_vendor v = do
@@ -294,7 +301,9 @@ data ModeLimit
    | Only32
    | Only64
    | Not64
-  deriving (Eq, Show)
+  deriving (Eq, Generic, Show)
+
+instance DS.NFData ModeLimit
 
 valid64 :: ModeLimit -> Bool
 valid64 m = m == AnyMode || m == Only64
@@ -441,12 +450,14 @@ data OperandSizeConstraint
    = OpSize16
    | OpSize32
    | OpSize64
-  deriving (Eq, Show)
+  deriving (Eq, Generic, Show)
+
+instance DS.NFData OperandSizeConstraint
 
 -- | The definition of an instruction.
-data Def = Def  { _defMnemonic :: String
+data Def = Def  { _defMnemonic :: !BS.ByteString
                   -- ^ Canonical mnemonic
-                , _defMnemonicSynonyms :: [String]
+                , _defMnemonicSynonyms :: [BS.ByteString]
                   -- ^ Additional mnemonics, not including
                   -- the canonical mnemonic. Used e.g. by
                   -- jump instructions.
@@ -470,16 +481,18 @@ data Def = Def  { _defMnemonic :: String
                 , _vexPrefixes  :: ![ [Word8] ]
                   -- ^ Allowed VEX prefixes for this instruction.
                 , _defOperands  :: ![OperandType]
-                } deriving (Eq, Show)
+                } deriving (Eq, Generic, Show)
+
+instance DS.NFData Def
 
 -- | Canonical mnemonic for definition.
-defMnemonic :: Lens' Def String
+defMnemonic :: Lens' Def BS.ByteString
 defMnemonic = lens _defMnemonic (\s v -> s { _defMnemonic = v })
 
 -- | Additional mnemonics, not including the canonical mnemonic.
 --
 -- Used e.g. by jump instructions.
-defMnemonicSynonyms :: Lens' Def [String]
+defMnemonicSynonyms :: Lens' Def [BS.ByteString]
 defMnemonicSynonyms =
   lens _defMnemonicSynonyms (\s v -> s { _defMnemonicSynonyms = v })
 
@@ -634,21 +647,21 @@ x64Compatible d =
 
 -- | Recognizes form for mnemonics
 isMnemonic :: String -> Bool
-isMnemonic (h:r) = (isLower h || h == '_') && all isLowerOrDigit r
+isMnemonic (h:r) = ('a' <= h && h <= 'z' || h == '_') && all isLowerOrDigit r
 isMnemonic [] = False
 
 isLowerOrDigit :: Char -> Bool
-isLowerOrDigit c = isLower c || isDigit c || (c == '_')
+isLowerOrDigit c = 'a' <= c && c <= 'z' || isDigit c || c == '_'
 
-parse_mnemonics :: ElemParser (String, [String])
+parse_mnemonics :: ElemParser (BS.ByteString, [BS.ByteString])
 parse_mnemonics = do
   mnems <- words <$> required_text "mnemonic"
-  when (null mnems) $
-    fail "Empty mnemonic element!"
   forM_ mnems $ \mnem -> do
     unless (isMnemonic mnem) $
       fail $ "Invalid mnemonic: " ++ show mnem
-  return (head mnems, tail mnems)
+  case BSC.pack <$> mnems of
+    [] -> fail "Empty mnemonic element!"
+    (h:t) -> return (h, t)
 
 operandHandlerMap :: Map.Map String OperandType
 operandHandlerMap = Map.fromList
@@ -843,11 +856,11 @@ operandHandlerMap = Map.fromList
   , (,) "Hqq" $ VVVV_XMM (Just QQSize)
   ]
 
-lookupOperandType :: String -> String -> ElemParser OperandType
+lookupOperandType :: BS.ByteString -> String -> ElemParser OperandType
 lookupOperandType i nm =
   case Map.lookup nm operandHandlerMap of
     Just h -> pure h
-    Nothing -> fail $ "Unknown operand for " ++ i ++ " named " ++ show nm
+    Nothing -> fail $ "Unknown operand for " ++ BSC.unpack i ++ " named " ++ show nm
 
 -- | Reverses a list while ensuring the spine of the list is strictly evaluated.
 strictReverse :: [a] -> [a]
@@ -867,7 +880,11 @@ strictMapList = go []
 
 -- | Parse a definition.
 parse_def ::
-  String -> [String] -> CPURequirement -> Maybe Vendor -> ElemParser Def
+  BS.ByteString ->
+  [BS.ByteString] ->
+  CPURequirement ->
+  Maybe Vendor ->
+  ElemParser Def
 parse_def nm syns creq v = do
   checkTag "def"
   let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText

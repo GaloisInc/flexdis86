@@ -5,6 +5,7 @@ Maintainer  : jhendrix@galois.com
 
 Defines prefix operations.
 -}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RankNTypes #-}
 module Flexdis86.Prefixes
   ( Prefixes(..)
@@ -31,9 +32,11 @@ module Flexdis86.Prefixes
   , vex256
   ) where
 
+import qualified Control.DeepSeq as DS
 import           Control.Lens
 import qualified Data.Bits as B
 import           Data.Word ( Word8 )
+import GHC.Generics
 import           Numeric ( showHex )
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
@@ -42,20 +45,105 @@ import           Text.Printf
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
 
--- | Prefixes for an instruction.
-data Prefixes = Prefixes { _prLockPrefix :: LockPrefix
-                         , _prSP  :: SegmentPrefix
-                         , _prREX :: REX
-                         , _prVEX :: !(Maybe VEX)
-                         , _prASO :: Bool
-                         , _prOSO :: Bool
-                         }
-                deriving (Eq, Show)
+------------------------------------------------------------------------
+-- SegmentPrefix
+
+-- | Includes segment prefix and branch override hints.
+newtype SegmentPrefix = SegmentPrefix { unwrapSegmentPrefix :: Word8 }
+  deriving (Eq, Generic, Show)
+
+instance DS.NFData SegmentPrefix
+
+no_seg_prefix :: SegmentPrefix
+no_seg_prefix = SegmentPrefix 0
+
+setDefault :: SegmentPrefix -> Segment -> Segment
+setDefault (SegmentPrefix 0) s = s
+setDefault (SegmentPrefix 0x26) _ = ES
+setDefault (SegmentPrefix 0x2e) _ = CS
+setDefault (SegmentPrefix 0x36) _ = SS
+setDefault (SegmentPrefix 0x3e) _ = DS
+setDefault (SegmentPrefix 0x64) _ = FS
+setDefault (SegmentPrefix 0x65) _ = GS
+setDefault (SegmentPrefix w) _ = error $ "Unexpected segment prefix: " ++ showHex w ""
+
+-----------------------------------------------------------------------
+-- LockPrefix
+
+data LockPrefix
+   = NoLockPrefix
+   | LockPrefix
+   | RepPrefix
+   | RepZPrefix
+   | RepNZPrefix
+  deriving (Eq, Generic, Show)
+
+instance DS.NFData LockPrefix
+
+ppLockPrefix :: LockPrefix -> Doc
+ppLockPrefix NoLockPrefix = PP.empty
+ppLockPrefix LockPrefix = text "lock"
+ppLockPrefix RepPrefix  = text "rep"
+ppLockPrefix RepZPrefix = text "repz"
+ppLockPrefix RepNZPrefix = text "repnz"
+
+-----------------------------------------------------------------------
+-- REX
+
+-- | REX value for 64-bit mode.
+newtype REX = REX { unREX :: Word8 }
+  deriving (Eq, Generic)
+
+instance DS.NFData REX
+
+setBitTo :: (B.Bits b) => b -> Int -> Bool -> b
+setBitTo bits bitNo val
+  | val = B.setBit bits bitNo
+  | otherwise = B.clearBit bits bitNo
+
+-- | Indicates if 64-bit operand size should be used.
+rexW :: Lens' REX Bool
+rexW = lens ((`B.testBit` 3) . unREX) (\(REX r) v -> REX (setBitTo r 3 v))
+
+-- | Extension of ModR/M reg field.
+rexR :: Lens' REX Bool
+rexR = lens ((`B.testBit` 2) . unREX) (\(REX r) v -> REX (setBitTo r 2 v))
+
+-- | Extension of SIB index field.
+rexX :: Lens' REX Bool
+rexX = lens ((`B.testBit` 1) . unREX) (\(REX r) v -> REX (setBitTo r 1 v))
+
+-- | Extension of ModR/M r/m field, SIB base field, or Opcode reg field.
+rexB :: Lens' REX Bool
+rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
+
+instance Show REX where
+  show (REX rex) = printf "0b%08b" rex
+
+
+-----------------------------------------------------------------------
+-- VEX
 
 data VEX = VEX2 Word8{-1-}              -- ^ Byte of a 2-byte VEX prefix
          | VEX3 Word8{-1-} Word8{-2-}   -- ^ Byte 1 and 2 of 3-byte VEX prefix
-           deriving (Eq, Show)
+           deriving (Eq, Generic, Show)
 
+instance DS.NFData VEX
+
+-----------------------------------------------------------------------
+-- Prefixes
+
+-- | Prefixes for an instruction.
+data Prefixes = Prefixes { _prLockPrefix :: !LockPrefix
+                         , _prSP  :: !SegmentPrefix
+                         , _prREX :: !REX
+                         , _prVEX :: !(Maybe VEX)
+                         , _prASO :: !Bool
+                         , _prOSO :: !Bool
+                         }
+                deriving (Eq, Generic, Show)
+
+instance DS.NFData Prefixes
 
 vexLens :: (Word8 -> a) ->
            (Word8 -> Word8 -> a) ->
@@ -102,40 +190,6 @@ vexVVVV = vexLens gt (\_ b2 -> gt b2)
   gt b   = B.shiftR b 3 B..&. 0xF
   st b v = (b B..&. 0x87) B..|. B.shiftL (v B..&. 0xF) 3
 
-
-
--- | REX value for 64-bit mode.
-newtype REX = REX { unREX :: Word8 }
-  deriving (Eq)
-
-setBitTo :: (B.Bits b) => b -> Int -> Bool -> b
-setBitTo bits bitNo val
-  | val = B.setBit bits bitNo
-  | otherwise = B.clearBit bits bitNo
-
--- | Indicates if 64-bit operand size should be used.
-rexW :: Lens' REX Bool
-rexW = lens ((`B.testBit` 3) . unREX) (\(REX r) v -> REX (setBitTo r 3 v))
-
--- | Extension of ModR/M reg field.
-rexR :: Lens' REX Bool
-rexR = lens ((`B.testBit` 2) . unREX) (\(REX r) v -> REX (setBitTo r 2 v))
-
--- | Extension of SIB index field.
-rexX :: Lens' REX Bool
-rexX = lens ((`B.testBit` 1) . unREX) (\(REX r) v -> REX (setBitTo r 1 v))
-
--- | Extension of ModR/M r/m field, SIB base field, or Opcode reg field.
-rexB :: Lens' REX Bool
-rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
-
-instance Show REX where
-  show (REX rex) = printf "0b%08b" rex
-
--- | Includes segment prefix and branch override hints.
-newtype SegmentPrefix = SegmentPrefix { unwrapSegmentPrefix :: Word8 }
-  deriving (Eq, Show)
-
 prLockPrefix :: Lens' Prefixes LockPrefix
 prLockPrefix = lens _prLockPrefix (\s v -> s { _prLockPrefix = v })
 
@@ -157,35 +211,3 @@ prOSO = lens _prOSO (\s v -> s { _prOSO = v })
 prAddrSize :: Prefixes -> SizeConstraint
 prAddrSize pfx | pfx^.prASO = Size32
                | otherwise  = Size64
-
-
-------------------------------------------------------------------------
--- SegmentPrefix
-
-no_seg_prefix :: SegmentPrefix
-no_seg_prefix = SegmentPrefix 0
-
-setDefault :: SegmentPrefix -> Segment -> Segment
-setDefault (SegmentPrefix 0) s = s
-setDefault (SegmentPrefix 0x26) _ = ES
-setDefault (SegmentPrefix 0x2e) _ = CS
-setDefault (SegmentPrefix 0x36) _ = SS
-setDefault (SegmentPrefix 0x3e) _ = DS
-setDefault (SegmentPrefix 0x64) _ = FS
-setDefault (SegmentPrefix 0x65) _ = GS
-setDefault (SegmentPrefix w) _ = error $ "Unexpected segment prefix: " ++ showHex w ""
-
-data LockPrefix
-   = NoLockPrefix
-   | LockPrefix
-   | RepPrefix
-   | RepZPrefix
-   | RepNZPrefix
-  deriving (Show, Eq)
-
-ppLockPrefix :: LockPrefix -> Doc
-ppLockPrefix NoLockPrefix = PP.empty
-ppLockPrefix LockPrefix = text "lock"
-ppLockPrefix RepPrefix  = text "rep"
-ppLockPrefix RepZPrefix = text "repz"
-ppLockPrefix RepNZPrefix = text "repnz"

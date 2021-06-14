@@ -6,6 +6,7 @@ Maintainer  : jhendrix@galois.com
 Defines types for x86 registers.
 -}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -78,10 +79,12 @@ module Flexdis86.Register (
   , YMMReg(..), ymmReg, ymmRegNo, ymmRegIdx
   ) where
 
+import qualified Control.DeepSeq as DS
 import           Control.Exception ( assert )
 import           Data.Bits
 import qualified Data.Vector as V
 import           Data.Word ( Word8 )
+import GHC.Generics
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -90,7 +93,9 @@ import           Data.Word ( Word8 )
 -- of the registers, and 16-19 to denote bits 8-15 of regists
 -- rax, rcx, rdx, and rbx respectively.
 newtype Reg8 = Reg8 Word8
-  deriving (Eq, Ord)
+  deriving (Eq, Generic, Ord)
+
+instance DS.NFData Reg8
 
 asLowReg :: Reg8 -> Maybe Word8
 asLowReg (Reg8 w) | w < 16 = Just w
@@ -170,7 +175,9 @@ pattern BH = HighReg8 3
 
 -- | We always get the low order 16-bits of a 64-bit register.
 newtype Reg16 = Reg16 Word8
-  deriving (Eq, Ord)
+  deriving (Eq, Generic, Ord)
+
+instance DS.NFData Reg16
 
 reg16 :: Word8 -> Reg16
 reg16 i = assert (i < 16) (Reg16 i)
@@ -217,7 +224,9 @@ pattern DI = Reg16 7
 
 -- | We always get the low order 32-bits of a 64-bit register.
 newtype Reg32 = Reg32 Word8
-  deriving (Eq, Ord)
+  deriving (Eq, Generic, Ord)
+
+instance DS.NFData Reg32
 
 reg32_reg :: Reg32 -> Reg64
 reg32_reg (Reg32 r) = Reg64 r
@@ -261,7 +270,9 @@ pattern EDI = Reg32 7
 
 -- | One of the 16 64-bit general purpose registers.
 newtype Reg64 = Reg64 { unReg64 :: Word8 }
-  deriving (Eq, Ord)
+  deriving (Eq, Generic, Ord)
+
+instance DS.NFData Reg64
 
 reg64 :: Word8 -> Reg64
 reg64 = Reg64

@@ -20,6 +20,7 @@ module Flexdis86.InstructionSet
   ) where
 
 import           Control.Applicative
+import qualified Data.ByteString.Char8 as BSC
 import           Data.Int
 import           Data.Word
 import           Numeric (showHex)
@@ -252,7 +253,7 @@ data InstructionInstanceF a
           -- This is a direct encoding of the @aso@ prefix (address
           -- size override)
         , iiAddrSize :: !SizeConstraint
-        , iiOp   :: !String
+        , iiOp   :: !BS.ByteString
         , iiArgs :: ![a]
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
@@ -276,7 +277,7 @@ ppInstruction :: InstructionInstance
 ppInstruction i =
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
       args = fst <$> iiArgs i
-      op = iiOp i
+      op = BSC.unpack (iiOp i)
   in
    case (op, args) of
         -- special casem for one-bit shift instructions
@@ -299,7 +300,7 @@ ppInstructionWith ppv i =
   -- given the special cases
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
       args = iiArgs i
-      op = iiOp i
+      op = BSC.unpack (iiOp i)
   in
    case (op, args) of
      _ -> case (args, iiLockPrefix i) of
