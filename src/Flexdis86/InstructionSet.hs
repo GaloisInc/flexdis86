@@ -253,7 +253,7 @@ data InstructionInstanceF a
           -- This is a direct encoding of the @aso@ prefix (address
           -- size override)
         , iiAddrSize :: !SizeConstraint
-        , iiOp   :: !BS.ByteString
+        , iiOp   :: !BSC.ByteString
         , iiArgs :: ![a]
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
