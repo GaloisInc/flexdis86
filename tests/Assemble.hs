@@ -3,7 +3,6 @@
 -- Flexdis86's assembler.
 module Assemble ( assembleTests ) where
 
-import qualified Control.Lens as L
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Builder as B
 import           Data.Maybe ( mapMaybe )
@@ -12,7 +11,6 @@ import qualified Test.Tasty.HUnit as T
 import           Text.Show.Pretty ( ppShow )
 
 import qualified Flexdis86 as D
-import           Flexdis86.Prefixes ( prOSO )
 
 import           Hexdump
 import           Util ( AsmFlavor(..), withAssembledCode )
@@ -31,9 +29,9 @@ j20 = [D.JumpOffset D.JSize8 (D.FixedOffset (20 - 2))]
 testCases :: [(AsmFlavor, String, Maybe D.InstructionInstance)]
 testCases = [ (Att, "ret", mkI "ret" [])
             , (Att, "int $0x3", mkI "int3" [])
-            , (Att, "push $0x8", mkI "push" [D.ByteImm 8])
-            , (Att, "pushw $0xfff", fmap setOSO $ mkI "push" [D.WordImm 0xfff])
-            , (Att, "push $0x2000000", mkI "push" [D.DWordImm (D.Imm32Concrete 0x2000000)])
+            , (Att, "push $0x8", mkI "push" [D.ByteSignedImm 8])
+            , (Att, "pushw $0xfff", mkI "push" [D.WordSignedImm 0xfff])
+            , (Att, "push $0x2000000", mkI "push" [D.DWordSignedImm 0x2000000])
               -- The subtraction here is gross, but required because
               -- the jump is relative to the IP, which is incremented
               -- past the jump by the time it executes.
@@ -78,9 +76,6 @@ testCases = [ (Att, "ret", mkI "ret" [])
             , (Att, "jnc .+20", mkI "jae" j20)
             , (Att, "jnc .+20", mkI "jnc" j20)
             ]
-
-setOSO :: D.InstructionInstance -> D.InstructionInstance
-setOSO ii = ii { D.iiPrefixes = L.over prOSO (const True) (D.iiPrefixes ii) }
 
 mkI :: String -> [D.Value] -> Maybe D.InstructionInstance
 mkI = D.mkInstruction

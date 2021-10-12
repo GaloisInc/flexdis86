@@ -7,6 +7,7 @@ The Flexdis assembler.
 -}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE BinaryLiterals #-}
@@ -24,6 +25,7 @@ import           GHC.Stack
 import           Control.Applicative
 import           Control.Arrow ( second )
 import qualified Control.Lens as L
+import           Control.Lens ((^.))
 import qualified Control.Monad.Catch as C
 import           Control.Monad ( MonadPlus(..), guard, when )
 import           Data.Bits
@@ -83,9 +85,10 @@ findEncoding args def = do
   let opTypes = L.view defOperands def
   guard (length args == length opTypes)
   let argTypes = zip args opTypes
-  -- Always only consider case where operand size override is false.
+  -- Always only consider case where address size override is false.
   -- NOTE. We could extend this to consider both options.
-  let oso = False
+  let aso = False
+  let oso = mkOSO def argTypes
   F.forM_ argTypes $ \at -> guard (matchOperandType oso at)
   let rex = mkREX argTypes
   let vex = Nothing -- XXX: implement this
@@ -94,12 +97,12 @@ findEncoding args def = do
               -- based on args or def?
               , iiAddrSize = Size16
               , iiOp = L.view defMnemonic def
-              , iiArgs = zip args opTypes
+              , iiArgs = argTypes
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
                                       , _prSP = no_seg_prefix
                                       , _prREX = rex
                                       , _prVEX = vex
-                                      , _prASO = False
+                                      , _prASO = aso
                                       , _prOSO = oso
                                       }
               , iiRequiredPrefix = L.view requiredPrefix def
@@ -108,6 +111,62 @@ findEncoding args def = do
               , iiRequiredReg = L.view requiredReg def
               , iiRequiredRM  = L.view requiredRM  def
               }
+
+-- | Infer whether the given instruction and its arguments imply the use of an
+-- operand-size override.
+--
+-- This definition is woefully incomplete at the moment, and cases for specific
+-- instructions have been added on an as-needed basis thus far. This will
+-- conservatively return 'False' for any instruction that has not been added
+-- yet. Moreover, this currently assumes the use of 64-bit mode, so this
+-- function is liable to give incorrect results for other modes. If you need
+-- support for other modes, please file an issue.
+mkOSO :: Def -> [(Value, OperandType)] -> Bool
+mkOSO def argTypes
+    -- In 64-bit mode, the default operand size for `push` is 64 bits. If a
+    -- 16-bit operand is used, it must be due to an operand-size override.
+  | def^.defMnemonic == "push"
+  = case argTypes of
+     []      -> error "`push` instruction with no operands"
+     (_:_:_) -> error "`push` instruction with more than one operand"
+
+     -- The cases that are enumerated below are based off of the opcode table
+     -- for `push` (https://www.felixcloutier.com/x86/push)
+     [(Mem16{},             _)] -> True
+     [(o@Mem32{},           _)] -> notEncodable "push" o
+     [(Mem64{},             _)] -> False
+
+     [(WordReg{},           _)] -> True
+     [(o@DWordReg{},        _)] -> notEncodable "push" o
+     [(QWordReg{},          _)] -> False
+
+     [(ByteSignedImm{},     _)] -> False
+     [(WordSignedImm{},     _)] -> True
+     [(DWordSignedImm{},    _)] -> False
+
+     [(ByteImm{},           _)] -> False
+     [(WordImm{},           _)] -> True
+     [(DWordImm{},          _)] -> False
+
+     [(o@(SegmentValue CS), _)] -> invalid "push" o
+     [(o@(SegmentValue SS), _)] -> invalid "push" o
+     [(o@(SegmentValue DS), _)] -> invalid "push" o
+     [(o@(SegmentValue ES), _)] -> invalid "push" o
+     [(SegmentValue FS,     _)] -> False
+     [(SegmentValue GS,     _)] -> False
+
+     [(o,                   _)] -> notEncodable "push" o
+
+  | otherwise
+  = False
+  where
+    notEncodable :: String -> Value -> a
+    notEncodable instr operand = error $
+      "`" ++ instr ++ "` instruction with `" ++ show operand ++ "` operand not encodable"
+
+    invalid :: String -> Value -> a
+    invalid instr operand = error $
+      "Invalid `" ++ instr ++ "` instruction with `" ++ show operand ++ "` operand"
 
 -- | The REX prefix modifies instructions to operate over 64 bit operands.
 --
