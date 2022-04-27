@@ -84,8 +84,8 @@ mkTest :: (AsmFlavor, String, Maybe D.InstructionInstance) -> T.TestTree
 mkTest (_flavor, asm, Nothing) = T.testCase asm $ T.assertFailure ("The mkI failed for " ++ asm)
 mkTest (flavor, asm, Just inst) = T.testCase asm $ do
   withAssembledCode flavor [asm] $ \codeBytes -> do
-    let Just bldr = (D.assembleInstruction inst)
-        sbs = LB.toStrict (B.toLazyByteString bldr)
+    bldr <- D.assembleInstruction inst
+    let sbs = LB.toStrict (B.toLazyByteString bldr)
         disAddrs = D.disassembleBuffer codeBytes
         disInsts = mapMaybe D.disInstruction disAddrs
         disString = case disInsts of

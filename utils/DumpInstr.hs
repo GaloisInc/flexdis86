@@ -24,7 +24,9 @@ instance ByteReader SimpleByteReader where
       Just (b, bs') -> SBR (put bs') >> return b
 
 instance Monad SimpleByteReader where
+#if !(MIN_VERSION_base(4,11,0))
   return v      = SBR (return v)
+#endif
   (SBR v) >>= f = SBR $ v >>= unSBR . f
 #if !(MIN_VERSION_base(4,13,0))
   fail = Fail.fail

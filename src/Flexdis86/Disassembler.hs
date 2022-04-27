@@ -511,7 +511,9 @@ checkRequiredReg pfxdefs
 mkFin8Vector :: Monad m => (Fin8 -> m v) -> m (V.Vector v)
 mkFin8Vector f = do
   let g i =
-        let Just j = asFin8 (fromIntegral i)
+        let j = case asFin8 (fromIntegral i) of
+                  Just j' -> j'
+                  Nothing -> error $ "internal: Expected number between 0-7, received " ++ show i
          in f j
   V.generateM 8 g
 
@@ -950,12 +952,15 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
         decode :: BS.ByteString
                -> Decoder InstructionInstance
                -> [(Int, Maybe InstructionInstance)]
-        decode bs _ | BS.null bs = []
-        decode bs Fail{} = (1, Nothing):decode bs' decoder
-          where Just (_,bs') = BS.uncons bs
-        decode bs (Partial f) = decode bs (f (Just bs))
-        decode bs (Done bs' _ i) = (n, Just i) : decode bs' decoder
-          where n = BS.length bs - BS.length bs'
+        decode bs d =
+          case BS.uncons bs of
+            Nothing -> []
+            Just (_, bsRest) ->
+              case d of
+                Fail{}       -> (1, Nothing):decode bsRest decoder
+                Partial f    -> decode bs (f (Just bs))
+                Done bs' _ i -> (n, Just i) : decode bs' decoder
+                  where n = BS.length bs - BS.length bs'
 
 ------------------------------------------------------------------------
 -- Create the diassembler
