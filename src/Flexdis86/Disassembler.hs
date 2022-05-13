@@ -6,6 +6,7 @@ Maintainer  :  jhendrix@galois.com
 This defines a disassembler based on optable definitions.
 -}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -42,6 +43,9 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import           Data.Word
 import           GHC.Stack
+-- TODO RGS: Explain why we need this
+import           Instances.TH.Lift ()
+import           Language.Haskell.TH.Syntax (Lift)
 
 import           Prelude
 
@@ -144,14 +148,14 @@ data ReadTable
    = ReadTable !Prefixes !OperandSizeConstraint !BS.ByteString !Def
      -- ^ This indicates we read with the given operand size and size constraint
    | NoParse
-  deriving (Generic, Show)
+  deriving (Generic, Lift, Show)
 
 instance DS.NFData ReadTable
 
 data RegTable a
    = RegTable !(V.Vector a)
    | RegUnchecked !a
-  deriving (Generic, Show)
+  deriving (Generic, Lift, Show)
 
 instance DS.NFData a => DS.NFData (RegTable a)
 
@@ -161,7 +165,7 @@ data ModTable
      -- | @ModTable memTable regTable@
    = ModTable !RMTable !RMTable
    | ModUnchecked !RMTable
-  deriving (Generic, Show)
+  deriving (Generic, Lift, Show)
 
 instance DS.NFData ModTable
 
@@ -173,7 +177,7 @@ data OpcodeTable
    | SkipModRM !Prefixes !Def
    | ReadModRMTable !(V.Vector ModTable)
    | ReadModRMUnchecked !ModTable
-  deriving (Generic)
+  deriving (Generic, Lift)
 
 instance DS.NFData OpcodeTable
 

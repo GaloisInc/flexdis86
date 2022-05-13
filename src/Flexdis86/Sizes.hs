@@ -7,6 +7,7 @@ Maintainer  : jhendrix@galois.com
 Defines size types in the udis86 file.
 -}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Trustworthy #-}
 module Flexdis86.Sizes (
@@ -26,16 +27,17 @@ import qualified Control.DeepSeq as DS
 import Data.Bits
 import Data.Word ( Word8 )
 import GHC.Generics
+import Language.Haskell.TH.Syntax (Lift)
 
 -- | Describes the size of a value.
 data SizeConstraint = Size16 | Size32 | Size64 | Size128 | Size256
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData SizeConstraint
 
 -- | Describes whether a floating point memory address value is 32, 64, or 80-bits.
 data FPSizeConstraint = FPSize32 | FPSize64 | FPSize80
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData FPSizeConstraint
 
@@ -43,13 +45,13 @@ instance DS.NFData FPSizeConstraint
 -- can be only memory (e.g. !11), only a register (e.g., =11).
 data ModConstraint = OnlyMem
                    | OnlyReg
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData ModConstraint
 
 -- | A value 0-7.
 newtype Fin8 = Fin8 { unFin8 :: Word8 }
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData Fin8
 
@@ -64,7 +66,7 @@ maskFin8 v = Fin8 (v .&. 0x7)
 
 -- | A value 0-63.
 newtype Fin64 = Fin64 { unFin64 :: Word8 }
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData Fin64
 

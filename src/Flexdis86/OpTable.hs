@@ -8,6 +8,7 @@ instruction set.
 -}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -57,6 +58,9 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Word
 import           GHC.Generics
+-- TODO RGS: Needed for ByteString instance
+import           Instances.TH.Lift ()
+import           Language.Haskell.TH.Syntax (Lift)
 import           Numeric (readDec, readHex)
 import           Text.XML.Light
 
@@ -198,7 +202,7 @@ data Mode
    = Default64
      -- | Instruction is invalid in x64 mode.
    | Invalid64
-  deriving (Eq, Generic, Ord,Show)
+  deriving (Eq, Generic, Lift, Ord,Show)
 
 instance DS.NFData Mode
 
@@ -243,7 +247,7 @@ data CPURequirement
 
    -- | Multi-precision add-carry instructions
    | ADX
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData CPURequirement
 
@@ -280,7 +284,7 @@ parse_CPURequirement c = do
 
 -- | Defines whether instuction is vendor specific.
 data Vendor = AMD | Intel
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData Vendor
 
@@ -301,7 +305,7 @@ data ModeLimit
    | Only32
    | Only64
    | Not64
-  deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData ModeLimit
 
@@ -450,7 +454,7 @@ data OperandSizeConstraint
    = OpSize16
    | OpSize32
    | OpSize64
-  deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData OperandSizeConstraint
 
@@ -481,7 +485,7 @@ data Def = Def  { _defMnemonic :: !BS.ByteString
                 , _vexPrefixes  :: ![ [Word8] ]
                   -- ^ Allowed VEX prefixes for this instruction.
                 , _defOperands  :: ![OperandType]
-                } deriving (Eq, Generic, Show)
+                } deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData Def
 

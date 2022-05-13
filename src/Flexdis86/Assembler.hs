@@ -6,6 +6,7 @@ Maintainer  : tristan@galois.com
 The Flexdis assembler.
 -}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Trustworthy #-}
@@ -37,6 +38,7 @@ import qualified Data.Map.Strict as M
 import           Data.Maybe ( fromMaybe, isJust )
 import           Data.Monoid
 import           Data.Word
+import           Language.Haskell.TH.Syntax ( Lift )
 
 import           Prelude
 
@@ -51,7 +53,7 @@ import           Flexdis86.Sizes
 data AssemblerContext =
   AssemblerContext { acDefs :: M.Map B.ByteString [Def]
                    }
-  deriving (Show)
+  deriving (Lift, Show)
 
 mkX64Assembler :: B.ByteString -> Either String AssemblerContext
 mkX64Assembler bs = (assemblerContext . filter defSupported) <$> parseOpTable bs

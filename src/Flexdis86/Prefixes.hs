@@ -6,6 +6,7 @@ Maintainer  : jhendrix@galois.com
 Defines prefix operations.
 -}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE RankNTypes #-}
 module Flexdis86.Prefixes
   ( Prefixes(..)
@@ -37,6 +38,7 @@ import           Control.Lens
 import qualified Data.Bits as B
 import           Data.Word ( Word8 )
 import GHC.Generics
+import           Language.Haskell.TH.Syntax (Lift)
 import           Numeric ( showHex )
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
@@ -50,7 +52,7 @@ import           Flexdis86.Sizes
 
 -- | Includes segment prefix and branch override hints.
 newtype SegmentPrefix = SegmentPrefix { unwrapSegmentPrefix :: Word8 }
-  deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData SegmentPrefix
 
@@ -76,7 +78,7 @@ data LockPrefix
    | RepPrefix
    | RepZPrefix
    | RepNZPrefix
-  deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData LockPrefix
 
@@ -92,7 +94,7 @@ ppLockPrefix RepNZPrefix = text "repnz"
 
 -- | REX value for 64-bit mode.
 newtype REX = REX { unREX :: Word8 }
-  deriving (Eq, Generic)
+  deriving (Eq, Generic, Lift)
 
 instance DS.NFData REX
 
@@ -126,7 +128,7 @@ instance Show REX where
 
 data VEX = VEX2 Word8{-1-}              -- ^ Byte of a 2-byte VEX prefix
          | VEX3 Word8{-1-} Word8{-2-}   -- ^ Byte 1 and 2 of 3-byte VEX prefix
-           deriving (Eq, Generic, Show)
+           deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData VEX
 
@@ -141,7 +143,7 @@ data Prefixes = Prefixes { _prLockPrefix :: !LockPrefix
                          , _prASO :: !Bool
                          , _prOSO :: !Bool
                          }
-                deriving (Eq, Generic, Show)
+                deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData Prefixes
 
