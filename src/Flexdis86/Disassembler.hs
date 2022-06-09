@@ -415,16 +415,14 @@ mkVexPrefixes def = map cvt (def ^. vexPrefixes)
 -- We calculate all allowed prefixes for the instruction in the first
 -- argument.  This simplifies parsing at the cost of extra space.
 mkOpcodeTable ::  [Def] -> ParserGen OpcodeTable
-mkOpcodeTable defs = go [] (concatMap allPrefixedOpcodes defs)
+mkOpcodeTable defs = go (concatMap allPrefixedOpcodes defs)
   where -- Recursive function that generates opcode table by parsing
         -- opcodes in first element of list.
-        go :: -- Opcode bytes parsed so far.
-              [Word8]
-              -- Potential opcode definitions with the remaining opcode
+        go :: -- Potential opcode definitions with the remaining opcode
               -- bytes each potential definition expects.
-           -> [([Word8], (Prefixes, Def))]
+              [([Word8], (Prefixes, Def))]
            -> ParserGen OpcodeTable
-        go seen l
+        go l
            -- If we have parsed all the opcodes expected by the remaining
            -- definitions.
           | all opcodeDone l = do
@@ -442,7 +440,7 @@ mkOpcodeTable defs = go [] (concatMap allPrefixedOpcodes defs)
             -- opcode match.
           | otherwise = assert (all (not.opcodeDone) l) $ do
             let v = partitionBy l
-                g i = go (fromIntegral i:seen) (v V.! i)
+                g i = go (v V.! i)
             tbl <- V.generateM 256 g
             pure $! OpcodeTable tbl
         -- Return whether opcode parsing is done.
