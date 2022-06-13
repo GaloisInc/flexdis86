@@ -257,6 +257,7 @@ data InstructionInstanceF a
         , iiArgs :: ![a]
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
+          -- | List of opcodes, which should always be nonempty.
         , iiOpcode :: [Word8]
         , iiRequiredMod :: Maybe ModConstraint
         , iiRequiredReg :: Maybe Fin8
@@ -284,7 +285,8 @@ ppInstruction i =
      (_, [dst, ByteImm 1])
        | op `elem` nonHex1Instrs ->
            text (padToWidth 6 op) <+> ppValue dst <> comma <> text "1"
-     -- objdump prints as nop
+     -- objdump prints `xchg (e)ax,(e)ax` as nop
+     ("xchg", [WordReg   AX, WordReg   AX]) -> text "nop"
      ("xchg", [DWordReg EAX, DWordReg EAX]) -> text "nop"
      _ -> case (args, iiLockPrefix i) of
             ([], NoLockPrefix) -> text op
