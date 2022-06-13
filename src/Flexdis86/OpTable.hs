@@ -474,6 +474,8 @@ data Def = Def  { _defMnemonic :: !BS.ByteString
                   -- ^ List of allowed prefixes.
                 , _requiredPrefix :: Maybe Word8
                 , _defOpcodes :: [Word8]
+                  -- ^ List of opcodes, which should be nonempty for
+                  -- a complete 'Def'.
                 , _requiredMod :: Maybe ModConstraint
                 , _requiredReg :: Maybe Fin8
                 , _requiredRM :: Maybe Fin8
@@ -528,7 +530,7 @@ defPrefix = lens _defPrefix (\s v -> s { _defPrefix = v })
 requiredPrefix :: Lens' Def (Maybe Word8)
 requiredPrefix = lens _requiredPrefix (\s v -> s { _requiredPrefix = v })
 
--- | Opcodes on instruction.
+-- | Opcodes on instruction. This should be nonempty for a complete 'Def'.
 defOpcodes :: Lens' Def [Word8]
 defOpcodes = lens _defOpcodes (\s v -> s { _defOpcodes = v })
 

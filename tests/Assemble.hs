@@ -86,7 +86,7 @@ mkTest (flavor, asm, Just inst) = T.testCase asm $ do
   withAssembledCode flavor [asm] $ \codeBytes -> do
     bldr <- D.assembleInstruction inst
     let sbs = LB.toStrict (B.toLazyByteString bldr)
-        disAddrs = D.disassembleBuffer codeBytes
+        disAddrs = D.disassembleBuffer' codeBytes
         disInsts = mapMaybe D.disInstruction disAddrs
         disString = case disInsts of
           [i] -> ppShow i

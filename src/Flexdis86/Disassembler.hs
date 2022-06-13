@@ -9,20 +9,29 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Disassembler
   ( mkX64Disassembler
+  , mkX64Disassembler'
   , NextOpcodeTable
+  , NextOpcodeTable'
   , nextOpcodeSize
+  , nextOpcodeSize'
   , disassembleInstruction
+  , disassembleInstruction'
   , DisassembledAddr(..)
   , tryDisassemble
+  , tryDisassemble'
   , disassembleBuffer
+  , disassembleBuffer'
   ) where
 
 import           Control.Applicative
@@ -30,14 +39,19 @@ import qualified Control.DeepSeq as DS
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad.Except
+import           Control.Monad.State.Strict
 import           Data.Binary.Get (Decoder(..), runGetIncremental)
 import           Data.Bits
 import qualified Data.ByteString as BS
+import           Data.Either (isLeft)
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.Foldable as F
 import           GHC.Generics
 import           Data.Int
-import           Data.List (subsequences, permutations)
+import           Data.List (subsequences, partition, permutations)
+import qualified Data.Map as Map
 import           Data.Maybe
+import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import           Data.Word
@@ -53,6 +67,10 @@ import           Flexdis86.Prefixes
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
+
+-- TODO RGS: Delete these
+-- import Debug.Trace
+-- import Text.Show.Pretty (ppShow)
 
 ------------------------------------------------------------------------
 -- REX
@@ -165,6 +183,20 @@ data ModTable
 
 instance DS.NFData ModTable
 
+-- | TODO RGS: Wat
+type ReadTable' = [Def]
+
+-- | TODO RGS: Wat
+type RMTable' = RegTable ReadTable'
+
+-- | TODO RGS: Wat
+data ModTable'
+   = ModTable' !RMTable' !RMTable'
+   | ModUnchecked' !RMTable'
+  deriving (Generic, Show)
+
+instance DS.NFData ModTable'
+
 ------------------------------------------------------------------------
 -- OpcodeTable/NextOpcodeTable mutually recursive definitions
 
@@ -180,6 +212,30 @@ instance DS.NFData OpcodeTable
 -- | A NextOpcodeTable describes a table of parsers to read based on the bytes.
 type NextOpcodeTable = V.Vector OpcodeTable
 
+-- | TODO RGS: Wat
+data OpcodeTable'
+   = OpcodeTable' !NextOpcodeTable'
+   | OpcodeTableEntry ![Def] -- Defs expecting a ModR/M byte
+                             -- TODO RGS: Is this always a singleton list? Worth checking
+                      ![Def] -- Defs not expecting a ModR/M byte
+  deriving (Generic)
+
+{-
+-- TODO RGS: Delete me
+-- | TODO RGS: Wat
+data OpcodeTable'
+   = OpcodeTable' !NextOpcodeTable'
+   | SkipModRM' ![Def]
+   | ReadModRMTable' !(V.Vector ModTable')
+   | ReadModRMUnchecked' !ModTable'
+  deriving (Generic)
+-}
+
+instance DS.NFData OpcodeTable'
+
+-- | TODO RGS: Wat
+type NextOpcodeTable' = V.Vector OpcodeTable'
+
 ------------------------------------------------------------------------
 -- OpcodeTable/NextOpcodeTable instances
 
@@ -192,6 +248,9 @@ runParserGen p = runExcept p
 
 type PfxTableFn t = [(Prefixes, Def)] -> ParserGen t
 -- ^ Given a list of presfixes and a definition this?
+
+type DefTableFn t = [Def] -> ParserGen t
+-- ^ TODO RGS: Wat
 
 prefixOperandSizeConstraint :: Prefixes -> Def -> OperandSizeConstraint
 prefixOperandSizeConstraint pfx d
@@ -258,10 +317,21 @@ modRMOperand nm =
     VVVV_XMM {} -> False
 
 -- | Split entries based on first identifier in list of bytes.
-partitionBy :: [([Word8], (Prefixes, Def))] -> V.Vector [([Word8], (Prefixes, Def))]
+partitionBy :: Show a => [([Word8], a)] -> V.Vector [([Word8], a)]
 partitionBy l = V.create $ do
   mv <- VM.replicate 256 []
   let  go ([], d) = error $ "internal: empty bytes in partitionBy at def " ++ show d
+       go (w:wl,d) = do
+         el <- VM.read mv (fromIntegral w)
+         VM.write mv (fromIntegral w) ((wl,d):el)
+  mapM_ go l
+  return mv
+
+-- | TODO RGS: Wat
+partitionBy' :: Show a => [([Word8], a)] -> V.Vector [([Word8], a)]
+partitionBy' l = V.create $ do
+  mv <- VM.replicate 256 []
+  let  go ([], _d) = pure ()
        go (w:wl,d) = do
          el <- VM.read mv (fromIntegral w)
          VM.write mv (fromIntegral w) ((wl,d):el)
@@ -303,6 +373,11 @@ type PrefixAssignFun = Prefixes -> Prefixes
 -- | A list of paisr which map prefix bytes corresponding to prefixes to the associated update function.
 type PrefixAssignTable = [([Word8], PrefixAssignFun)]
 
+{-
+-- | TODO RGS: Wat
+type PrefixMnemonicMap = Map.Map String [([Word8], PrefixAssignFun)]
+-}
+
 -- Given a list of allowed prefixes
 simplePrefixes :: BS.ByteString -> [String] -> PrefixAssignTable
 simplePrefixes mnem allowed
@@ -310,6 +385,7 @@ simplePrefixes mnem allowed
       "Instruction " ++ BSC.unpack mnem ++ " should not be allowed to have both rep and repz as prefixes"
   | otherwise = [ v | (name, v) <- pfxs, name `elem` allowed ]
   where
+    -- TODO RGS: Deduplicate? (Probably not needed)
     pfxs =  [ ("lock",  ([0xf0], set prLockPrefix LockPrefix))
             , ("repnz", ([0xf2], set prLockPrefix RepNZPrefix))
             , ("repz",  ([0xf3], set prLockPrefix RepZPrefix))
@@ -318,11 +394,40 @@ simplePrefixes mnem allowed
             , ("aso",   ([0x67], set prASO True))
             ]
 
+-- | TODO RGS: Wat
+-- | TODO RGS: Do we need this?
+simplePrefixBytes :: [Word8]
+simplePrefixBytes = [ 0xf0, 0xf2, 0xf3, 0x66, 0x67 ]
+
+{-
+-- | TODO RGS: Wat
+simplePrefixMnemonicMap :: PrefixMnemonicMap
+simplePrefixMnemonicMap = Map.fromList
+  [ ("lock",  [([0xf0], set prLockPrefix LockPrefix)])
+  , ("repnz", [([0xf2], set prLockPrefix RepNZPrefix)])
+  , ("repz",  [([0xf3], set prLockPrefix RepZPrefix)])
+  , ("rep",   [([0xf3], set prLockPrefix RepPrefix)])
+  , ("oso",   [([0x66], set prOSO True)])
+  , ("aso",   [([0x67], set prASO True)])
+  ]
+-}
+
 -- | Table for segment prefixes
 segPrefixes :: [String] -> PrefixAssignTable
 segPrefixes allowed
-  | "seg" `elem` allowed = [ ([x], set prSP (SegmentPrefix x)) | x <- [ 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 ] ]
+  | "seg" `elem` allowed = [ ([x], set prSP (SegmentPrefix x)) | x <- segPrefixBytes ]
   | otherwise            = []
+
+-- | TODO RGS: Wat
+segPrefixBytes :: [Word8]
+segPrefixBytes = [ 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 ]
+
+{-
+-- | TODO RGS: Wat
+segPrefixMnemonicMap :: PrefixMnemonicMap
+segPrefixMnemonicMap =
+  Map.singleton "seg" [ ([x], set prSP (SegmentPrefix x)) | x <- segPrefixBytes ]
+-}
 
 -- FIXME: we could probably share more here, rather than recalculating for each instr.
 allPrefixedOpcodes :: Def -> [([Word8], (Prefixes, Def))]
@@ -402,6 +507,22 @@ rexPrefixes allowed
                     , ("rexx", rex_x_bit)
                     , ("rexb", rex_b_bit) ]
 
+-- | TODO RGS: Wat
+rexPrefixBytes :: [Word8]
+rexPrefixBytes = [ foldl (.|.) rex_instr_pfx xs
+                 | xs <- subsequences [ rex_w_bit, rex_r_bit, rex_x_bit, rex_b_bit ]
+                 ]
+
+{-
+-- | TODO RGS: Wat
+rexPrefixMnemonicMap :: PrefixMnemonicMap
+rexPrefixMnemonicMap = Map.fromList
+  -- [ foldl (.|.) rex_instr_pfx xs
+  [ (name,
+  | xs <- subsequences [ rex_w_bit, rex_r_bit, rex_x_bit, rex_b_bit ]
+  ]
+-}
+
 
 mkVexPrefixes :: Def -> PrefixAssignTable
 mkVexPrefixes def = map cvt (def ^. vexPrefixes)
@@ -443,6 +564,74 @@ mkOpcodeTable defs = go (concatMap allPrefixedOpcodes defs)
                 g i = go (v V.! i)
             tbl <- V.generateM 256 g
             pure $! OpcodeTable tbl
+        -- Return whether opcode parsing is done.
+        opcodeDone :: ([Word8], a) -> Bool
+        opcodeDone (remaining,_) = null remaining
+
+-- | TODO RGS: Docs
+mkOpcodeTable' :: [Def] -> ParserGen OpcodeTable'
+mkOpcodeTable' defs = go (map (\d -> (d^.defOpcodes, d)) defs)
+  where -- Recursive function that generates opcode table by parsing
+        -- opcodes in first element of list.
+        go :: -- Potential opcode definitions with the remaining opcode
+              -- bytes each potential definition expects.
+              [([Word8], Def)]
+           -> ParserGen OpcodeTable'
+        go l
+          {-
+          | (if all opcodeDone l && case L.partition expectsModRM (snd <$> l) of (a,b) -> not (null a) && not (null b)
+                -- isJust (F.find (\(_, d) -> d^.defMnemonic == BSC.pack "vxorps") l)
+                then trace (unlines
+                  [ "TODO RGS mkOpcodeTable"
+                  , "# total: " ++ show (length l)
+                  -- , "# of non-opcodeDone ones: " ++ show (length $ filter (not . opcodeDone) l)
+                  , ppShow l
+                  ])
+                else id)
+            False
+          = undefined
+          -}
+           -- If we have parsed all the opcodes expected by the remaining
+           -- definitions.
+          | all opcodeDone l =
+              case partition expectsModRM (snd <$> l) of
+                (defsWithModRM, defsWithoutModRM) ->
+                  pure $! OpcodeTableEntry defsWithModRM defsWithoutModRM
+           {-
+           -- If we have parsed all the opcodes expected by the remaining
+           -- definitions.
+          | all opcodeDone l =
+              let dfs = snd <$> l in
+              if all expectsModRM dfs
+                 then do
+                   tbl <- checkRequiredReg' dfs
+                   case tbl of
+                     RegTable v -> pure $! ReadModRMTable' v
+                     RegUnchecked m -> pure $! ReadModRMUnchecked' m
+                 else assert (all (not . expectsModRM) dfs) $
+                        return $! SkipModRM' dfs
+          -}
+          {-
+          -- TODO RGS: Delete me
+          | all opcodeDone l = do
+              case l of
+                _ | all (expectsModRM.snd) l -> do
+                     tbl <- checkRequiredReg' (snd <$> l)
+                     case tbl of
+                       RegTable v -> pure $! ReadModRMTable' v
+                       RegUnchecked m -> pure $! ReadModRMUnchecked' m
+                [([],d)] -> assert (not (expectsModRM d)) $
+                    return $! SkipModRM' d
+                _ -> error $ "mkOpcodeTable: ambiguous operators " ++ show l
+          -}
+            -- If we still have opcodes to parse, check that all definitions
+            -- expect at least one more opcode, and generate table for next
+            -- opcode match.
+          | otherwise = do {-- TODO RGS: Delete this? -} -- assert (all (not.opcodeDone) l) $ do
+            let v = partitionBy' l
+                g i = go (v V.! i)
+            tbl <- V.generateM 256 g
+            pure $! OpcodeTable' tbl
         -- Return whether opcode parsing is done.
         opcodeDone :: ([Word8], a) -> Bool
         opcodeDone (remaining,_) = null remaining
@@ -494,6 +683,51 @@ mkModTable pfxdefs
     tbl <- checkRequiredRM  pfxdefs
     pure $! ModUnchecked tbl
 
+-- | TODO RGS: Wat
+mkModTable' :: [Def]
+            -> ParserGen ModTable'
+mkModTable' defs
+  | any requireModCheck defs = do
+    let memDef d =
+          case d^.requiredMod of
+            Just OnlyReg -> False
+            _ -> none modRMRegOperand (d^.defOperands)
+        modRMRegOperand nm =
+          case nm of
+            OpType sc _ ->
+              case sc of
+                ModRM_rm_mod3 -> True
+                _ -> False
+            MXRX _ _  -> True
+            RG_MMX_rm -> True -- FIXME: no MMX_reg?
+            RG_XMM_rm {} -> True
+            RG_ST _   -> True
+            _         -> False
+    let regDef d =
+          case d^.requiredMod of
+            Just OnlyMem -> False
+            _ -> none modRMMemOperand (d^.defOperands)
+        modRMMemOperand nm =
+          case nm of
+            OpType sc _ ->
+              case sc of
+                ModRM_rm -> True
+                _ -> False
+            M_FP    -> True
+            M       -> True
+            M_X _   -> True
+            M_FloatingPoint _ -> True
+            MXRX _ _ -> True
+            RM_MMX  -> True
+            RM_XMM {} -> True
+            _       -> False
+    memTbl <- checkRequiredRM' (filter memDef defs)
+    regTbl <- checkRequiredRM' (filter regDef defs)
+    pure $! ModTable' memTbl regTbl
+  | otherwise = do
+    tbl <- checkRequiredRM' defs
+    pure $! ModUnchecked' tbl
+
 checkRequiredReg :: PfxTableFn (RegTable ModTable)
 checkRequiredReg pfxdefs
   | any (\(_,d) -> isJust (d^.requiredReg)) pfxdefs = do
@@ -503,6 +737,18 @@ checkRequiredReg pfxdefs
     pure $! RegTable v
   | otherwise = do
       tbl <- mkModTable pfxdefs
+      pure $! RegUnchecked tbl
+
+-- | TODO RGS: Wat
+checkRequiredReg' :: DefTableFn (RegTable ModTable')
+checkRequiredReg' defs
+  | any (\d -> isJust (d^.requiredReg)) defs = do
+    let p i d = equalsOptConstraint i (d^.requiredReg)
+        eltFn i = mkModTable' $ filter (p i) defs
+    v <- mkFin8Vector eltFn
+    pure $! RegTable v
+  | otherwise = do
+      tbl <- mkModTable' defs
       pure $! RegUnchecked tbl
 
 -- | Make a vector with length 8 from a function over fin8.
@@ -525,6 +771,10 @@ equalsOptConstraint i (Just c) = i == c
 matchRMConstraint :: Fin8 -> (Prefixes,Def)  -> Bool
 matchRMConstraint i (_,d) = i `equalsOptConstraint` (d^.requiredRM)
 
+-- | TODO RGS: Wat
+matchRMConstraint' :: Fin8 -> Def -> Bool
+matchRMConstraint' i d = i `equalsOptConstraint` (d^.requiredRM)
+
 -- | Check required RM if needed, then forward to final table.
 checkRequiredRM :: PfxTableFn (RegTable ReadTable)
 checkRequiredRM pfxdefs
@@ -534,6 +784,15 @@ checkRequiredRM pfxdefs
      in RegTable <$> mkFin8Vector eltFn
   | otherwise = RegUnchecked <$> mkFinalTable pfxdefs
 
+-- | TODO RGS: Wat
+checkRequiredRM' :: DefTableFn (RegTable ReadTable')
+checkRequiredRM' defs
+    -- Split on the required RM value if any of the definitions depend on it
+  | any (\d -> isJust (d^.requiredRM)) defs =
+    let eltFn i = pure $ filter (i `matchRMConstraint'`) defs
+     in RegTable <$> mkFin8Vector eltFn
+  | otherwise = pure $ RegUnchecked defs
+
 mkFinalTable :: PfxTableFn ReadTable
 mkFinalTable []         = return NoParse
 mkFinalTable [(pfx, d)] =
@@ -541,6 +800,19 @@ mkFinalTable [(pfx, d)] =
    in return $ ReadTable pfx (prefixOperandSizeConstraint pfx d) nm d
 mkFinalTable pfxdefs = throwError $ unlines
                           ("parseTable ambiguous" : map show pfxdefs)
+
+{-
+mkFinalTable' :: DefTableFn ReadTable'
+mkFinalTable' defs = return $ ReadTable' defs
+
+-- TODO RGS: Delete me
+mkFinalTable' [] = return NoParse'
+mkFinalTable' [d] =
+  let nm = d^.defMnemonic
+   in return $ ReadTable' nm d
+mkFinalTable' defs = throwError $ unlines
+                        ("parseTable ambiguous" : map show defs)
+-}
 
 ------------------------------------------------------------------------
 -- Parsing
@@ -582,12 +854,44 @@ parseReadTable modRM (ReadTable pfx osz nm df) = do
           }
   finish <$> traverse (parseValueType pfx osz (Just modRM)) (view defOperands df)
 
+-- | TODO RGS: Wat
+parseReadTable' :: ByteReader m
+                => [Word8]
+                -> ModRM
+                -> ReadTable'
+                -> m InstructionInstance
+parseReadTable' prefixBytes modRM dfs = do
+  (pfx, df) <- matchDefWithPrefixBytes prefixBytes dfs
+  let osz = prefixOperandSizeConstraint pfx df
+  let finish args =
+        II
+          { iiLockPrefix = pfx ^. prLockPrefix,
+            iiAddrSize = prAddrSize pfx,
+            iiOp = df^.defMnemonic,
+            iiArgs = args,
+            iiPrefixes = pfx,
+            iiRequiredPrefix = view requiredPrefix df,
+            iiOpcode = view defOpcodes df,
+            iiRequiredMod = view requiredMod df,
+            iiRequiredReg = view requiredReg df,
+            iiRequiredRM = view requiredRM df
+          }
+  finish <$> traverse (parseValueType pfx osz (Just modRM)) (view defOperands df)
+
 getReadTable ::
   ModRM ->
   RMTable ->
   ReadTable
 getReadTable modRM (RegTable v) = v V.! fromIntegral (modRM_rm modRM)
 getReadTable _modRM (RegUnchecked m) = m
+
+-- | TODO RGS: Docs
+getReadTable' ::
+  ModRM ->
+  RMTable' ->
+  ReadTable'
+getReadTable' modRM (RegTable v) = v V.! fromIntegral (modRM_rm modRM)
+getReadTable' _modRM (RegUnchecked m) = m
 
 getRMTable ::
   ModRM ->
@@ -599,6 +903,216 @@ getRMTable modRM mtbl =
       | modRM_mod modRM == 3 -> y
       | otherwise -> x
     ModUnchecked x -> x
+
+-- | TODO RGS: Wat
+getRMTable' ::
+  ModRM ->
+  ModTable' ->
+  RMTable'
+getRMTable' modRM mtbl =
+  case mtbl of
+    ModTable' x y
+      | modRM_mod modRM == 3 -> y
+      | otherwise -> x
+    ModUnchecked' x -> x
+
+-- | TODO RGS: Docs
+-- TODO RGS: Note that this is internal to the 'validatePrefixBytes' function
+data ValidatePrefixState = ValidatePrefixState
+  { _seenRequiredPrefix :: Bool
+  , _seenREX :: Bool
+  , _seenVEX :: Bool
+  , _prefixAssignFunMap :: Map.Map [Word8] PrefixAssignFun
+  }
+
+-- | TODO RGS: Docs
+defaultValidatePrefixState :: ValidatePrefixState
+defaultValidatePrefixState = ValidatePrefixState
+  { _seenRequiredPrefix = False
+  , _seenREX = False
+  , _seenVEX = False
+  , _prefixAssignFunMap = Map.empty
+  }
+
+-- | TODO RGS: Docs
+seenRequiredPrefix :: Lens' ValidatePrefixState Bool
+seenRequiredPrefix = lens _seenRequiredPrefix (\s v -> s { _seenRequiredPrefix = v })
+
+-- | TODO RGS: Docs
+seenREX :: Lens' ValidatePrefixState Bool
+seenREX = lens _seenREX (\s v -> s { _seenREX = v })
+
+-- | TODO RGS: Docs
+seenVEX :: Lens' ValidatePrefixState Bool
+seenVEX = lens _seenVEX (\s v -> s { _seenVEX = v })
+
+-- | TODO RGS: Docs
+prefixAssignFunMap :: Lens' ValidatePrefixState (Map.Map [Word8] PrefixAssignFun)
+prefixAssignFunMap = lens _prefixAssignFunMap (\s v -> s { _prefixAssignFunMap = v })
+
+-- | TODO RGS: Docs
+newtype ValidatePrefixM a =
+    ValidatePrefixM (ExceptT String (State ValidatePrefixState) a)
+  deriving ( Functor, Applicative, Monad
+           , MonadError String
+           , MonadState ValidatePrefixState
+           )
+
+-- | TODO RGS: Docs
+-- TODO RGS: Note that this is only used in the internals of 'validatePrefixBytes'
+evalValidatePrefixM :: ValidatePrefixState -> ValidatePrefixM a -> Either String a
+evalValidatePrefixM st (ValidatePrefixM ma) = evalState (runExceptT ma) st
+
+-- | TODO RGS: Docs
+-- TODO RGS: Note that this list of checks is almost certainly incomplete
+-- Other possible checks:
+--
+-- * Only one prefix from each group in https://wiki.osdev.org/X86-64_Instruction_Encoding#Legacy_Prefixes
+validatePrefixBytes :: [Word8] -> Def -> Either String Prefixes
+validatePrefixBytes prefixBytes def =
+  evalValidatePrefixM defaultValidatePrefixState (go prefixBytes)
+  where
+    -- TODO RGS: Don't use List.lookup here
+    go :: [Word8] -> ValidatePrefixM Prefixes
+    go (b1:b2:b3:bs)
+      | Just fun <- lookup [b1,b2,b3] vexPfxs
+      = do seenVEX .= True
+           prefixAssignFunMap %= Map.insert [b1,b2,b3] fun
+           go bs
+
+    go (b1:b2:bs)
+      | Just fun <- lookup [b1,b2] vexPfxs
+      = do seenVEX .= True
+           prefixAssignFunMap %= Map.insert [b1,b2] fun
+           go bs
+
+    go (b:bs)
+      | def^.requiredPrefix == Just b
+      = do seenRequiredPrefix .= True
+           -- Required prefix doesn't do anything, but must occur
+           prefixAssignFunMap %= Map.insert [b] id
+           go bs
+
+      | Just fun <- lookup [b] rexPfxs
+      = do seenREX .= True
+           prefixAssignFunMap %= Map.insert [b] fun
+           go bs
+
+      | Just fun <- lookup [b] (segPfxs ++ simplePfxs)
+      = do prefixAssignFunMap %= Map.insert [b] fun
+           go bs
+
+      | otherwise
+      = throwError "TODO RGS 1"
+
+    go [] = do
+      st <- get
+      let pfx = appList (Map.elems (st^.prefixAssignFunMap)) defaultPrefix
+      if |  isJust (def^.requiredPrefix)
+         ,  not (st^.seenRequiredPrefix)
+         -> throwError "TODO RGS 2"
+
+         |  st^.seenREX, st^.seenVEX
+         -> throwError "TODO RGS 3"
+
+         |  not (null vexPfxs), not (st^.seenVEX)
+         -> throwError "TODO RGS 4"
+
+         |  validPrefix pfx def
+         -> pure pfx
+
+         |  otherwise
+         -> throwError "TODO RGS otherwise"
+
+    appList :: [a -> a] -> a -> a
+    appList = foldl (.) id
+
+    -- TODO RGS: Much of the comments below could stand to be revised
+    mnem = def^.defMnemonic
+    -- Get list of permitted prefixes
+    allowed = def^.defPrefix
+    -- Get all subsets of allowed segmented prefixes
+    segPfxs :: PrefixAssignTable
+    segPfxs = segPrefixes allowed
+    -- Get all subsets of allowed prefixes from REP, REPZ, ASO, OSO
+    simplePfxs :: PrefixAssignTable
+    simplePfxs = simplePrefixes mnem allowed
+
+    rexPfxs :: PrefixAssignTable
+    rexPfxs = rexPrefixes allowed
+
+    vexPfxs :: PrefixAssignTable
+    vexPfxs = mkVexPrefixes def
+
+    {-
+    -- Function to prepend required prefixes
+    checkRequiredPrefix ::  Bool
+    checkRequiredPrefix =
+      case def^.requiredPrefix of
+        Nothing -> True
+        -- Required prefix doesn't do anything, but must occur
+        Just b  -> all (\(v,_) -> v /= [b]) (segPfxs ++ simplePfxs)
+
+    -- Function to prepend required prefixes
+    prependRequiredPrefix :: PrefixAssignTable -> PrefixAssignTable
+    prependRequiredPrefix pfx =
+      case def^.requiredPrefix of
+        Nothing -> pfx
+        -- Required prefix doesn't do anything, but must occur
+        Just b  -> [([b], id)] ++ pfx
+    -- all possible permutations of the allowed prefixes
+    -- FIXME: check that the required prefix doesn't occur in the allowed prefixes
+    segs   :: [PrefixAssignTable]
+    segs   = concatMap permutations -- get all permutations
+           $ map prependRequiredPrefix -- add required prefix to every allowed prefix
+           $ subsequences simplePfxs ++ [ v : vs | v <- segPfxs, vs <- subsequences simplePfxs ]
+    -- above with REX or VEX.  Having both is #UD.
+    rexs   :: [PrefixAssignTable]
+    rexs
+      | null (def ^. vexPrefixes) =
+          segs ++ [ seg ++ [v] | seg <- segs, v <- rexPrefixes allowed ]
+      | otherwise = [ seg ++ [v] | seg <- segs, v <- mkVexPrefixes def ]
+    -}
+
+    defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
+                             , _prSP  = no_seg_prefix
+                             , _prREX = no_rex
+                             , _prVEX = Nothing
+                             , _prASO = False
+                             , _prOSO = False
+                             }
+
+-- | TODO RGS: Docs
+-- TODO RGS: Perhaps we should just short-circuit when we find the first def,
+-- adding an assertion that the remaining defs don't match
+findDefWithPrefixBytes :: [Word8] -> [Def] -> Either String (Prefixes, Def)
+findDefWithPrefixBytes prefixBytes defs =
+  case mapMaybe match defs of
+    [pfxdef] -> Right pfxdef
+    []       -> Left "TODO RGS: No parse"
+    (_:_:_)  -> Left "TODO RGS: Ambiguous parse"
+  where
+    match :: Def -> Maybe (Prefixes, Def)
+    match def =
+      case validatePrefixBytes prefixBytes def of
+        Left _err -> {-trace (unlines [ "TODO RGS findDefWithPrefixBytes", _err ])-} Nothing
+        Right pfx -> Just (pfx, def)
+
+-- | TODO RGS: Docs
+-- TODO RGS: Note that the only monadic thing this can do is fail
+matchDefWithPrefixBytes :: Monad m => [Word8] -> [Def] -> m (Prefixes, Def)
+matchDefWithPrefixBytes prefixBytes defs =
+  {-
+  (if findDefWithPrefixBytes prefixBytes defs == Left "TODO RGS: Ambiguous parse"
+      then trace (unlines
+             [ "TODO RGS matchDefWithPrefixBytes"
+             , show prefixBytes
+             , show $ length defs
+             , show defs
+             ])
+      else id) $
+  -}
+  either error pure $ findDefWithPrefixBytes prefixBytes defs
 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: ByteReader m
@@ -630,6 +1144,133 @@ disassembleInstruction tr0 = do
     ReadModRMUnchecked mtbl -> do
       modRM <- readModRM
       parseReadTable modRM (getReadTable modRM (getRMTable modRM mtbl))
+
+-- | TODO RGS: Wat
+disassembleInstruction' :: forall m
+                         . ByteReader m
+                        => NextOpcodeTable'
+                        -> m InstructionInstance
+disassembleInstruction' tr0 = loopPrefixBytes Seq.empty
+  where
+    -- TODO RGS: Docs
+    loopPrefixBytes :: Seq.Seq Word8 -> m InstructionInstance
+    loopPrefixBytes prefixBytes = do
+      b <- readByte
+      if |  b `elem` simplePrefixBytes
+         -> loopPrefixBytes (prefixBytes Seq.|> b)
+
+         |  b `elem` segPrefixBytes
+         -> loopPrefixBytes (prefixBytes Seq.|> b)
+
+         |  b `elem` rexPrefixBytes
+         -> loopPrefixBytes (prefixBytes Seq.|> b)
+
+            -- TODO RGS: Carefully comment this
+         |  b == 0xc5
+         -> do b2 <- readByte
+               loopPrefixBytes (prefixBytes Seq.>< Seq.fromList [b, b2])
+
+         |  b == 0xc4
+         -> do b2 <- readByte
+               b3 <- readByte
+               loopPrefixBytes (prefixBytes Seq.>< Seq.fromList [b, b2, b3])
+
+         |  otherwise
+         -> loopOpcodes (F.toList prefixBytes) tr0 b
+
+    -- TODO RGS: Docs
+    loopOpcodes :: [Word8]
+                -> NextOpcodeTable'
+                -> Word8
+                -> m InstructionInstance
+    loopOpcodes prefixBytes = go
+      where
+        go :: NextOpcodeTable' -> Word8 -> m InstructionInstance
+        go tr opcodeByte =
+          case tr V.! fromIntegral opcodeByte of
+            OpcodeTable' tr' -> do
+              opcodeByte' <- readByte
+              go tr' opcodeByte'
+            OpcodeTableEntry defsWithModRM defsWithoutModRM
+              |  Right (pfx, def) <- findDefWithPrefixBytes prefixBytes defsWithoutModRM
+              -> assert (all (isLeft . validatePrefixBytes prefixBytes) defsWithModRM) $
+                 disassembleWithoutModRM def pfx
+              |  otherwise
+              -> disassembleWithModRM prefixBytes defsWithModRM
+            {-
+            -- TODO RGS: Delete me
+
+            SkipModRM' dfs -> do
+                (pfx, df) <- matchDefWithPrefixBytes prefixBytes dfs
+                let osz = prefixOperandSizeConstraint pfx df
+                finish df pfx <$> traverse (parseValueType pfx osz Nothing) (df^.defOperands)
+              where finish df pfx args =
+                      II { iiLockPrefix = pfx^.prLockPrefix
+                         , iiAddrSize = prAddrSize pfx
+                         , iiOp   = df^.defMnemonic
+                         , iiArgs = args
+                         , iiPrefixes = pfx
+                         , iiRequiredPrefix = view requiredPrefix df
+                         , iiOpcode = view defOpcodes df
+                         , iiRequiredMod = view requiredMod df
+                         , iiRequiredReg = view requiredReg df
+                         , iiRequiredRM = view requiredRM df
+                         }
+            ReadModRMTable' v -> do
+              modRM <- readModRM
+              let mtbl = v V.! fromIntegral (modRM_reg modRM)
+              parseReadTable' prefixBytes modRM (getReadTable' modRM (getRMTable' modRM mtbl))
+            ReadModRMUnchecked' mtbl -> do
+              modRM <- readModRM
+              parseReadTable' prefixBytes modRM (getReadTable' modRM (getRMTable' modRM mtbl))
+            -}
+
+    -- TODO RGS: Docs
+    disassembleWithModRM :: [Word8]
+                         -> [Def]
+                         -> m InstructionInstance
+    disassembleWithModRM prefixBytes defs = do
+      let mbTbl = runParserGen $ checkRequiredReg' defs
+      -- TODO RGS: This is a bit hacky, don't use ParserGen here
+      tbl <- either error pure mbTbl
+      case tbl of
+        RegTable v -> do
+          modRM <- readModRM
+          let mtbl = v V.! fromIntegral (modRM_reg modRM)
+          parseReadTable' prefixBytes modRM (getReadTable' modRM (getRMTable' modRM mtbl))
+        RegUnchecked mtbl -> do
+          modRM <- readModRM
+          parseReadTable' prefixBytes modRM (getReadTable' modRM (getRMTable' modRM mtbl))
+
+    -- TODO RGS: Docs
+    disassembleWithoutModRM :: Def
+                            -> Prefixes
+                            -> m InstructionInstance
+    disassembleWithoutModRM df pfx =
+      let osz = prefixOperandSizeConstraint pfx df in
+      finish <$> traverse (parseValueType pfx osz Nothing) (df^.defOperands)
+      where finish args =
+              II { iiLockPrefix = pfx^.prLockPrefix
+                 , iiAddrSize = prAddrSize pfx
+                 , iiOp   = df^.defMnemonic
+                 , iiArgs = args
+                 , iiPrefixes = pfx
+                 , iiRequiredPrefix = view requiredPrefix df
+                 , iiOpcode = view defOpcodes df
+                 , iiRequiredMod = view requiredMod df
+                 , iiRequiredReg = view requiredReg df
+                 , iiRequiredRM = view requiredRM df
+                 }
+
+{-
+-- | TODO RGS: Wat
+allPrefixBytes :: Set.Set Word8
+allPrefixBytes = Set.fromList $ concat
+  [ simplePrefixBytes
+  , segPrefixBytes
+  , rexPrefixBytes
+  ]
+-}
 
 -- | Returns the size of a function.
 sizeFn :: OperandSizeConstraint -> OperandSize -> SizeConstraint
@@ -930,6 +1571,21 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
         decode bs (Partial f) = decode BS.empty (f (Just bs))
         decode _ (Done bs' _ i) = (bytesRead bs', Just i)
 
+-- | TODO RGS: Wat
+tryDisassemble' :: NextOpcodeTable' -> BS.ByteString -> (Int, Maybe InstructionInstance)
+tryDisassemble' p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction' p)
+  where bytesRead bs = BS.length bs0 - BS.length bs
+
+        -- Decode instructions.
+        decode :: BS.ByteString
+               -> Decoder InstructionInstance
+               -> (Int, Maybe InstructionInstance)
+        decode _ (Fail bs' _ _) = (bytesRead bs', Nothing)
+        -- End the recursive decoding when the input is empty. This prevents a loop.
+        decode bs (Partial _) | BS.null bs = (bytesRead bs, Nothing)
+        decode bs (Partial f) = decode BS.empty (f (Just bs))
+        decode _ (Done bs' _ i) = (bytesRead bs', Just i)
+
 -- | Parse the buffer as a list of instructions.
 --
 -- Returns a list containing offsets,
@@ -939,6 +1595,34 @@ disassembleBuffer :: NextOpcodeTable
                   -> [DisassembledAddr]
 disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
   where decoder = runGetIncremental (disassembleInstruction p)
+
+        -- Group continuous regions that cannot be disassembled together.
+        group :: Int -> [(Int, Maybe InstructionInstance)] -> [DisassembledAddr]
+        group o ((i,Nothing):(j,Nothing):r) = group o ((i+j,Nothing):r)
+        group o ((i,mv):r) = DAddr o i mv:group (o+i) r
+        group _ [] = []
+
+        -- Decode instructions.
+        decode :: BS.ByteString
+               -> Decoder InstructionInstance
+               -> [(Int, Maybe InstructionInstance)]
+        decode bs d =
+          case BS.uncons bs of
+            Nothing -> []
+            Just (_, bsRest) ->
+              case d of
+                Fail{}       -> (1, Nothing):decode bsRest decoder
+                Partial f    -> decode bs (f (Just bs))
+                Done bs' _ i -> (n, Just i) : decode bs' decoder
+                  where n = BS.length bs - BS.length bs'
+
+-- | TODO RGS: Docs
+disassembleBuffer' :: NextOpcodeTable'
+                   -> BS.ByteString
+                      -- ^ Buffer to decompose
+                   -> [DisassembledAddr]
+disassembleBuffer' p bs0 = group 0 (decode bs0 decoder)
+  where decoder = runGetIncremental (disassembleInstruction' p)
 
         -- Group continuous regions that cannot be disassembled together.
         group :: Int -> [(Int, Maybe InstructionInstance)] -> [DisassembledAddr]
@@ -983,6 +1667,47 @@ opcodeTableSize (ReadModRMUnchecked t) = modTableSize t
 nextOpcodeSize :: NextOpcodeTable -> Int
 nextOpcodeSize v = sum (opcodeTableSize <$> v)
 
+-- | TODO RGS: Wat
+opcodeTableSize' :: OpcodeTable' -> Int
+opcodeTableSize' (OpcodeTable' v) =
+  sum (opcodeTableSize' <$> v)
+opcodeTableSize' (OpcodeTableEntry defsWithModRM defsWithoutModRM) =
+  length defsWithModRM + length defsWithoutModRM
+
+-- | TODO RGS: Wat
+nextOpcodeSize' :: NextOpcodeTable' -> Int
+nextOpcodeSize' v = sum (opcodeTableSize' <$> v)
+
+{-
+-- TODO RGS: Delete this
+
+-- | TODO RGS: Wat
+readTableSize' :: ReadTable' -> Int
+readTableSize' NoParse' = 1
+readTableSize' (ReadTable' defs) = length defs
+
+-- | TODO RGS: Wat
+rmTableSize' :: RMTable' -> Int
+rmTableSize' (RegTable v) = sum (readTableSize' <$> v)
+rmTableSize' (RegUnchecked t) = readTableSize' t
+
+-- | TODO RGS: Wat
+modTableSize' :: ModTable' -> Int
+modTableSize' (ModTable' x y) = rmTableSize' x + rmTableSize' y
+modTableSize' (ModUnchecked' x) = rmTableSize' x
+
+-- | TODO RGS: Wat
+opcodeTableSize' :: OpcodeTable' -> Int
+opcodeTableSize' (OpcodeTable' v) = sum (opcodeTableSize' <$> v)
+opcodeTableSize' (SkipModRM' defs) = length defs
+opcodeTableSize' (ReadModRMTable' v) = sum (modTableSize' <$> v)
+opcodeTableSize' (ReadModRMUnchecked' t) = modTableSize' t
+
+-- | TODO RGS: Wat
+nextOpcodeSize' :: NextOpcodeTable' -> Int
+nextOpcodeSize' v = sum (opcodeTableSize' <$> v)
+-}
+
 -- | Create an instruction parser from the given udis86 parser.
 -- This is currently restricted to x64 base operations.
 mkX64Disassembler :: BS.ByteString -> Either String NextOpcodeTable
@@ -994,3 +1719,18 @@ mkX64Disassembler bs = do
     SkipModRM {} -> Left "Unexpected SkipModRM as a top-level disassemble result"
     ReadModRMTable{} -> Left "Unexpected ReadModRM as a top-level disassemble result"
     ReadModRMUnchecked{} -> Left "Unexpected ReadModRM as a top-level disassemble result"
+
+-- | TODO RGS: Wat
+mkX64Disassembler' :: BS.ByteString -> Either String NextOpcodeTable'
+mkX64Disassembler' bs = do
+  tbl <- parseOpTable bs
+  mOpTbl <- runParserGen $ mkOpcodeTable' (filter defSupported tbl)
+  case mOpTbl of
+    OpcodeTable' v -> Right $! v
+    OpcodeTableEntry{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+    {-
+    -- TODO RGS: Delete me
+    SkipModRM'{} -> Left "Unexpected SkipModRM as a top-level disassemble result"
+    ReadModRMTable'{} -> Left "Unexpected ReadModRM as a top-level disassemble result"
+    ReadModRMUnchecked'{} -> Left "Unexpected ReadModRM as a top-level disassemble result"
+    -}

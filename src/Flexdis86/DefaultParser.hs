@@ -10,6 +10,7 @@ Defines the default parser from optable.xml as compiled in.
 {-# LANGUAGE Trustworthy#-}
 module Flexdis86.DefaultParser
   ( defaultX64Disassembler
+  , defaultX64Disassembler'
   , defaultX64Assembler
   ) where
 
@@ -65,6 +66,13 @@ optableData =
 defaultX64Disassembler :: NextOpcodeTable
 defaultX64Disassembler = p
   where p = case mkX64Disassembler optableData of
+              Right v -> v
+              Left  s -> error ("defaultX64Diassembler: " ++ s)
+
+-- | TODO RGS: Wat
+defaultX64Disassembler' :: NextOpcodeTable'
+defaultX64Disassembler' = p
+  where p = case mkX64Disassembler' optableData of
               Right v -> v
               Left  s -> error ("defaultX64Diassembler: " ++ s)
 

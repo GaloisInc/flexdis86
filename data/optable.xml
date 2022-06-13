@@ -5246,43 +5246,6 @@
             <opc>0f 1f</opc>
             <opr>M</opr>
         </def>
-<!--  TODO: this is a dumb hack to deal with multi-byte nops
-            get rid of it when general prefix repetition is handled -->
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
     </instruction>
 
     <instruction>
@@ -8388,7 +8351,7 @@
         </def>
         <def>
             <pfx>oso</pfx>
-            <opc>66 90</opc>
+            <opc>90</opc>
             <opr>R0v rAX</opr>
         </def>
         <def>

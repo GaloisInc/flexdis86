@@ -257,6 +257,7 @@ data InstructionInstanceF a
         , iiArgs :: ![a]
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
+          -- | List of opcodes, which should always be nonempty.
         , iiOpcode :: [Word8]
         , iiRequiredMod :: Maybe ModConstraint
         , iiRequiredReg :: Maybe Fin8
