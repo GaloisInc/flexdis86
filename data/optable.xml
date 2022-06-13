@@ -5209,6 +5209,22 @@
     <instruction>
         <mnemonic>nop</mnemonic>
         <def>
+            <!--
+              Note that this opcode is really three instructions in one:
+
+              * nop (opcode 0x90)
+              * pause (opcode 0xf3 0x90)
+              * xchg ax,ax (opcode 0x66 0x90)
+
+              Unfortunately, the 0xf3 byte is also used as a REP prefix, and
+              the 0x66 byte is used as an OSO prefix, which poses some
+              challenges for the way that we parse instruction prefixes.
+              (See Note [x86_64 disassembly] in Flexdis86.Disassembler.) As
+              a result, we instead parse all of these instructions with the
+              opcode 0x90 and check the prefixes after the fact to disambiguate
+              among the three.
+            -->
+            <pfx>rep oso</pfx>
             <opc>90</opc>
         </def>
        <def>
@@ -5244,43 +5260,6 @@
         <def>
             <pfx>oso aso seg rexr rexx rexb</pfx>
             <opc>0f 1f</opc>
-            <opr>M</opr>
-        </def>
-<!--  TODO: this is a dumb hack to deal with multi-byte nops
-            get rid of it when general prefix repetition is handled -->
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 66 66 2e 0f 1f</opc>
-            <opr>M</opr>
-        </def>
-        <def>
-            <pfx>rexr rexx rexb</pfx>
-            <opc>66 66 66 66 66 66 66 66 2e 0f 1f</opc>
             <opr>M</opr>
         </def>
     </instruction>
@@ -5634,13 +5613,6 @@
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f df</opc>
             <opr>P Q</opr>
-        </def>
-    </instruction>
-
-    <instruction>
-        <mnemonic>pause</mnemonic>
-        <def>
-            <opc>f3 90</opc>
         </def>
     </instruction>
 
@@ -8386,11 +8358,11 @@
             <opc>87</opc>
             <opr>Ev Gv</opr>
         </def>
-        <def>
-            <pfx>oso</pfx>
-            <opc>66 90</opc>
-            <opr>R0v rAX</opr>
-        </def>
+        <!--
+          The opcode-0x90 version of xchg is missing here because it is included
+          as a part of the nop instruction, which also uses opcode 0x90. See
+          the comments surroudning nop for more details.
+        -->
         <def>
             <pfx>oso rexw rexb</pfx>
             <opc>91</opc>
@@ -9944,18 +9916,26 @@
       </def>
     </instruction>
 
-    <!-- These are CFI instructions coming to Intel processors -->
+    <!--
+      These are CFI instructions coming to Intel processors
+
+      Note that the /actual/ instruction definitions have F3 at the start
+      of the opcode. However, this byte is also used for REP prefixes, so
+      to avoid ambiguity, we remove the F3 from the opcode and instead make
+      it a required prefix. See Note [x86_64 disassembly] in
+      Flexdis86.Disassembler for more details.
+    -->
     <instruction>
       <mnemonic>endbr32</mnemonic>
       <def>
-        <opc>F3 0F 1E FB</opc>
+        <opc>0F 1E FB /reqpfx=F3</opc>
       </def>
     </instruction>
 
     <instruction>
       <mnemonic>endbr64</mnemonic>
       <def>
-        <opc>F3 0F 1E FA</opc>
+        <opc>0F 1E FA /reqpfx=F3</opc>
       </def>
     </instruction>
 

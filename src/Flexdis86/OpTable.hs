@@ -42,6 +42,7 @@ module Flexdis86.OpTable
   , vexPrefixes
     -- * Parsing defs
   , parseOpTable
+  , lookupOperandType
   ) where
 
 import qualified Control.DeepSeq as DS
@@ -474,6 +475,8 @@ data Def = Def  { _defMnemonic :: !BS.ByteString
                   -- ^ List of allowed prefixes.
                 , _requiredPrefix :: Maybe Word8
                 , _defOpcodes :: [Word8]
+                  -- ^ List of opcodes, which should be nonempty for
+                  -- a complete 'Def'.
                 , _requiredMod :: Maybe ModConstraint
                 , _requiredReg :: Maybe Fin8
                 , _requiredRM :: Maybe Fin8
@@ -528,7 +531,7 @@ defPrefix = lens _defPrefix (\s v -> s { _defPrefix = v })
 requiredPrefix :: Lens' Def (Maybe Word8)
 requiredPrefix = lens _requiredPrefix (\s v -> s { _requiredPrefix = v })
 
--- | Opcodes on instruction.
+-- | Opcodes on instruction. This should be nonempty for a complete 'Def'.
 defOpcodes :: Lens' Def [Word8]
 defOpcodes = lens _defOpcodes (\s v -> s { _defOpcodes = v })
 
@@ -628,6 +631,13 @@ parse_opcode nm = do
             -- pretend we want both Reg and R/M
             requiredRM  ?= maskFin8 b -- bottom 3 bits
             requiredReg ?= maskFin8 (b `shiftR` 3)
+    -- This is a special hack used for the endbr32 and endbr64 instructions.
+    -- The first byte in their opcodes is parsed as a REP prefix, so we make
+    -- sure that it is present by marking it as a required prefix. See
+    -- Note [x86_64 disassembly] in Flexdis86.Disassembler for more details.
+    _ | Just r <- stripPrefix "/reqpfx=" nm
+      , [(b,"")] <- readHex r
+      -> requiredPrefix ?= b
 
     _ | Just r <- stripPrefix "/vex=" nm
       -> do setDefCPUReq AVX
@@ -856,7 +866,7 @@ operandHandlerMap = Map.fromList
   , (,) "Hqq" $ VVVV_XMM (Just QQSize)
   ]
 
-lookupOperandType :: BS.ByteString -> String -> ElemParser OperandType
+lookupOperandType :: MF.MonadFail m => BS.ByteString -> String -> m OperandType
 lookupOperandType i nm =
   case Map.lookup nm operandHandlerMap of
     Just h -> pure h
