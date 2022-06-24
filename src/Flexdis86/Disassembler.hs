@@ -184,7 +184,7 @@ data ModTable
 instance DS.NFData ModTable
 
 -- | TODO RGS: Wat
-type ReadTable' = [Def]
+type ReadTable' = [(Maybe VEX, Def)]
 
 -- | TODO RGS: Wat
 type RMTable' = RegTable ReadTable'
@@ -215,9 +215,9 @@ type NextOpcodeTable = V.Vector OpcodeTable
 -- | TODO RGS: Wat
 data OpcodeTable'
    = OpcodeTable' !NextOpcodeTable'
-   | OpcodeTableEntry ![Def] -- Defs expecting a ModR/M byte
-                             -- TODO RGS: Is this always a singleton list? Worth checking
-                      ![Def] -- Defs not expecting a ModR/M byte
+   | OpcodeTableEntry ![(Maybe VEX, Def)] -- Defs expecting a ModR/M byte
+                                          -- TODO RGS: Is this always a singleton list? Worth checking
+                      ![(Maybe VEX, Def)] -- Defs not expecting a ModR/M byte
   deriving (Generic)
 
 {-
@@ -249,7 +249,7 @@ runParserGen p = runExcept p
 type PfxTableFn t = [(Prefixes, Def)] -> ParserGen t
 -- ^ Given a list of presfixes and a definition this?
 
-type DefTableFn t = [Def] -> ParserGen t
+type DefTableFn t = [(Maybe VEX, Def)] -> ParserGen t
 -- ^ TODO RGS: Wat
 
 prefixOperandSizeConstraint :: Prefixes -> Def -> OperandSizeConstraint
@@ -493,6 +493,16 @@ allPrefixedOpcodes def
                              , _prOSO = False
                              }
 
+-- | TODO RGS: Docs
+allVexPrefixesAndOpcodes :: Def -> [([Word8], (Maybe VEX, Def))]
+allVexPrefixesAndOpcodes def
+  | null (def ^. vexPrefixes)
+  = [ (def^.defOpcodes, (Nothing, def)) ]
+
+  | otherwise
+  = [ (vexBytes ++ def^.defOpcodes, (Just vex, def))
+    | (vexBytes, vex) <- mkVexes def ]
+
 -- FIXME: we could also decode the REX
 rexPrefixes :: [String] -> PrefixAssignTable
 rexPrefixes allowed
@@ -533,6 +543,17 @@ mkVexPrefixes def = map cvt (def ^. vexPrefixes)
       [ _, b1, b2 ] -> (pref, set prVEX (Just (VEX3 b1 b2)))
       _             -> error "vexPrefixes: unexpected byte sequence"
 
+-- | TODO RGS: Docs
+-- TODO RGS: Define mkVexPrefixes in terms of this function?
+mkVexes :: Def -> [([Word8], VEX)]
+mkVexes def = map cvt (def ^. vexPrefixes)
+  where
+  cvt pref =
+    case pref of
+      [ _, b ]      -> (pref, VEX2 b)
+      [ _, b1, b2 ] -> (pref, VEX3 b1 b2)
+      _             -> error "mkVexes: unexpected byte sequence"
+
 -- We calculate all allowed prefixes for the instruction in the first
 -- argument.  This simplifies parsing at the cost of extra space.
 mkOpcodeTable ::  [Def] -> ParserGen OpcodeTable
@@ -570,12 +591,12 @@ mkOpcodeTable defs = go (concatMap allPrefixedOpcodes defs)
 
 -- | TODO RGS: Docs
 mkOpcodeTable' :: [Def] -> ParserGen OpcodeTable'
-mkOpcodeTable' defs = go (map (\d -> (d^.defOpcodes, d)) defs)
+mkOpcodeTable' defs = go (concatMap allVexPrefixesAndOpcodes defs)
   where -- Recursive function that generates opcode table by parsing
         -- opcodes in first element of list.
         go :: -- Potential opcode definitions with the remaining opcode
               -- bytes each potential definition expects.
-              [([Word8], Def)]
+              [([Word8], (Maybe VEX, Def))]
            -> ParserGen OpcodeTable'
         go l
           {-
@@ -594,7 +615,7 @@ mkOpcodeTable' defs = go (map (\d -> (d^.defOpcodes, d)) defs)
            -- If we have parsed all the opcodes expected by the remaining
            -- definitions.
           | all opcodeDone l =
-              case partition expectsModRM (snd <$> l) of
+              case partition (expectsModRM.snd) (snd <$> l) of
                 (defsWithModRM, defsWithoutModRM) ->
                   pure $! OpcodeTableEntry defsWithModRM defsWithoutModRM
            {-
@@ -684,10 +705,10 @@ mkModTable pfxdefs
     pure $! ModUnchecked tbl
 
 -- | TODO RGS: Wat
-mkModTable' :: [Def]
+mkModTable' :: [(Maybe VEX, Def)]
             -> ParserGen ModTable'
 mkModTable' defs
-  | any requireModCheck defs = do
+  | any (requireModCheck . snd) defs = do
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
@@ -721,8 +742,8 @@ mkModTable' defs
             RM_MMX  -> True
             RM_XMM {} -> True
             _       -> False
-    memTbl <- checkRequiredRM' (filter memDef defs)
-    regTbl <- checkRequiredRM' (filter regDef defs)
+    memTbl <- checkRequiredRM' (filter (memDef . snd) defs)
+    regTbl <- checkRequiredRM' (filter (regDef . snd) defs)
     pure $! ModTable' memTbl regTbl
   | otherwise = do
     tbl <- checkRequiredRM' defs
@@ -742,8 +763,8 @@ checkRequiredReg pfxdefs
 -- | TODO RGS: Wat
 checkRequiredReg' :: DefTableFn (RegTable ModTable')
 checkRequiredReg' defs
-  | any (\d -> isJust (d^.requiredReg)) defs = do
-    let p i d = equalsOptConstraint i (d^.requiredReg)
+  | any (\(_,d) -> isJust (d^.requiredReg)) defs = do
+    let p i (_,d) = equalsOptConstraint i (d^.requiredReg)
         eltFn i = mkModTable' $ filter (p i) defs
     v <- mkFin8Vector eltFn
     pure $! RegTable v
@@ -772,8 +793,8 @@ matchRMConstraint :: Fin8 -> (Prefixes,Def)  -> Bool
 matchRMConstraint i (_,d) = i `equalsOptConstraint` (d^.requiredRM)
 
 -- | TODO RGS: Wat
-matchRMConstraint' :: Fin8 -> Def -> Bool
-matchRMConstraint' i d = i `equalsOptConstraint` (d^.requiredRM)
+matchRMConstraint' :: Fin8 -> (Maybe VEX,Def) -> Bool
+matchRMConstraint' i (_,d) = i `equalsOptConstraint` (d^.requiredRM)
 
 -- | Check required RM if needed, then forward to final table.
 checkRequiredRM :: PfxTableFn (RegTable ReadTable)
@@ -788,7 +809,7 @@ checkRequiredRM pfxdefs
 checkRequiredRM' :: DefTableFn (RegTable ReadTable')
 checkRequiredRM' defs
     -- Split on the required RM value if any of the definitions depend on it
-  | any (\d -> isJust (d^.requiredRM)) defs =
+  | any (\(_,d) -> isJust (d^.requiredRM)) defs =
     let eltFn i = pure $ filter (i `matchRMConstraint'`) defs
      in RegTable <$> mkFin8Vector eltFn
   | otherwise = pure $ RegUnchecked defs
@@ -921,7 +942,7 @@ getRMTable' modRM mtbl =
 data ValidatePrefixState = ValidatePrefixState
   { _seenRequiredPrefix :: Bool
   , _seenREX :: Bool
-  , _seenVEX :: Bool
+  -- , _seenVEX :: Bool
   , _prefixAssignFunMap :: Map.Map [Word8] PrefixAssignFun
   }
 
@@ -930,7 +951,7 @@ defaultValidatePrefixState :: ValidatePrefixState
 defaultValidatePrefixState = ValidatePrefixState
   { _seenRequiredPrefix = False
   , _seenREX = False
-  , _seenVEX = False
+  -- , _seenVEX = False
   , _prefixAssignFunMap = Map.empty
   }
 
@@ -942,9 +963,11 @@ seenRequiredPrefix = lens _seenRequiredPrefix (\s v -> s { _seenRequiredPrefix =
 seenREX :: Lens' ValidatePrefixState Bool
 seenREX = lens _seenREX (\s v -> s { _seenREX = v })
 
+{-
 -- | TODO RGS: Docs
 seenVEX :: Lens' ValidatePrefixState Bool
 seenVEX = lens _seenVEX (\s v -> s { _seenVEX = v })
+-}
 
 -- | TODO RGS: Docs
 prefixAssignFunMap :: Lens' ValidatePrefixState (Map.Map [Word8] PrefixAssignFun)
@@ -968,12 +991,13 @@ evalValidatePrefixM st (ValidatePrefixM ma) = evalState (runExceptT ma) st
 -- Other possible checks:
 --
 -- * Only one prefix from each group in https://wiki.osdev.org/X86-64_Instruction_Encoding#Legacy_Prefixes
-validatePrefixBytes :: [Word8] -> Def -> Either String Prefixes
-validatePrefixBytes prefixBytes def =
+validatePrefixBytes :: [Word8] -> Maybe VEX -> Def -> Either String Prefixes
+validatePrefixBytes prefixBytes mbVex def =
   evalValidatePrefixM defaultValidatePrefixState (go prefixBytes)
   where
     -- TODO RGS: Don't use List.lookup here
     go :: [Word8] -> ValidatePrefixM Prefixes
+    {-
     go (b1:b2:b3:bs)
       | Just fun <- lookup [b1,b2,b3] vexPfxs
       = do seenVEX .= True
@@ -985,6 +1009,7 @@ validatePrefixBytes prefixBytes def =
       = do seenVEX .= True
            prefixAssignFunMap %= Map.insert [b1,b2] fun
            go bs
+    -}
 
     go (b:bs)
       | def^.requiredPrefix == Just b
@@ -1007,16 +1032,19 @@ validatePrefixBytes prefixBytes def =
 
     go [] = do
       st <- get
-      let pfx = appList (Map.elems (st^.prefixAssignFunMap)) defaultPrefix
+      let pfx = appList (Map.elems (st^.prefixAssignFunMap))
+                        (set prVEX mbVex defaultPrefix)
       if |  isJust (def^.requiredPrefix)
          ,  not (st^.seenRequiredPrefix)
          -> throwError "TODO RGS 2"
 
-         |  st^.seenREX, st^.seenVEX
+         |  st^.seenREX, isJust mbVex
          -> throwError "TODO RGS 3"
 
+         {-
          |  not (null vexPfxs), not (st^.seenVEX)
          -> throwError "TODO RGS 4"
+         -}
 
          |  validPrefix pfx def
          -> pure pfx
@@ -1041,8 +1069,10 @@ validatePrefixBytes prefixBytes def =
     rexPfxs :: PrefixAssignTable
     rexPfxs = rexPrefixes allowed
 
+    {-
     vexPfxs :: PrefixAssignTable
     vexPfxs = mkVexPrefixes def
+    -}
 
     {-
     -- Function to prepend required prefixes
@@ -1085,22 +1115,22 @@ validatePrefixBytes prefixBytes def =
 -- | TODO RGS: Docs
 -- TODO RGS: Perhaps we should just short-circuit when we find the first def,
 -- adding an assertion that the remaining defs don't match
-findDefWithPrefixBytes :: [Word8] -> [Def] -> Either String (Prefixes, Def)
+findDefWithPrefixBytes :: [Word8] -> [(Maybe VEX, Def)] -> Either String (Prefixes, Def)
 findDefWithPrefixBytes prefixBytes defs =
   case mapMaybe match defs of
     [pfxdef] -> Right pfxdef
     []       -> Left "TODO RGS: No parse"
     (_:_:_)  -> Left "TODO RGS: Ambiguous parse"
   where
-    match :: Def -> Maybe (Prefixes, Def)
-    match def =
-      case validatePrefixBytes prefixBytes def of
+    match :: (Maybe VEX, Def) -> Maybe (Prefixes, Def)
+    match (mbVex, def) =
+      case validatePrefixBytes prefixBytes mbVex def of
         Left _err -> {-trace (unlines [ "TODO RGS findDefWithPrefixBytes", _err ])-} Nothing
         Right pfx -> Just (pfx, def)
 
 -- | TODO RGS: Docs
 -- TODO RGS: Note that the only monadic thing this can do is fail
-matchDefWithPrefixBytes :: Monad m => [Word8] -> [Def] -> m (Prefixes, Def)
+matchDefWithPrefixBytes :: Monad m => [Word8] -> [(Maybe VEX, Def)] -> m (Prefixes, Def)
 matchDefWithPrefixBytes prefixBytes defs =
   {-
   (if findDefWithPrefixBytes prefixBytes defs == Left "TODO RGS: Ambiguous parse"
@@ -1165,6 +1195,7 @@ disassembleInstruction' tr0 = loopPrefixBytes Seq.empty
          |  b `elem` rexPrefixBytes
          -> loopPrefixBytes (prefixBytes Seq.|> b)
 
+         {-
             -- TODO RGS: Carefully comment this
          |  b == 0xc5
          -> do b2 <- readByte
@@ -1174,6 +1205,7 @@ disassembleInstruction' tr0 = loopPrefixBytes Seq.empty
          -> do b2 <- readByte
                b3 <- readByte
                loopPrefixBytes (prefixBytes Seq.>< Seq.fromList [b, b2, b3])
+         -}
 
          |  otherwise
          -> loopOpcodes (F.toList prefixBytes) tr0 b
@@ -1193,7 +1225,9 @@ disassembleInstruction' tr0 = loopPrefixBytes Seq.empty
               go tr' opcodeByte'
             OpcodeTableEntry defsWithModRM defsWithoutModRM
               |  Right (pfx, def) <- findDefWithPrefixBytes prefixBytes defsWithoutModRM
-              -> assert (all (isLeft . validatePrefixBytes prefixBytes) defsWithModRM) $
+              -> assert (all (\(mbVex, df) ->
+                               isLeft $ validatePrefixBytes prefixBytes mbVex df)
+                             defsWithModRM) $
                  disassembleWithoutModRM def pfx
               |  otherwise
               -> disassembleWithModRM prefixBytes defsWithModRM
@@ -1227,7 +1261,7 @@ disassembleInstruction' tr0 = loopPrefixBytes Seq.empty
 
     -- TODO RGS: Docs
     disassembleWithModRM :: [Word8]
-                         -> [Def]
+                         -> [(Maybe VEX, Def)]
                          -> m InstructionInstance
     disassembleWithModRM prefixBytes defs = do
       let mbTbl = runParserGen $ checkRequiredReg' defs
