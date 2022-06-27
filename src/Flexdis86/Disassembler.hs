@@ -991,6 +991,7 @@ evalValidatePrefixM st (ValidatePrefixM ma) = evalState (runExceptT ma) st
 -- TODO RGS: Note that this list of checks is almost certainly incomplete
 -- Other possible checks:
 --
+-- * No duplicate prefixes (TODO RGS: DO THIS!)
 -- * Only one prefix from each group in https://wiki.osdev.org/X86-64_Instruction_Encoding#Legacy_Prefixes
 validatePrefixBytes :: [Word8] -> Maybe VEX -> Def
                     -> Either String (Prefixes, Def)
