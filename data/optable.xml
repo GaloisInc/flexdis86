@@ -5209,6 +5209,8 @@
     <instruction>
         <mnemonic>nop</mnemonic>
         <def>
+            <!-- TODO RGS: pause and xchg Note -->
+            <pfx>rep oso</pfx>
             <opc>90</opc>
         </def>
        <def>
@@ -5597,13 +5599,6 @@
             <pfx>aso rexr rexx rexb</pfx>
             <opc>0f df</opc>
             <opr>P Q</opr>
-        </def>
-    </instruction>
-
-    <instruction>
-        <mnemonic>pause</mnemonic>
-        <def>
-            <opc>f3 90</opc>
         </def>
     </instruction>
 
@@ -8349,11 +8344,7 @@
             <opc>87</opc>
             <opr>Ev Gv</opr>
         </def>
-        <def>
-            <pfx>oso</pfx>
-            <opc>90</opc>
-            <opr>R0v rAX</opr>
-        </def>
+        <!-- TODO RGS: Note why opcode-90 xchg is missing here -->
         <def>
             <pfx>oso rexw rexb</pfx>
             <opc>91</opc>
@@ -9908,17 +9899,18 @@
     </instruction>
 
     <!-- These are CFI instructions coming to Intel processors -->
+    <!-- TODO RGS: Note the unusual treatment of these instructions -->
     <instruction>
       <mnemonic>endbr32</mnemonic>
       <def>
-        <opc>F3 0F 1E FB</opc>
+        <opc>0F 1E FB /reqpfx=F3</opc>
       </def>
     </instruction>
 
     <instruction>
       <mnemonic>endbr64</mnemonic>
       <def>
-        <opc>F3 0F 1E FA</opc>
+        <opc>0F 1E FA /reqpfx=F3</opc>
       </def>
     </instruction>
 

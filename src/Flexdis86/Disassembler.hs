@@ -12,6 +12,7 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -991,12 +992,13 @@ evalValidatePrefixM st (ValidatePrefixM ma) = evalState (runExceptT ma) st
 -- Other possible checks:
 --
 -- * Only one prefix from each group in https://wiki.osdev.org/X86-64_Instruction_Encoding#Legacy_Prefixes
-validatePrefixBytes :: [Word8] -> Maybe VEX -> Def -> Either String Prefixes
+validatePrefixBytes :: [Word8] -> Maybe VEX -> Def
+                    -> Either String (Prefixes, Def)
 validatePrefixBytes prefixBytes mbVex def =
   evalValidatePrefixM defaultValidatePrefixState (go prefixBytes)
   where
     -- TODO RGS: Don't use List.lookup here
-    go :: [Word8] -> ValidatePrefixM Prefixes
+    go :: [Word8] -> ValidatePrefixM (Prefixes, Def)
     {-
     go (b1:b2:b3:bs)
       | Just fun <- lookup [b1,b2,b3] vexPfxs
@@ -1034,7 +1036,26 @@ validatePrefixBytes prefixBytes mbVex def =
       st <- get
       let pfx = appList (Map.elems (st^.prefixAssignFunMap))
                         (set prVEX mbVex defaultPrefix)
-      if |  isJust (def^.requiredPrefix)
+      def' <-
+        if |  -- TODO RGS: Explain special-casing of xchg
+              def^.defOpcodes == [0x90] && pfx^.prOSO
+           -> do let xchgMnemonic = "xchg"
+                 let mbOprs = do
+                       opr1 <- lookupOperandType xchgMnemonic "R0v"
+                       opr2 <- lookupOperandType xchgMnemonic "rAX"
+                       pure [opr1, opr2]
+                 case mbOprs of
+                   Just oprs -> pure $ def & defMnemonic .~ xchgMnemonic
+                                           & defOperands .~ oprs
+                   Nothing   -> throwError "TODO RGS fdsafdsfdfadsfadfdsfdsafds"
+
+           |  -- TODO RGS: Explain special-casing of pause
+              def^.defOpcodes == [0x90] && pfx^.prLockPrefix == RepPrefix
+           -> pure $ set defMnemonic "pause" def
+
+           |  otherwise
+           -> pure def
+      if |  isJust (def'^.requiredPrefix)
          ,  not (st^.seenRequiredPrefix)
          -> throwError "TODO RGS 2"
 
@@ -1046,8 +1067,8 @@ validatePrefixBytes prefixBytes mbVex def =
          -> throwError "TODO RGS 4"
          -}
 
-         |  validPrefix pfx def
-         -> pure pfx
+         |  validPrefix pfx def'
+         -> pure (pfx, def')
 
          |  otherwise
          -> throwError "TODO RGS otherwise"
@@ -1126,7 +1147,7 @@ findDefWithPrefixBytes prefixBytes defs =
     match (mbVex, def) =
       case validatePrefixBytes prefixBytes mbVex def of
         Left _err -> {-trace (unlines [ "TODO RGS findDefWithPrefixBytes", _err ])-} Nothing
-        Right pfx -> Just (pfx, def)
+        Right pfxdef -> Just pfxdef
 
 -- | TODO RGS: Docs
 -- TODO RGS: Note that the only monadic thing this can do is fail

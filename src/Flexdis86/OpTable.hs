@@ -42,6 +42,7 @@ module Flexdis86.OpTable
   , vexPrefixes
     -- * Parsing defs
   , parseOpTable
+  , lookupOperandType
   ) where
 
 import qualified Control.DeepSeq as DS
@@ -630,6 +631,10 @@ parse_opcode nm = do
             -- pretend we want both Reg and R/M
             requiredRM  ?= maskFin8 b -- bottom 3 bits
             requiredReg ?= maskFin8 (b `shiftR` 3)
+    -- TODO RGS: Describe this hack
+    _ | Just r <- stripPrefix "/reqpfx=" nm
+      , [(b,"")] <- readHex r
+      -> requiredPrefix ?= b
 
     _ | Just r <- stripPrefix "/vex=" nm
       -> do setDefCPUReq AVX
@@ -858,7 +863,7 @@ operandHandlerMap = Map.fromList
   , (,) "Hqq" $ VVVV_XMM (Just QQSize)
   ]
 
-lookupOperandType :: BS.ByteString -> String -> ElemParser OperandType
+lookupOperandType :: MF.MonadFail m => BS.ByteString -> String -> m OperandType
 lookupOperandType i nm =
   case Map.lookup nm operandHandlerMap of
     Just h -> pure h

@@ -286,6 +286,7 @@ ppInstruction i =
        | op `elem` nonHex1Instrs ->
            text (padToWidth 6 op) <+> ppValue dst <> comma <> text "1"
      -- objdump prints as nop
+     ("xchg", [WordReg   AX, WordReg   AX]) -> text "nop"
      ("xchg", [DWordReg EAX, DWordReg EAX]) -> text "nop"
      _ -> case (args, iiLockPrefix i) of
             ([], NoLockPrefix) -> text op
