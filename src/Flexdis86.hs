@@ -14,11 +14,8 @@ module Flexdis86
   , module Flexdis86.Operand
     -- * Disassembler
   , disassembleInstruction
-  , disassembleInstruction'
   , tryDisassemble
-  , tryDisassemble'
   , disassembleBuffer
-  , disassembleBuffer'
   , D.DisassembledAddr(..)
   , module Flexdis86.ByteReader
     -- * Assembler
@@ -46,29 +43,14 @@ disassembleInstruction :: ByteReader m
                        => m InstructionInstance
 disassembleInstruction = D.disassembleInstruction defaultX64Disassembler
 
--- | TODO RGS: Docs
-disassembleInstruction' :: ByteReader m
-                        => m InstructionInstance
-disassembleInstruction' = D.disassembleInstruction' defaultX64Disassembler'
-
 -- | Try disassemble returns the numbers of bytes read and an instruction instance.
 tryDisassemble :: B.ByteString -> (Int, Maybe InstructionInstance)
 tryDisassemble = D.tryDisassemble defaultX64Disassembler
-
--- | TODO RGS: Docs
-tryDisassemble' :: B.ByteString -> (Int, Maybe InstructionInstance)
-tryDisassemble' = D.tryDisassemble' defaultX64Disassembler'
 
 disassembleBuffer :: B.ByteString
                      -- ^ Buffer to decompose
                   -> [D.DisassembledAddr]
 disassembleBuffer = D.disassembleBuffer defaultX64Disassembler
-
--- | TODO RGS: Wat
-disassembleBuffer' :: B.ByteString
-                      -- ^ Buffer to decompose
-                   -> [D.DisassembledAddr]
-disassembleBuffer' = D.disassembleBuffer' defaultX64Disassembler'
 
 -- | Create zero or more instruction instances from a string and arguments.
 mkInstruction :: MonadPlus m

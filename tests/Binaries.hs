@@ -39,7 +39,7 @@ binaryTests = T.testCase "Disassemble/reassemble binaries" $ do
   for_ bins $ \binPath -> do
     let minLength = 0
     codeBytes <- getTextSection (binDir </> binPath)
-    let disBuf = D.disassembleBuffer' codeBytes
+    let disBuf = D.disassembleBuffer codeBytes
     T.assertBool
       ("Disassembled something in " ++ binPath)
       (length disBuf > minLength)
