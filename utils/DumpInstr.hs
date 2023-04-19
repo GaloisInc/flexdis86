@@ -3,9 +3,10 @@
 
 module Main where
 
-import           Control.Monad.Except
+import           Control.Monad (when)
+import           Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
 import qualified Control.Monad.Fail as Fail
-import           Control.Monad.State
+import           Control.Monad.State (MonadState(..), State, evalState)
 import qualified Data.ByteString as BS
 import           Numeric (readHex)
 import           System.Environment (getArgs)

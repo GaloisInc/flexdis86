@@ -48,7 +48,8 @@ module Flexdis86.OpTable
 import qualified Control.DeepSeq as DS
 import qualified Control.Monad.Fail as MF
 import           Control.Lens
-import           Control.Monad.State
+import           Control.Monad (forM_, unless, when)
+import           Control.Monad.State (MonadState(..), execStateT, gets)
 import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
