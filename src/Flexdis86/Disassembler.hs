@@ -497,7 +497,6 @@ simplePrefixes mnem allowed
   | "rep" `elem` allowed && "repz" `elem` allowed = error $
       "Instruction " ++ BSC.unpack mnem ++ " should not be allowed to have both rep and repz as prefixes"
   | otherwise = HM.fromList [ v | (name, v) <- simplePrefixBytesFuns, name `elem` allowed ]
-  where
 
 simplePrefixBytesFuns :: [(String, (Word8, PrefixAssignFun))]
 simplePrefixBytesFuns =
