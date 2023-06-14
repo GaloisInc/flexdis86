@@ -11,6 +11,7 @@ module Flexdis86.InstructionSet
     InstructionInstance
   , InstructionInstanceF(..)
   , ppInstruction
+  , ppInstructionAsShowS
   , ppInstructionWith
   , Value(..)
   , ppValue
@@ -293,6 +294,11 @@ ppInstruction i =
             (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue <$> args)
             ([], _) -> sLockPrefix <+> text op
             (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppValue <$> args)
+
+-- | Allows libraries using `ppInstruction` to not have to depend on deprecated
+-- ansi-wl-pprint to turn instructions into `String`s.
+ppInstructionAsShowS :: InstructionInstance -> ShowS
+ppInstructionAsShowS = displayS . renderCompact . ppInstruction
 
 ppInstructionWith :: (a -> Doc)
                   -> InstructionInstanceF a
