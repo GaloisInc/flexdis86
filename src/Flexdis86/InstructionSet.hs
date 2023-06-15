@@ -43,7 +43,7 @@ padToWidth n s = fromString $ if l > 0 then s ++ replicate (n - l) ' ' else s
   where l = length s
 
 ppPunctuate :: PP.Doc a -> [PP.Doc a] -> PP.Doc a
-ppPunctuate p = PP.hsep . PP.punctuate p
+ppPunctuate p = PP.hcat . PP.punctuate p
 
 ------------------------------------------------------------------------
 -- AddrRef
