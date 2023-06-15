@@ -18,6 +18,9 @@
       pfx describes the prefixes that can precede the main opcode without
       turning it into a different instruction.  These may be:
       aso - accepts address size override
+      notrack - circumvent Indirect Branch Tracking (IBT), part of Intel's
+        control-flow enforcement technology (CET), see e.g.
+        https://software.intel.com/sites/default/files/managed/4d/2a/control-flow-enforcement-technology-preview.pdf
       oso - accepts operand size override
       rexw, rexr, rexx, rexb - uses the indicated REX bit
       seg - accepts a segment override
@@ -467,18 +470,18 @@
     <instruction>
         <mnemonic>call</mnemonic>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso notrack oso rexw rexr rexx rexb</pfx>
             <opc>ff /reg=2 /m=!64</opc>
             <opr>Ev</opr>
         </def>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso notrack oso rexw rexr rexx rexb</pfx>
             <opc>ff /reg=2 /m=64</opc>
             <opr>Eq</opr>
             <mode>def64</mode>
         </def>
         <def>
-            <pfx>aso oso rexw rexr rexx rexb</pfx>
+            <pfx>aso notrack oso rexw rexr rexx rexb</pfx>
             <opc>ff /reg=3</opc>
             <opr>Fv</opr>
         </def>
@@ -4191,13 +4194,13 @@
     <instruction>
         <mnemonic>jmp</mnemonic>
         <def>
-            <pfx>aso oso repnz rexw rexr rexx rexb</pfx>
+            <pfx>aso notrack oso repnz rexw rexr rexx rexb</pfx>
             <opc>ff /reg=4</opc>
             <opr>Ev</opr>
             <mode>def64</mode>
         </def>
         <def>
-            <pfx>aso oso repnz rexw rexr rexx rexb</pfx>
+            <pfx>aso notrack oso repnz rexw rexr rexx rexb</pfx>
             <opc>ff /reg=5</opc>
             <opr>Fv</opr>
         </def>

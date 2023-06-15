@@ -92,6 +92,7 @@ findEncoding args def = do
   F.forM_ argTypes $ \at -> guard (matchOperandType oso at)
   let rex = mkREX argTypes
   let vex = Nothing -- XXX: implement this
+  let notrack = False -- for now, not trying to use this feature
   return $ II { iiLockPrefix = NoLockPrefix
               -- ???: why is this always Size16? Can we do better
               -- based on args or def?
@@ -104,6 +105,7 @@ findEncoding args def = do
                                       , _prVEX = vex
                                       , _prASO = aso
                                       , _prOSO = oso
+                                      , _prNoTrack = notrack
                                       }
               , iiRequiredPrefix = L.view requiredPrefix def
               , iiOpcode      = L.view defOpcodes  def

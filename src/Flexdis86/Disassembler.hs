@@ -547,11 +547,29 @@ rexPrefixBytes = HS.fromList
   | xs <- subsequences [ rex_w_bit, rex_r_bit, rex_x_bit, rex_b_bit ]
   ]
 
+-- | `notrack` prefix bytes overlap with `seg` prefix bytes, but in practice
+-- should be on strictly distinct sets of opcodes.
+notrackPrefixByte :: Word8
+notrackPrefixByte = 0x3e
+
+notrackPrefixBytes :: HS.HashSet Word8
+notrackPrefixBytes = HS.singleton notrackPrefixByte
+
+-- | Table for notrack prefixes
+notrackPrefix :: [String] -> PrefixAssignTable
+notrackPrefix allowed
+  | "notrack" `elem` allowed = HM.singleton notrackPrefixByte (set prNoTrack True)
+  | otherwise                = HM.empty
+
 -- | All prefix bytes besides the VEX ones. (See @Note [x86_64 disassembly]@
 -- for why VEX prefix bytes are treated specially.)
 nonVexPrefixBytes :: HS.HashSet Word8
-nonVexPrefixBytes = HS.unions [simplePrefixBytes, segPrefixBytes, rexPrefixBytes]
-
+nonVexPrefixBytes = HS.unions
+  [ simplePrefixBytes
+  , segPrefixBytes
+  , rexPrefixBytes
+  , notrackPrefixBytes
+  ]
 
 -- | Given a 'Def', construct all possible combinations of bytes representing
 -- valid VEX prefix and opcode bytes for that instruction. (See
@@ -830,6 +848,10 @@ validatePrefixBytes prefixBytes mbVex def =
       = do prefixAssignFunMap %= HM.insert b fun
            go bs
 
+      | Just fun <- HM.lookup b notrackPfx
+      = do prefixAssignFunMap %= HM.insert b fun
+           go bs
+
       | otherwise
       = throwError $ unlines
           [ "Encountered a " ++ BSC.unpack mnem ++ " instruction " ++
@@ -921,6 +943,8 @@ validatePrefixBytes prefixBytes mbVex def =
     -- Get all subsets of allowed REX prefixes
     rexPfxs :: PrefixAssignTable
     rexPfxs = rexPrefixes allowed
+    notrackPfx :: PrefixAssignTable
+    notrackPfx = notrackPrefix allowed
 
     defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
                              , _prSP  = no_seg_prefix
@@ -928,6 +952,7 @@ validatePrefixBytes prefixBytes mbVex def =
                              , _prVEX = Nothing
                              , _prASO = False
                              , _prOSO = False
+                             , _prNoTrack = False
                              }
 
     -- Reserved for situations that should never happen
