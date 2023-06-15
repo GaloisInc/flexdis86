@@ -5,8 +5,11 @@ Maintainer  : jhendrix@galois.com
 
 Defines prefix operations.
 -}
+
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+
 module Flexdis86.Prefixes
   ( Prefixes(..)
   , REX(..)
@@ -38,8 +41,7 @@ import qualified Data.Bits as B
 import           Data.Word ( Word8 )
 import GHC.Generics
 import           Numeric ( showHex )
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
+import qualified Prettyprinter as PP
 import           Text.Printf
 
 import           Flexdis86.Segment
@@ -80,12 +82,12 @@ data LockPrefix
 
 instance DS.NFData LockPrefix
 
-ppLockPrefix :: LockPrefix -> Doc
-ppLockPrefix NoLockPrefix = PP.empty
-ppLockPrefix LockPrefix = text "lock"
-ppLockPrefix RepPrefix  = text "rep"
-ppLockPrefix RepZPrefix = text "repz"
-ppLockPrefix RepNZPrefix = text "repnz"
+ppLockPrefix :: LockPrefix -> PP.Doc a
+ppLockPrefix NoLockPrefix = ""
+ppLockPrefix LockPrefix = "lock"
+ppLockPrefix RepPrefix  = "rep"
+ppLockPrefix RepZPrefix = "repz"
+ppLockPrefix RepNZPrefix = "repnz"
 
 -----------------------------------------------------------------------
 -- REX

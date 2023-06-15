@@ -5,7 +5,9 @@ Maintainer  :  jhendrix@galois.com
 
 This declares the main datatypes for the instruction set.
 -}
-{-# LANGUAGE PatternSynonyms #-}
+
+{-# LANGUAGE OverloadedStrings #-}
+
 module Flexdis86.InstructionSet
   ( -- * Instruction information
     InstructionInstance
@@ -22,10 +24,10 @@ module Flexdis86.InstructionSet
 import           Control.Applicative
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Int
+import           Data.String (fromString)
 import           Data.Word
 import           Numeric (showHex)
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import           Text.PrettyPrint.ANSI.Leijen hiding (empty, (<$>))
+import qualified Prettyprinter as PP
 
 import           Prelude
 
@@ -36,14 +38,14 @@ import           Flexdis86.Relocation
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
 
-padToWidth :: Int -> String -> String
-padToWidth n s = if l > 0 then s ++ (replicate (n - l) ' ') else s
+padToWidth :: Int -> String -> PP.Doc a
+padToWidth n s = fromString $ if l > 0 then s ++ replicate (n - l) ' ' else s
   where l = length s
 
-ppPunctuate :: Doc -> [Doc] -> Doc
+ppPunctuate :: PP.Doc a -> [PP.Doc a] -> PP.Doc a
 ppPunctuate p (d1:d2:ds) = d1 <> p <> ppPunctuate p (d2 : ds)
-ppPunctuate _ (d:[]) = d
-ppPunctuate _ [] = PP.empty
+ppPunctuate _ [d] = d
+ppPunctuate _ [] = ""
 
 ------------------------------------------------------------------------
 -- AddrRef
@@ -56,25 +58,24 @@ data Displacement = Disp32 Imm32
                   | NoDisplacement
                   deriving (Show, Eq, Ord)
 
-prettyDisplacement :: Displacement -> Doc
-prettyDisplacement NoDisplacement = text "0"
-prettyDisplacement (Disp32 x) = text (show x)
-prettyDisplacement (Disp8 x) =
-  if x >= 0 then
-    text ("0x" ++ showHex x "")
-   else
-    text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
+prettyDisplacement :: Displacement -> PP.Doc a
+prettyDisplacement NoDisplacement = "0"
+prettyDisplacement (Disp32 x) = fromString (show x)
+prettyDisplacement (Disp8 x) = fromString $
+  if x >= 0
+    then "0x" ++ showHex x ""
+    else "-0x" ++ showHex (negate (fromIntegral x :: Int16)) ""
 
 -- | Append a displacement to an expression
-appendDisplacement :: Displacement -> Doc
-appendDisplacement NoDisplacement = text ""
+appendDisplacement :: Displacement -> PP.Doc a
+appendDisplacement NoDisplacement = ""
 appendDisplacement (Disp32 x)
-  | Imm32Concrete 0 <- x = text ""
-  | otherwise = text (show x)
+  | Imm32Concrete 0 <- x = ""
+  | otherwise = fromString (show x)
 appendDisplacement (Disp8 x)
-  | x >  0    = text ("+0x" ++ showHex x "")
-  | x == 0    = text ""
-  | otherwise = text ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
+  | x >  0    = fromString ("+0x" ++ showHex x "")
+  | x == 0    = ""
+  | otherwise = fromString ("-0x" ++ showHex (negate (fromIntegral x :: Int16)) "")
 
 -- | A references to an address in memory.
 data AddrRef
@@ -98,47 +99,47 @@ data AddrRef
   | IP_Offset_64 !Segment Displacement
   deriving (Show, Eq, Ord)
 
-ppAddrRef :: AddrRef -> Doc
+ppAddrRef :: AddrRef -> PP.Doc a
 ppAddrRef addr =
   case addr of
     Addr_32 seg base roff off ->
        case base of
          Just r | isDefaultSeg32 seg r -> a
-                | seg == FS -> text (show seg) <> colon <+> a
-                | seg == GS -> text (show seg) <> colon <+> a
-                | otherwise -> a -- ((text (show seg) <> colon) <+>)
+                | seg == FS -> PP.pretty seg <> ":" <> a
+                | seg == GS -> PP.pretty seg <> ":" <> a
+                | otherwise -> a -- (((show seg) <> colon) PP.<+>)
          _ -> a
       where a = ppAddr base roff off
                                                           -- or rip? this is 32 bits ...
-    IP_Offset_32 _seg off     -> brackets $ text "ip" <> appendDisplacement off
+    IP_Offset_32 _seg off     -> PP.brackets $ "ip" <> appendDisplacement off
     Offset_32 seg off         -> prefix seg off
     Offset_64 seg off         -> prefix seg off
     Addr_64 seg base roff off
-        | seg == FS || seg == GS -> text (show seg) <> colon <> a
+        | seg == FS || seg == GS -> PP.pretty seg <> ":" <> a
         | isDef     -> a
         | otherwise -> a
       where a = ppAddr base roff off
             isDef = maybe False (isDefaultSeg64 seg) base
 
-    IP_Offset_64 _seg off -> brackets $ text "rip" <> appendDisplacement off
+    IP_Offset_64 _seg off -> PP.brackets $ "rip" <> appendDisplacement off
   where
-    prefix seg off = ppShowReg seg <> colon <> text (show off)
+    prefix seg off = PP.pretty seg <> ":" <> fromString (show off)
 
-    ppAddr :: Show r
+    ppAddr :: PP.Pretty r
            => Maybe r -- Base value
            -> Maybe (Int, r) -- Relative offset
            -> Displacement -- Offset
-           -> Doc
+           -> PP.Doc a
     ppAddr base roff off =
       case (base, roff) of
          (Nothing, Nothing)     -> prettyDisplacement off
          (Nothing, Just (n, r)) ->
-           brackets (text (show r) <> text "*" <> int n <> appendDisplacement off)
-         (Just r, Nothing)      -> brackets $
-           text (show r) <> appendDisplacement off
+           PP.brackets (PP.pretty r <> "*" <> PP.pretty n <> appendDisplacement off)
+         (Just r, Nothing)      -> PP.brackets $
+           PP.pretty r <> appendDisplacement off
          (Just r, Just (n, r')) ->
-           brackets $
-             text (show r) <> text "+" <> text (show r') <> text "*" <> int n <> appendDisplacement off
+           PP.brackets $
+             PP.pretty r <> "+" <> PP.pretty r' <> "*" <> PP.pretty n <> appendDisplacement off
 
 ------------------------------------------------------------------------
 -- Value
@@ -192,51 +193,47 @@ data Value
   | JumpOffset !JumpSize !JumpOffset
   deriving (Show, Eq, Ord)
 
-ppShowReg :: Show r => r -> Doc
-ppShowReg r = text (show r)
-
-ppValue :: Value
-        -> Doc
+ppValue :: Value -> PP.Doc a
 ppValue v =
   case v of
-    ControlReg   r    -> text (show r)
-    DebugReg     r    -> text (show r)
-    MMXReg       r    -> text (show r)
-    XMMReg       r    -> text (show r)
-    YMMReg       r    -> text (show r)
-    X87Register  n    -> text "st" <> if n == 0 then PP.empty else parens (int n)
-    SegmentValue r    -> ppShowReg    r
+    ControlReg   r    -> PP.pretty r
+    DebugReg     r    -> PP.pretty r
+    MMXReg       r    -> PP.pretty r
+    XMMReg       r    -> PP.pretty r
+    YMMReg       r    -> PP.pretty r
+    X87Register  n    -> "st" <> if n == 0 then "" else PP.parens (PP.pretty n)
+    SegmentValue r    -> PP.pretty r
     -- do the "*" belong here or in ppAddrRef?
-    FarPointer   addr -> text "??FAR PTR??"            <+> ppAddrRef    addr
+    FarPointer   addr -> "??FAR PTR??" PP.<+> ppAddrRef    addr
     VoidMem      addr -> ppAddrRef addr
-    Mem8         addr -> text "BYTE PTR"    <+> ppAddrRef addr
-    Mem16        addr -> text "WORD PTR"    <+> ppAddrRef addr
-    Mem32        addr -> text "DWORD PTR"   <+> ppAddrRef addr
-    Mem64        addr -> text "QWORD PTR"   <+> ppAddrRef addr
-    Mem128       addr -> text "XMMWORD PTR" <+> ppAddrRef addr
-    Mem256       addr -> text "YMMWORD PTR" <+> ppAddrRef addr
-    FPMem32      addr -> text "DWORD PTR"   <+> ppAddrRef addr
-    FPMem64      addr -> text "QWORD PTR"   <+> ppAddrRef addr
-    FPMem80      addr -> text "TBYTE PTR"   <+> ppAddrRef addr
-    ByteImm      i  -> text "0x" <> text (showHex i "")
-    WordImm      i  -> text "0x" <> text (showHex i "")
-    DWordImm     i  -> text (show i)
-    QWordImm     i  -> text (show i)
+    Mem8         addr -> "BYTE PTR"    PP.<+> ppAddrRef addr
+    Mem16        addr -> "WORD PTR"    PP.<+> ppAddrRef addr
+    Mem32        addr -> "DWORD PTR"   PP.<+> ppAddrRef addr
+    Mem64        addr -> "QWORD PTR"   PP.<+> ppAddrRef addr
+    Mem128       addr -> "XMMWORD PTR" PP.<+> ppAddrRef addr
+    Mem256       addr -> "YMMWORD PTR" PP.<+> ppAddrRef addr
+    FPMem32      addr -> "DWORD PTR"   PP.<+> ppAddrRef addr
+    FPMem64      addr -> "QWORD PTR"   PP.<+> ppAddrRef addr
+    FPMem80      addr -> "TBYTE PTR"   PP.<+> ppAddrRef addr
+    ByteImm      i  -> "0x" <> fromString (showHex i "")
+    WordImm      i  -> "0x" <> fromString (showHex i "")
+    DWordImm     i  -> PP.pretty i
+    QWordImm     i  -> PP.pretty i
     ByteSignedImm  i  -> ppImm i
     WordSignedImm  i  -> ppImm i
     DWordSignedImm i  -> ppImm i
-    ByteReg      r    -> ppShowReg    r
-    WordReg      r    -> ppShowReg    r
-    DWordReg     r    -> ppShowReg    r
-    QWordReg     r    -> ppShowReg    r
-    JumpOffset _ off  -> text ("pc+" ++ show off)
+    ByteReg  r -> PP.pretty r
+    WordReg  r -> PP.pretty r
+    DWordReg r -> PP.pretty r
+    QWordReg r -> PP.pretty r
+    JumpOffset _ off  -> "pc+" <> PP.pretty off
 
 
-ppImm :: (Integral w, Show w) => w -> Doc
-ppImm i | i >= 0 = text"0x" <> text (showHex i "")
-          -- Print negation after converting to integer
+ppImm :: (Integral w, Show w) => w -> PP.Doc a
+ppImm i | i >= 0 = "0x" <> fromString (showHex i "")
+          -- PrPP.pretty negation after converting to integer
           -- Recall that  "negate minBound = minBound" with types like Int16, Int32, Int64.
-        | otherwise = text"-0x" <> text (showHex (negate (toInteger i)) "")
+        | otherwise = "-0x" <> fromString (showHex (negate (toInteger i)) "")
 
 ------------------------------------------------------------------------
 -- InstructionInstance
@@ -273,8 +270,7 @@ nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]
 
 -- | This pretty prints an instruction using close to Intel syntax.
 -- Jump offsets refer to PC rather than the relative address.
-ppInstruction :: InstructionInstance
-              -> Doc
+ppInstruction :: InstructionInstance -> PP.Doc a
 ppInstruction i =
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
       args = fst <$> iiArgs i
@@ -284,19 +280,19 @@ ppInstruction i =
         -- special casem for one-bit shift instructions
      (_, [dst, ByteImm 1])
        | op `elem` nonHex1Instrs ->
-           text (padToWidth 6 op) <+> ppValue dst <> comma <> text "1"
+           padToWidth 6 op PP.<+> ppValue dst <> ",1"
      -- objdump prints `xchg (e)ax,(e)ax` as nop
-     ("xchg", [WordReg   AX, WordReg   AX]) -> text "nop"
-     ("xchg", [DWordReg EAX, DWordReg EAX]) -> text "nop"
+     ("xchg", [WordReg   AX, WordReg   AX]) -> "nop"
+     ("xchg", [DWordReg EAX, DWordReg EAX]) -> "nop"
      _ -> case (args, iiLockPrefix i) of
-            ([], NoLockPrefix) -> text op
-            (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppValue <$> args)
-            ([], _) -> sLockPrefix <+> text op
-            (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppValue <$> args)
+            ([], NoLockPrefix) -> fromString op
+            (_,  NoLockPrefix) -> padToWidth 6 op PP.<+> ppPunctuate "," (ppValue <$> args)
+            ([], _) -> sLockPrefix PP.<+> fromString op
+            (_,_)   -> sLockPrefix PP.<+> fromString op PP.<+> ppPunctuate "," (ppValue <$> args)
 
-ppInstructionWith :: (a -> Doc)
-                  -> InstructionInstanceF a
-                  -> Doc
+ppInstructionWith :: (i -> PP.Doc a)
+                  -> InstructionInstanceF i
+                  -> PP.Doc a
 ppInstructionWith ppv i =
   -- FIXME Too much copy-and-paste, but not clear how to abstract
   -- given the special cases
@@ -304,9 +300,8 @@ ppInstructionWith ppv i =
       args = iiArgs i
       op = BSC.unpack (iiOp i)
   in
-   case (op, args) of
-     _ -> case (args, iiLockPrefix i) of
-            ([], NoLockPrefix) -> text op
-            (_,  NoLockPrefix) -> text (padToWidth 6 op) <+> ppPunctuate comma (ppv <$> args)
-            ([], _) -> sLockPrefix <+> text op
-            (_,_)   -> sLockPrefix <+> text op <+> ppPunctuate comma (ppv <$> args)
+  case (args, iiLockPrefix i) of
+    ([], NoLockPrefix) -> fromString op
+    (_,  NoLockPrefix) -> padToWidth 6 op PP.<+> ppPunctuate "," (ppv <$> args)
+    ([], _) -> sLockPrefix PP.<+> fromString op
+    (_,_)   -> sLockPrefix PP.<+> fromString op PP.<+> ppPunctuate "," (ppv <$> args)

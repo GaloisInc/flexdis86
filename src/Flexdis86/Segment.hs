@@ -5,9 +5,11 @@ Maintainer  : jhendrix@galois.com
 
 Defines a datatype for segments and supporting operations.
 -}
+
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Safe #-}
+
 module Flexdis86.Segment
   ( Segment
   , pattern ES
@@ -23,8 +25,10 @@ module Flexdis86.Segment
   ) where
 
 import qualified Control.DeepSeq as DS
-import Data.Word ( Word8 )
+import Data.String (fromString)
+import Data.Word (Word8)
 import GHC.Generics
+import qualified Prettyprinter as PP
 
 import Flexdis86.Register
 
@@ -64,6 +68,9 @@ instance Show Segment where
   show DS = "ds"
   show FS = "fs"
   show GS = "gs"
+
+instance PP.Pretty Segment where
+  pretty = fromString . show
 
 -- | Return segment register by index or fail.
 segmentRegisterByIndex :: Monad m => Word8 -> m Segment
