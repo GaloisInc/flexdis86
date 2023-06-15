@@ -43,9 +43,7 @@ padToWidth n s = fromString $ if l > 0 then s ++ replicate (n - l) ' ' else s
   where l = length s
 
 ppPunctuate :: PP.Doc a -> [PP.Doc a] -> PP.Doc a
-ppPunctuate p (d1:d2:ds) = d1 <> p <> ppPunctuate p (d2 : ds)
-ppPunctuate _ [d] = d
-ppPunctuate _ [] = ""
+ppPunctuate p = PP.hsep . PP.punctuate p
 
 ------------------------------------------------------------------------
 -- AddrRef
@@ -105,8 +103,8 @@ ppAddrRef addr =
     Addr_32 seg base roff off ->
        case base of
          Just r | isDefaultSeg32 seg r -> a
-                | seg == FS -> PP.pretty seg <> ":" <> a
-                | seg == GS -> PP.pretty seg <> ":" <> a
+                | seg == FS -> PP.pretty seg <> ":" PP.<+> a
+                | seg == GS -> PP.pretty seg <> ":" PP.<+> a
                 | otherwise -> a -- (((show seg) <> colon) PP.<+>)
          _ -> a
       where a = ppAddr base roff off

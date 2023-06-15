@@ -46,7 +46,7 @@ library
     Flexdis86.DefaultParser
     Flexdis86.Disassembler
     Flexdis86.OpTable
- ghc-options: -Wall -fno-ignore-asserts -O2
+  ghc-options: -Wall -fno-ignore-asserts -O2
 
 executable DumpInstr
   default-language: Haskell2010
@@ -89,4 +89,4 @@ test-suite flexdis86-tests
     Util
 
   if !os(darwin) && !os(windows)
-     cpp-options: -DARCH_ELF
+    cpp-options: -DARCH_ELF

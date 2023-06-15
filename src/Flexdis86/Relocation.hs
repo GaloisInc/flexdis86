@@ -16,7 +16,6 @@ module Flexdis86.Relocation
 
 import Data.BinarySymbols
 import Data.Int
-import Data.String (fromString)
 import Data.Word
 import Numeric
 import qualified Prettyprinter as PP
@@ -76,7 +75,7 @@ instance Show Imm32 where
     . (if isSigned then showString ",S" else id)
     . showChar ']'
 
-instance PP.Pretty Imm32 where pretty = fromString . show
+instance PP.Pretty Imm32 where pretty = PP.unsafeViaShow
 
 -- | A 32-bit value which could either be a specific number, or a
 -- relocation that should be computed at later load/link time.
@@ -99,7 +98,7 @@ instance Show UImm64 where
     . shows o
     . showChar ']'
 
-instance PP.Pretty UImm64 where pretty = fromString . show
+instance PP.Pretty UImm64 where pretty = PP.unsafeViaShow
 
 showOff :: Int64 -> ShowS
 showOff i
@@ -118,4 +117,4 @@ instance Show JumpOffset where
     . showOff off
     . showChar ']'
 
-instance PP.Pretty JumpOffset where pretty = fromString . show
+instance PP.Pretty JumpOffset where pretty = PP.unsafeViaShow
