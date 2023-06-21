@@ -21,6 +21,7 @@ module Flexdis86.Prefixes
   , prVEX
   , prASO
   , prOSO
+  , prNoTrack
   , prAddrSize
   , no_seg_prefix
   , setDefault
@@ -140,6 +141,7 @@ data Prefixes = Prefixes { _prLockPrefix :: !LockPrefix
                          , _prVEX :: !(Maybe VEX)
                          , _prASO :: !Bool
                          , _prOSO :: !Bool
+                         , _prNoTrack :: !Bool
                          }
                 deriving (Eq, Generic, Show)
 
@@ -207,6 +209,9 @@ prASO = lens _prASO (\s v -> s { _prASO = v })
 
 prOSO :: Lens' Prefixes Bool
 prOSO = lens _prOSO (\s v -> s { _prOSO = v })
+
+prNoTrack :: Lens' Prefixes Bool
+prNoTrack = lens _prNoTrack (\s v -> s { _prNoTrack = v })
 
 prAddrSize :: Prefixes -> SizeConstraint
 prAddrSize pfx | pfx^.prASO = Size32
