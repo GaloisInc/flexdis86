@@ -486,7 +486,14 @@
             <opr>Fv</opr>
         </def>
         <def>
-            <pfx>oso</pfx>
+            <!--
+                NOTE: We add the `aso` prefix to call as we found it in use in
+                binaries.  See for instance this discussion:
+                https://reviews.llvm.org/D120592#3348274
+                where the redundant ASO prefix is used to mimic a NOP; CALL
+                sequence in one instruction.
+            -->
+            <pfx>aso oso</pfx>
             <opc>e8</opc>
             <opr>Jz</opr>
             <mode>def64</mode>
