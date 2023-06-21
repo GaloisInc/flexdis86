@@ -5737,6 +5737,26 @@
         </def>
     </instruction>
 
+    <!-- https://www.felixcloutier.com/x86/psadbw -->
+    <instruction>
+        <mnemonic>vpsadbw</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDS.128.66.0F.WIG F6</opc>
+            <opr>Vx Hx Ux</opr>
+        </def>
+    </instruction>
+
+    <!-- https://www.felixcloutier.com/x86/psadbw -->
+    <instruction>
+        <mnemonic>vpsadbw</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDS.256.66.0F.WIG F6</opc>
+            <opr>Vx Hx Ux</opr>
+        </def>
+    </instruction>
+
     <instruction>
         <mnemonic>pextrb</mnemonic>
         <def>
