@@ -5728,6 +5728,16 @@
         </def>
     </instruction>
 
+    <!-- https://www.felixcloutier.com/x86/pcmpeqb:pcmpeqw:pcmpeqd -->
+    <instruction>
+        <mnemonic>vpcmpeqb</mnemonic>
+        <class>avx</class>
+        <def>
+            <opc>/vex=NDS.256.66.0F.WIG 74</opc>
+            <opr>Vx Hx Ux</opr>
+        </def>
+    </instruction>
+
     <instruction>
         <mnemonic>vpcmpgtd</mnemonic>
         <class>avx</class>
