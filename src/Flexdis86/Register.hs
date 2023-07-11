@@ -5,11 +5,13 @@ Maintainer  : jhendrix@galois.com
 
 Defines types for x86 registers.
 -}
+
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
+
 module Flexdis86.Register (
     -- * 8-bit General Purpose registers
     Reg8
@@ -85,6 +87,7 @@ import           Data.Bits
 import qualified Data.Vector as V
 import           Data.Word ( Word8 )
 import GHC.Generics
+import qualified Prettyprinter as PP
 
 ------------------------------------------------------------------------
 -- Reg8
@@ -124,7 +127,9 @@ pattern HighReg8 w <- (asHighReg -> Just w)
   where HighReg8 x = high_reg8 x
 
 instance Show Reg8 where
-  show (Reg8 i) = assert (i < 20) (regNames8 V.! (fromIntegral i))
+  show (Reg8 i) = assert (i < 20) (regNames8 V.! fromIntegral i)
+
+instance PP.Pretty Reg8 where pretty = PP.unsafeViaShow
 
 regNames8 :: V.Vector String
 regNames8 = V.fromList [ "al",   "cl",   "dl",   "bl"
@@ -188,6 +193,8 @@ reg16_reg (Reg16 r) = Reg64 r
 instance Show Reg16 where
   show (Reg16 i) = assert (i < 16) (regNames16 V.! fromIntegral i)
 
+instance PP.Pretty Reg16 where pretty = PP.unsafeViaShow
+
 regNames16 :: V.Vector String
 regNames16 = V.fromList [ "ax",   "cx",   "dx",   "bx"
                         , "sp",   "bp",   "si",   "di"
@@ -233,6 +240,8 @@ reg32_reg (Reg32 r) = Reg64 r
 
 instance Show Reg32 where
   show (Reg32 i) = assert (i < 16) (regNames32 V.! fromIntegral i)
+
+instance PP.Pretty Reg32 where pretty = PP.unsafeViaShow
 
 regNames32 :: V.Vector String
 regNames32 = V.fromList [ "eax",  "ecx",  "edx",  "ebx"
@@ -288,6 +297,8 @@ reg64Idx = fromIntegral . unReg64
 
 instance Show Reg64 where
   show (Reg64 i) = assert (i < 16) (regNames64 V.! fromIntegral i)
+
+instance PP.Pretty Reg64 where pretty = PP.unsafeViaShow
 
 regNames64 :: V.Vector String
 regNames64 = V.fromList [ "rax", "rcx", "rdx", "rbx"
@@ -355,6 +366,8 @@ newtype ControlReg = CR Word8
 instance Show ControlReg where
   show (CR w) = "cr" ++ show w
 
+instance PP.Pretty ControlReg where pretty = PP.unsafeViaShow
+
 controlReg :: Word8 -> ControlReg
 controlReg w = assert (w < 16) $ CR w
 
@@ -372,6 +385,8 @@ newtype DebugReg = DR Word8
 instance Show DebugReg where
   show (DR w) = "dr" ++ show w
 
+instance PP.Pretty DebugReg where pretty = PP.unsafeViaShow
+
 debugReg :: Word8 -> DebugReg
 debugReg w = assert (w < 16) $ DR w
 
@@ -387,6 +402,8 @@ newtype MMXReg = MMXR Word8
 
 instance Show MMXReg where
   show (MMXR w) = "mm" ++ show w
+
+instance PP.Pretty MMXReg where pretty = PP.unsafeViaShow
 
 mmxReg :: Word8 -> MMXReg
 mmxReg w = assert (w < 8) $ MMXR w
@@ -407,6 +424,8 @@ newtype XMMReg = XMMR Word8
 instance Show XMMReg where
   show (XMMR w) = "xmm" ++ show w
 
+instance PP.Pretty XMMReg where pretty = PP.unsafeViaShow
+
 xmmReg :: Word8 -> XMMReg
 xmmReg w = assert (w < 16) $ XMMR w
 
@@ -425,6 +444,8 @@ newtype YMMReg = YMMR Word8
 
 instance Show YMMReg where
   show (YMMR w) = "ymm" ++ show w
+
+instance PP.Pretty YMMReg where pretty = PP.unsafeViaShow
 
 ymmReg :: Word8 -> YMMReg
 ymmReg w = assert (w < 16) $ YMMR w
