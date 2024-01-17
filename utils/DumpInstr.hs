@@ -8,9 +8,12 @@ import           Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
 import qualified Control.Monad.Fail as Fail
 import           Control.Monad.State (MonadState(..), State, evalState)
 import qualified Data.ByteString as BS
-import           Numeric (readHex)
+import           Data.Word (Word8)
 import           System.Environment (getArgs)
 import           System.Exit (exitFailure)
+import qualified Text.ParserCombinators.ReadPrec as ReadPrec (lift)
+import           Text.Read (Read(..), readMaybe, readListPrecDefault)
+import           Text.Read.Lex (readHexP)
 
 import           Flexdis86
 
@@ -37,11 +40,18 @@ instance Monad SimpleByteReader where
 instance Fail.MonadFail SimpleByteReader where
   fail s        = SBR $ throwError s
 
+-- | A wrapper around 'Word8' whose 'Read' instance is parsed as a hexadecimal
+-- number, not a decimal one.
+newtype Hex = Hex { unHex :: Word8 } deriving (Eq, Num)
+
+instance Read Hex where
+  readPrec = ReadPrec.lift readHexP
+  readListPrec = readListPrecDefault
 
 runSimpleByteReader :: SimpleByteReader a -> BS.ByteString -> Either String a
 runSimpleByteReader (SBR m) s = evalState (runExceptT m) s
 
-usageExit :: IO ()
+usageExit :: IO a
 usageExit = do putStrLn "DumpInstr aa bb cc dd ee ff ..."
                exitFailure
 
@@ -49,11 +59,14 @@ main :: IO ()
 main = do args <- getArgs
           when (args == []) usageExit
 
-          let nums = map readHex args
+          let maybeNums = map readMaybe args
 
-          when (any (\v -> length v /= 1 || any ((/=) 0 . length . snd) v) nums) usageExit
+          nums <-
+            case sequence maybeNums of
+              Just nums -> return nums
+              Nothing   -> usageExit
 
-          let bs = BS.pack $ map (fst . head) nums
+          let bs = BS.pack $ map unHex nums
 
           case runSimpleByteReader disassembleInstruction bs of
            Right ii -> print ii >> print (ppInstruction ii)
