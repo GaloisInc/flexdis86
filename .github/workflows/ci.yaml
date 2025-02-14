@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        ghc-ver: ["9.4.8", "9.6.4", "9.8.1"]
+        ghc-ver: ["9.6.4", "9.8.1", "9.10.1"]
         cabal: ["3.10.2.0"]
       # complete all jobs
       fail-fast: false
