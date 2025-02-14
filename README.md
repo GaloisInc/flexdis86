@@ -1,5 +1,3 @@
-# Building with Stack
+# flexdis86
 
-Flexdis is meant to build with stack.  For example,
-
-    stack --stack-yaml stack-8.6.yaml build
+A disassembler and assembler for x86.
