@@ -16,7 +16,7 @@ library
     binary-symbols,
     binary,
     bytestring,
-    containers,
+    containers >= 0.6.0.1,
     deepseq,
     directory,
     exceptions >= 0.4 && < 0.11,
