@@ -54,7 +54,8 @@ import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Char
-import           Data.List
+import           Data.Containers.ListUtils (nubOrd)
+import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Word
@@ -404,13 +405,13 @@ vexToBytes vp = short ++ long
   long  = [ [0xC4, b1, b2 ] | b1 <- longByte1, b2 <- longByte2 ]
   short = if vexMayBeShort vp then [ [0xC5, b ] | b <- shortByte ] else []
 
-  shortByte = nub
+  shortByte = nubOrd
               [ field 7 r .|. field 3 vvvv .|. field 2 l .|. pp
               | r <- [ 0, 1 ], vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
-  longByte1 = nub
+  longByte1 = nubOrd
               [ field 5 rxb .|. m
               | rxb <- [ 0 .. 7 ], m <- mmmmVals ]
-  longByte2 = nub
+  longByte2 = nubOrd
               [ field 7 w .|. field 3 vvvv .|. field 2 l .|. pp
               | w <- wVals, vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
 
@@ -581,24 +582,24 @@ parse_opcode :: (MonadState Def m, MF.MonadFail m) => String -> m ()
 parse_opcode nm = do
   case readHex nm of
     [(v,"")] -> addOpcode v
-    _ | Just r <- stripPrefix "/a=" nm
+    _ | Just r <- List.stripPrefix "/a=" nm
       -> case r of
            "16" -> reqAddrSize ?= Size16
            "32" -> reqAddrSize ?= Size32
            "64" -> reqAddrSize ?= Size64
            _ -> fail $ "Unexpected address size: " ++ r
-    _ | Just r <- stripPrefix "/m=" nm
+    _ | Just r <- List.stripPrefix "/m=" nm
       -> case r of
            "32"  -> modeLimit .= Only32
            "64"  -> modeLimit .= Only64
            "!64" -> modeLimit .= Not64
            _ -> fail $ "Unexpected mode limit: " ++ r
-    _ | Just r <- stripPrefix "/mod=" nm
+    _ | Just r <- List.stripPrefix "/mod=" nm
       -> case r of
            "11"  -> requiredMod ?= OnlyReg
            "!11" -> requiredMod ?= OnlyMem
            _ -> fail $ "Unexpected mod constraint: " ++ r
-    _ | Just r <- stripPrefix "/o=" nm
+    _ | Just r <- List.stripPrefix "/o=" nm
       , [(b,"")] <- readDec r
       , b `elem` [16, 32, 64::Int]
       -> case r of
@@ -607,23 +608,23 @@ parse_opcode nm = do
            "64" -> reqOpSize ?= OpSize64
            _ -> fail $ "Unexpected operand size: " ++ r
 
-    _ | Just r <- stripPrefix "/reg=" nm
+    _ | Just r <- List.stripPrefix "/reg=" nm
       , [(b,"")] <- readHex r
       , Just v <- asFin8 b
       -> requiredReg ?= v
-    _ | Just r <- stripPrefix "/rm=" nm
+    _ | Just r <- List.stripPrefix "/rm=" nm
       , [(b,"")] <- readHex r
       , Just v <- asFin8 b
       -> requiredRM ?= v
-    _ | Just r <- stripPrefix "/3dnow=" nm
+    _ | Just r <- List.stripPrefix "/3dnow=" nm
       , [(b,"")] <- readHex r
       -> do setDefCPUReq AMD_3DNOW
             addOpcode b -- We don't use requiredPrefix here because it is a suffix
-    _ | Just r <- stripPrefix "/sse=" nm
+    _ | Just r <- List.stripPrefix "/sse=" nm
       , [(b,"")] <- readHex r
       -> do setDefCPUReq SSE
             requiredPrefix ?= b
-    _ | Just r <- stripPrefix "/x87=" nm
+    _ | Just r <- List.stripPrefix "/x87=" nm
       , [(b,"")] <- readHex r
       , Just modRM <- asFin64 b
       -> do setDefCPUReq X87
@@ -636,11 +637,11 @@ parse_opcode nm = do
     -- The first byte in their opcodes is parsed as a REP prefix, so we make
     -- sure that it is present by marking it as a required prefix. See
     -- Note [x86_64 disassembly] in Flexdis86.Disassembler for more details.
-    _ | Just r <- stripPrefix "/reqpfx=" nm
+    _ | Just r <- List.stripPrefix "/reqpfx=" nm
       , [(b,"")] <- readHex r
       -> requiredPrefix ?= b
 
-    _ | Just r <- stripPrefix "/vex=" nm
+    _ | Just r <- List.stripPrefix "/vex=" nm
       -> do setDefCPUReq AVX
             vexPrefixes .= vexToBytes (parseVex r)
 
