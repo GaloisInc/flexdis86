@@ -27,5 +27,5 @@ jobs:
       submodules: "true"
       pre-hook: |
         cp cabal.project.dist cabal.project
-        cp cabal.project.werror cabal.project.local
+        cat cabal.project.werror >> cabal.project
         cp cabal.project.ghc-${{ matrix.ghc }}.freeze cabal.project.freeze
