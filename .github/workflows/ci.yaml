@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         cabal: ["3.14.2.0"]
-        ghc: ["9.6.4", "9.8.1", "9.10.1"]
+        ghc: ["9.8.1", "9.10.1", "9.12.2"]
         os: ["ubuntu-24.04"]
       fail-fast: false
     uses: GaloisInc/.github/.github/workflows/haskell-ci.yml@v1
