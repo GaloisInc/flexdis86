@@ -37,10 +37,10 @@ module Flexdis86.Prefixes
   ) where
 
 import qualified Control.DeepSeq as DS
-import           Control.Lens
 import qualified Data.Bits as B
 import           Data.Word ( Word8 )
-import GHC.Generics
+import           GHC.Generics
+import           Lens.Micro (Lens', lens, (^.))
 import           Numeric ( showHex )
 import qualified Prettyprinter as PP
 import           Text.Printf

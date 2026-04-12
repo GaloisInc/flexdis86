@@ -47,7 +47,6 @@ module Flexdis86.OpTable
 
 import qualified Control.DeepSeq as DS
 import qualified Control.Monad.Fail as MF
-import           Control.Lens
 import           Control.Monad (forM_, unless, when)
 import           Control.Monad.State (MonadState(..), execStateT, gets)
 import           Data.Bits ((.&.), (.|.), shiftR, shiftL)
@@ -60,6 +59,8 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Word
 import           GHC.Generics
+import           Lens.Micro (Lens', lens, (^.))
+import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 import           Numeric (readDec, readHex)
 import           Text.XML.Light
 

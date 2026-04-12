@@ -24,8 +24,6 @@ import           GHC.Stack
 
 import           Control.Applicative
 import           Control.Arrow ( second )
-import qualified Control.Lens as L
-import           Control.Lens ((^.))
 import qualified Control.Monad.Catch as C
 import           Control.Monad ( MonadPlus(..), guard, when )
 import           Data.Bits
@@ -37,6 +35,9 @@ import qualified Data.Map.Strict as M
 import           Data.Maybe ( fromMaybe, isJust )
 import           Data.Monoid
 import           Data.Word
+import qualified Lens.Micro as L
+import qualified Lens.Micro.Extras as L
+import           Lens.Micro ((^.))
 
 import           Prelude
 
