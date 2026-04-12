@@ -32,7 +32,6 @@ module Flexdis86.Disassembler
 import           Control.Applicative
 import qualified Control.DeepSeq as DS
 import           Control.Exception
-import           Control.Lens
 import           Control.Monad.Except
 import           Control.Monad.State.Strict
 import           Data.Binary.Get (Decoder(..), runGetIncremental)
@@ -52,6 +51,9 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import           Data.Word
 import           GHC.Stack
+import           Lens.Micro (Lens', lens, (&), (.~), (%~), (^.), _2, over, set)
+import           Lens.Micro.Extras (view)
+import           Lens.Micro.Mtl ((%=), (.=))
 
 import           Prelude
 
@@ -633,7 +635,7 @@ mkModTable defs
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
-            _ -> none modRMRegOperand (d^.defOperands)
+            _ -> not (any modRMRegOperand (d^.defOperands))
         modRMRegOperand nm =
           case nm of
             OpType sc _ ->
@@ -648,7 +650,7 @@ mkModTable defs
     let regDef d =
           case d^.requiredMod of
             Just OnlyMem -> False
-            _ -> none modRMMemOperand (d^.defOperands)
+            _ -> not (any modRMMemOperand (d^.defOperands))
         modRMMemOperand nm =
           case nm of
             OpType sc _ ->
