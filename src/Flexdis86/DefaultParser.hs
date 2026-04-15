@@ -14,21 +14,34 @@ module Flexdis86.DefaultParser
   ) where
 
 import           Control.Monad (when)
+import qualified Data.Binary as Bin
 import qualified Data.ByteString as BS
-import           Instances.TH.Lift ()
-import           Language.Haskell.TH.Syntax (lift, qAddDependentFile, qRunIO)
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Unsafe as BSU
+import           Language.Haskell.TH.Syntax (Exp(..), Lit(..), qAddDependentFile, qRunIO)
 import qualified System.Directory as D
 import qualified System.FilePath as F
+import           System.IO.Unsafe (unsafePerformIO)
 
 import           Flexdis86.Assembler
 import           Flexdis86.Disassembler
 import           Flexdis86.OpTable (Def)
 import           Flexdis86.OpTable.Parse (parseOpTable)
 
--- | The instruction definitions parsed from @optable.xml@ at compile time.
--- Only definitions supported by flexdis86 are included (see 'defSupported').
-optableDefs :: [Def]
-optableDefs =
+-- | The instruction definitions parsed from @optable.xml@ at compile time,
+-- serialized via 'Data.Binary' and embedded as a single @Addr#@ string
+-- literal ('StringPrimL').
+--
+-- This is Pareto-optimal among compile-time embedding strategies, when
+-- considering trade-offs including compile time, compiler memory usage,
+-- runtime, and artifact size. Alternatives considered:
+--
+-- * Embedding the XML file: requires otherwise-unnecessary runtime XML parsing
+-- * Running @mkOpcodeTable@ in TH: OOMs due to construction of huge trie
+-- * @Lift@ing the @Def@s: huge artifacts due to one relocation per ADT field
+optableBytes :: BS.ByteString
+{-# NOINLINE optableBytes #-}
+optableBytes =
  -- The @getPathToOptableXML@ computes an absolute path to the XML
  -- file. This is helpful in case our current working directory is not
  -- the directory containing the @flexdis86.cabal@ file. This happens,
@@ -52,10 +65,25 @@ optableDefs =
       path <- qRunIO getPathToOptableXML
       qAddDependentFile path
       contents <- qRunIO $ BS.readFile path
-      case parseOpTable contents of
-        Left e    -> error ("optableDefs: failed to parse optable.xml: " ++ e)
-        Right defs -> lift defs)
+      defs <- case parseOpTable contents of
+                Left  e -> fail ("optableBytes: failed to parse optable.xml: " ++ e)
+                Right d -> return d
+      let encoded = Bin.encode defs
+          n       = LBS.length encoded
+          ws      = LBS.unpack encoded
+      -- Emit: unsafePerformIO (BSU.unsafePackAddressLen n "\xNN..."#)
+      -- StringPrimL puts the bytes in .rodata as a single Addr# literal —
+      -- one blob, zero relocations.
+      return $
+        AppE (VarE 'unsafePerformIO) $
+        AppE (AppE (VarE 'BSU.unsafePackAddressLen)
+                   (LitE (IntegerL (fromIntegral n))))
+             (LitE (StringPrimL ws)))
 
+-- | Pre-parsed instruction definitions, decoded from the compile-time
+-- Binary blob at first use.
+optableDefs :: [Def]
+optableDefs = Bin.decode (LBS.fromStrict optableBytes)
 
 defaultX64Disassembler :: NextOpcodeTable
 defaultX64Disassembler = p
