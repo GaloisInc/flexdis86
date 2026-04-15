@@ -7,7 +7,6 @@ Types describing x86 instruction definitions, and utilities for working
 with them at runtime.  XML parsing lives in "Flexdis86.OpTable.Parse".
 -}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveLift #-}
 module Flexdis86.OpTable
   ( -- * Primitive types
     Mode(..)
@@ -44,13 +43,12 @@ module Flexdis86.OpTable
 import qualified Control.DeepSeq as DS
 import qualified Control.Monad.Fail as MF
 import           Data.Bits ((.&.))
+import           Data.Binary (Binary)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Map.Strict as Map
 import           Data.Word (Word8)
 import           GHC.Generics (Generic)
-import           Instances.TH.Lift ()
-import           Language.Haskell.TH.Syntax (Lift)
 import           Lens.Micro (Lens', lens, (^.))
 
 import           Flexdis86.Operand
@@ -67,9 +65,11 @@ data Mode
    = Default64
      -- | Instruction is invalid in x64 mode.
    | Invalid64
-  deriving (Eq, Generic, Lift, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
 
 instance DS.NFData Mode
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary Mode
 
 ------------------------------------------------------------------------
 -- CPURequirement
@@ -100,18 +100,22 @@ data CPURequirement
    | AVX    -- ^ Advanced vector extensions
    | BMI2   -- ^ Bit manipulation instructions
    | ADX    -- ^ Multi-precision add-carry instructions
-  deriving (Eq, Generic, Lift, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
 
 instance DS.NFData CPURequirement
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary CPURequirement
 
 ------------------------------------------------------------------------
 -- Vendor
 
 -- | Defines whether instruction is vendor specific.
 data Vendor = AMD | Intel
-  deriving (Eq, Generic, Lift, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
 
 instance DS.NFData Vendor
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary Vendor
 
 ------------------------------------------------------------------------
 -- ModeLimit
@@ -122,9 +126,11 @@ data ModeLimit
    | Only32
    | Only64
    | Not64
-  deriving (Eq, Generic, Lift, Show)
+  deriving (Eq, Generic, Show)
 
 instance DS.NFData ModeLimit
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary ModeLimit
 
 valid64 :: ModeLimit -> Bool
 valid64 m = m == AnyMode || m == Only64
@@ -136,41 +142,46 @@ data OperandSizeConstraint
    = OpSize16
    | OpSize32
    | OpSize64
-  deriving (Eq, Generic, Lift, Show)
+  deriving (Eq, Generic, Show)
 
 instance DS.NFData OperandSizeConstraint
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary OperandSizeConstraint
 
 -- | The definition of an instruction.
---
--- The constructor and record fields are exported so that
--- "Flexdis86.OpTable.Parse" can construct values at compile time;
--- callers outside this package should use the lens accessors below.
-data Def = Def
-  { _defMnemonic         :: !BS.ByteString
-    -- ^ Canonical mnemonic
-  , _defMnemonicSynonyms :: [BS.ByteString]
-    -- ^ Additional mnemonics (e.g., for jump instructions).
-  , _defCPUReq           :: CPURequirement
-  , _defVendor           :: Maybe Vendor
-  , _modeLimit           :: ModeLimit
-  , _defMode             :: Maybe Mode
-  , _reqAddrSize         :: Maybe SizeConstraint
-  , _reqOpSize           :: Maybe OperandSizeConstraint
-  , _defPrefix           :: [String]
-    -- ^ List of allowed prefixes.
-  , _requiredPrefix      :: Maybe Word8
-  , _defOpcodes          :: [Word8]
-    -- ^ List of opcodes (nonempty for a complete 'Def').
-  , _requiredMod         :: Maybe ModConstraint
-  , _requiredReg         :: Maybe Fin8
-  , _requiredRM          :: Maybe Fin8
-  , _x87ModRM            :: Maybe Fin64
-  , _vexPrefixes         :: ![[Word8]]
-    -- ^ Allowed VEX prefix byte sequences for this instruction.
-  , _defOperands         :: ![OperandType]
-  } deriving (Eq, Generic, Lift, Show)
+data Def = Def  { _defMnemonic         :: !BS.ByteString
+                  -- ^ Canonical mnemonic
+                , _defMnemonicSynonyms :: [BS.ByteString]
+                  -- ^ Additional mnemonics, not including
+                  -- the canonical mnemonic. Used e.g. by
+                  -- jump instructions.
+                , _defCPUReq :: CPURequirement
+                  -- ^ XXX: we should be able to combine these.
+                  -- For example, instruction `vaesenc` requires both
+                  -- AES and AVX support.
+                , _defVendor :: Maybe Vendor
+                , _modeLimit :: ModeLimit
+                , _defMode   :: Maybe Mode
+                , _reqAddrSize :: Maybe SizeConstraint
+                , _reqOpSize :: Maybe OperandSizeConstraint
+                , _defPrefix :: [String]
+                  -- ^ List of allowed prefixes.
+                , _requiredPrefix :: Maybe Word8
+                , _defOpcodes :: [Word8]
+                  -- ^ List of opcodes, which should be nonempty for
+                  -- a complete 'Def'.
+                , _requiredMod :: Maybe ModConstraint
+                , _requiredReg :: Maybe Fin8
+                , _requiredRM :: Maybe Fin8
+                , _x87ModRM    :: Maybe Fin64
+                , _vexPrefixes  :: ![ [Word8] ]
+                  -- ^ Allowed VEX prefixes for this instruction.
+                , _defOperands  :: ![OperandType]
+                } deriving (Eq, Generic, Show)
 
 instance DS.NFData Def
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary Def
 
 ------------------------------------------------------------------------
 -- Def lenses

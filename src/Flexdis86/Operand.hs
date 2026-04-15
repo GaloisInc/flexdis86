@@ -6,7 +6,6 @@ Maintainer  : jhendrix@galois.com
 This defines constants used for low-level operand layout information.
 -}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE Safe #-}
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Operand
@@ -16,9 +15,9 @@ module Flexdis86.Operand
   ) where
 
 import qualified Control.DeepSeq as DS
-import Data.Word ( Word8 )
-import GHC.Generics
-import Language.Haskell.TH.Syntax (Lift)
+import           Data.Binary (Binary)
+import           Data.Word ( Word8 )
+import           GHC.Generics
 
 import Flexdis86.Register
 import Flexdis86.Segment
@@ -52,9 +51,11 @@ data OperandSource
      -- ^ A jump location that is read in from instruction stream, and
      -- offset from current instruction pointer.
    | JumpImmediate
-  deriving (Eq, Generic, Lift, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
 
 instance DS.NFData OperandSource
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary OperandSource
 
 -- | The size of an operand in the udis86 file.
 data OperandSize
@@ -69,9 +70,11 @@ data OperandSize
    | YSize -- ^ Operand size is 64-bits if operand size is 64 bits, and 32-bits otherwise.
    | ZSize -- ^ Operand size is 16-bits if operand size is 16 bits, and 32-bits otherwise.
    | RDQSize -- ^ Operand size is 64-bits on x64 and 32-bits on ia32.
-  deriving (Eq, Generic, Lift, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
 
 instance DS.NFData OperandSize
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary OperandSize
 
 data OperandType
      -- | Operand that comes from a source and size.
@@ -153,6 +156,8 @@ data OperandType
      -- and 16bits if operand size is 16bits.
      -- The value can be sign exected to match operator size.
    | IM_SZ
-  deriving (Eq, Generic, Lift, Ord, Show)
+  deriving (Eq, Generic, Ord, Show)
 
 instance DS.NFData OperandType
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary OperandType
