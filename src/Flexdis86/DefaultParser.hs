@@ -15,6 +15,7 @@ module Flexdis86.DefaultParser
 
 import           Control.Monad (when)
 import qualified Data.Binary as Bin
+import           Data.Binary.Get (isEmpty, runGet)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Unsafe as BSU
@@ -65,12 +66,11 @@ optableBytes =
       path <- qRunIO getPathToOptableXML
       qAddDependentFile path
       contents <- qRunIO $ BS.readFile path
-      defs <- case parseOpTable contents of
-                Left  e -> fail ("optableBytes: failed to parse optable.xml: " ++ e)
-                Right d -> return d
-      let encoded = Bin.encode defs
-          n       = LBS.length encoded
-          ws      = LBS.unpack encoded
+      encoded <- case parseOpTable contents of
+                   Left  e -> fail ("optableBytes: failed to parse optable.xml: " ++ e)
+                   Right b -> return b
+      let n  = LBS.length encoded
+          ws = LBS.unpack encoded
       -- Emit: unsafePerformIO (BSU.unsafePackAddressLen n "\xNN..."#)
       -- StringPrimL puts the bytes in .rodata as a single Addr# literal —
       -- one blob, zero relocations.
@@ -83,7 +83,12 @@ optableBytes =
 -- | Pre-parsed instruction definitions, decoded from the compile-time
 -- Binary blob at first use.
 optableDefs :: [Def]
-optableDefs = Bin.decode (LBS.fromStrict optableBytes)
+optableDefs = runGet getDefs (LBS.fromStrict optableBytes)
+  where
+    getDefs = do
+      empty <- isEmpty
+      if empty then return []
+               else (:) <$> Bin.get <*> getDefs
 
 defaultX64Disassembler :: NextOpcodeTable
 defaultX64Disassembler = p
