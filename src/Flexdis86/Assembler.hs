@@ -54,8 +54,10 @@ data AssemblerContext =
                    }
   deriving (Show)
 
-mkX64Assembler :: B.ByteString -> Either String AssemblerContext
-mkX64Assembler bs = (assemblerContext . filter defSupported) <$> parseOpTable bs
+-- | Build an 'AssemblerContext' from a list of pre-parsed 'Def's. The caller is
+-- responsible for providing only supported defs (see @defSupported@).
+mkX64Assembler :: [Def] -> AssemblerContext
+mkX64Assembler = assemblerContext
 
 -- Warning: some instructions, e.g. @xor <64-bit reg> <64-bit reg>@,
 -- have multiple encodings. The order we fold defs here, i.e. 'foldr'

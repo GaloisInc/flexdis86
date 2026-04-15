@@ -24,6 +24,7 @@ library
     microlens,
     microlens-mtl,
     mtl,
+    th-lift-instances,
     prettyprinter,
     template-haskell,
     unordered-containers,

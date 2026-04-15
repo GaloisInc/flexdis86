@@ -1397,12 +1397,12 @@ opcodeTableSize (OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWith
 nextOpcodeSize :: NextOpcodeTable -> Int
 nextOpcodeSize v = sum (opcodeTableSize <$> v)
 
--- | Create an instruction parser from the given udis86 parser.
--- This is currently restricted to x64 base operations.
-mkX64Disassembler :: BS.ByteString -> Either String NextOpcodeTable
-mkX64Disassembler bs = do
-  tbl <- parseOpTable bs
-  OpcodeTable mOpTbl <- runParserGen $ mkOpcodeTable (filter defSupported tbl)
+-- | Create an instruction parser from a list of pre-parsed 'Def's.
+-- The caller is responsible for providing only supported defs (see
+-- 'defSupported' in "Flexdis86.OpTable").
+mkX64Disassembler :: [Def] -> Either String NextOpcodeTable
+mkX64Disassembler defs = do
+  OpcodeTable mOpTbl <- runParserGen $ mkOpcodeTable defs
   case mOpTbl of
     Trie.Branch v -> Right $! coerce v
     Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"

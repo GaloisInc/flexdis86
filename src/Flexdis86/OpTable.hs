@@ -8,6 +8,7 @@ instruction set.
 -}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -59,6 +60,8 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Word
 import           GHC.Generics
+import           Instances.TH.Lift ()
+import           Language.Haskell.TH.Syntax (Lift)
 import           Lens.Micro (Lens', lens, (^.))
 import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 import           Numeric (readDec, readHex)
@@ -202,7 +205,7 @@ data Mode
    = Default64
      -- | Instruction is invalid in x64 mode.
    | Invalid64
-  deriving (Eq, Generic, Ord,Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData Mode
 
@@ -247,7 +250,7 @@ data CPURequirement
 
    -- | Multi-precision add-carry instructions
    | ADX
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData CPURequirement
 
@@ -284,7 +287,7 @@ parse_CPURequirement c = do
 
 -- | Defines whether instuction is vendor specific.
 data Vendor = AMD | Intel
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData Vendor
 
@@ -305,7 +308,7 @@ data ModeLimit
    | Only32
    | Only64
    | Not64
-  deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData ModeLimit
 
@@ -454,7 +457,7 @@ data OperandSizeConstraint
    = OpSize16
    | OpSize32
    | OpSize64
-  deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData OperandSizeConstraint
 
@@ -487,7 +490,7 @@ data Def = Def  { _defMnemonic :: !BS.ByteString
                 , _vexPrefixes  :: ![ [Word8] ]
                   -- ^ Allowed VEX prefixes for this instruction.
                 , _defOperands  :: ![OperandType]
-                } deriving (Eq, Generic, Show)
+                } deriving (Eq, Generic, Lift, Show)
 
 instance DS.NFData Def
 
@@ -564,10 +567,14 @@ vexPrefixes = lens _vexPrefixes (\s v -> s { _vexPrefixes = v })
 defOperands :: Lens' Def [OperandType]
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 
+-- | CPU requirements accepted by flexdis86.
+supportedCPUReqs :: [CPURequirement]
+supportedCPUReqs = [Base, SSE, SSE2, SSE3, SSE3_atom, SSE4_1, SSE4_2, X87, AESNI, SHA, AVX, BMI2, ADX]
+
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
 defSupported d = d^.reqAddrSize /= Just Size16
-                 && (d^.defCPUReq `elem` [Base, SSE, SSE2, SSE3, SSE3_atom, SSE4_1, SSE4_2, X87, AESNI, SHA, AVX, BMI2, ADX])
+                 && d^.defCPUReq `elem` supportedCPUReqs
                  && x64Compatible d
 
 addOpcode :: MonadState Def m => Word8 -> m ()
@@ -891,13 +898,14 @@ strictMapList = go []
           b <- f a
           seq b $ go (b:r) f l
 
--- | Parse a definition.
+-- | Parse a definition, returning 'Nothing' if the definition is not
+-- supported by flexdis86 (detected as early as possible).
 parse_def ::
   BS.ByteString ->
   [BS.ByteString] ->
   CPURequirement ->
   Maybe Vendor ->
-  ElemParser Def
+  ElemParser (Maybe Def)
 parse_def nm syns creq v = do
   checkTag "def"
   let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText
@@ -908,28 +916,39 @@ parse_def nm syns creq v = do
   creq' <- parse_CPURequirement creq
   v' <- parse_vendor v
   checkEnd
-  oprnds <- strictMapList (lookupOperandType nm) oprndNames
+  -- All XML consumed. Early exit if creq' is definitively unsupported.
+  -- Base is kept because parse_opcode may still override it (e.g. to AMD_3DNOW).
+  if creq' `notElem` (Base : supportedCPUReqs) then return Nothing else do
+    oprnds <- strictMapList (lookupOperandType nm) oprndNames
+    let d0 = Def { _defMnemonic = nm
+                 , _defMnemonicSynonyms = syns
+                 , _defCPUReq = creq'
+                 , _defVendor = v'
+                 , _modeLimit = AnyMode
+                 , _defMode = mode
+                 , _reqAddrSize = Nothing
+                 , _reqOpSize = Nothing
+                 , _defPrefix = prefix
+                 , _requiredPrefix = Nothing
+                 , _defOpcodes = []
+                 , _requiredMod = Nothing
+                 , _requiredReg = Nothing
+                 , _requiredRM  = Nothing
+                 , _x87ModRM = Nothing
+                 , _vexPrefixes = []
+                 , _defOperands = oprnds
+                 }
+    d <- seq d0 $ flip execStateT d0 $ do
+           mapM_ parse_opcode (words opc_text)
+    return $ if defSupported d then Just d else Nothing
 
-  let d0 = Def { _defMnemonic = nm
-               , _defMnemonicSynonyms = syns
-               , _defCPUReq = creq'
-               , _defVendor = v'
-               , _modeLimit = AnyMode
-               , _defMode = mode
-               , _reqAddrSize = Nothing
-               , _reqOpSize = Nothing
-               , _defPrefix = prefix
-               , _requiredPrefix = Nothing
-               , _defOpcodes = []
-               , _requiredMod = Nothing
-               , _requiredReg = Nothing
-               , _requiredRM  = Nothing
-               , _x87ModRM = Nothing
-               , _vexPrefixes = []
-               , _defOperands = oprnds
-               }
-  seq d0 $ flip execStateT d0 $ do
-    mapM_ parse_opcode (words opc_text)
+-- | Consume and discard all remaining elements in the current context.
+skipRemainingElts :: ElemParser ()
+skipRemainingElts = do
+  me <- getNextElt
+  case me of
+    Nothing -> return ()
+    Just _  -> skipRemainingElts
 
 parse_instruction :: ElemParser [Def]
 parse_instruction = do
@@ -937,7 +956,9 @@ parse_instruction = do
   (mnem, syns) <- parse_mnemonics
   cpuReq <- parse_CPURequirement Base
   v <- parse_vendor Nothing
-  remainingElts (parse_def mnem syns cpuReq v)
+  if cpuReq `notElem` (Base : supportedCPUReqs)
+    then skipRemainingElts >> return []
+    else catMaybes <$> remainingElts (parse_def mnem syns cpuReq v)
 
 parse_x86_optable :: ElemParser [Def]
 parse_x86_optable = do

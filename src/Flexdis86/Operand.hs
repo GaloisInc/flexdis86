@@ -6,6 +6,7 @@ Maintainer  : jhendrix@galois.com
 This defines constants used for low-level operand layout information.
 -}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE Safe #-}
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Operand
@@ -17,6 +18,7 @@ module Flexdis86.Operand
 import qualified Control.DeepSeq as DS
 import Data.Word ( Word8 )
 import GHC.Generics
+import Language.Haskell.TH.Syntax (Lift)
 
 import Flexdis86.Register
 import Flexdis86.Segment
@@ -50,7 +52,7 @@ data OperandSource
      -- ^ A jump location that is read in from instruction stream, and
      -- offset from current instruction pointer.
    | JumpImmediate
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData OperandSource
 
@@ -67,7 +69,7 @@ data OperandSize
    | YSize -- ^ Operand size is 64-bits if operand size is 64 bits, and 32-bits otherwise.
    | ZSize -- ^ Operand size is 16-bits if operand size is 16 bits, and 32-bits otherwise.
    | RDQSize -- ^ Operand size is 64-bits on x64 and 32-bits on ia32.
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData OperandSize
 
@@ -151,6 +153,6 @@ data OperandType
      -- and 16bits if operand size is 16bits.
      -- The value can be sign exected to match operator size.
    | IM_SZ
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Generic, Lift, Ord, Show)
 
 instance DS.NFData OperandType
