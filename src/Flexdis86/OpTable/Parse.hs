@@ -24,13 +24,16 @@ import           Control.Monad.State ( MonadState(..)
                                      , gets
                                      )
 import           Data.Bits ((.|.), shiftL, shiftR)
+import qualified Data.Binary as Bin
+import           Data.Binary.Put (Put, runPut)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as LBS
 import           Data.Char (isDigit, isSpace)
 import           Data.Containers.ListUtils (nubOrd)
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
-import           Data.Maybe (catMaybes, fromMaybe)
+import           Data.Maybe (fromMaybe)
 import           Data.Word (Word8)
 import           Numeric (readDec, readHex)
 import           Text.XML.Light ( Content(..)
@@ -71,7 +74,13 @@ mkElemState e = ElemState { esName    = elName e
                           , esLine    = elLine e
                           }
 
-newtype ElemParser a = EP { unEP :: ElemState -> Either String (a, ElemState) }
+-- | Full parser state: current element context plus streaming Def accumulator.
+-- The accumulator is never saved/restored by 'runWithElement'.
+data ParseState = ParseState { psElem    :: !ElemState
+                             , psBuilder :: !Put
+                             }
+
+newtype ElemParser a = EP { unEP :: ParseState -> Either String (a, ParseState) }
 
 instance Functor ElemParser where
   fmap f m = EP (\s -> case unEP m s of
@@ -95,22 +104,33 @@ instance Monad ElemParser where
 #endif
 
 instance MF.MonadFail ElemParser where
-  fail e = EP $ \s -> Left $ show (esLine s) ++ ": " ++ e
+  fail e = EP $ \s -> Left $ show (esLine (psElem s)) ++ ": " ++ e
 
 instance MonadState ElemState ElemParser where
-  get   = EP (\s -> Right (s, s))
-  put v = EP (\_ -> Right ((), v))
+  get   = EP (\s -> Right (psElem s, s))
+  put v = EP (\s -> Right ((), s { psElem = v }))
 
+-- | Run a sub-parser on a child element, restoring the element context
+-- afterwards while preserving any Defs emitted into the accumulator.
 runWithElement :: ElemParser a -> Element -> ElemParser a
-runWithElement m e = do
-  s <- get
-  put (mkElemState e)
-  v <- m
-  put s
-  return v
+runWithElement m e = EP $ \s ->
+  let s' = s { psElem = mkElemState e }
+  in case unEP m s' of
+       Left err       -> Left err
+       Right (v, s'') -> Right (v, s'' { psElem = psElem s })
 
-runElemParser :: ElemParser a -> Element -> Either String a
-runElemParser m e = fmap fst (unEP m (mkElemState e))
+runElemParser :: ElemParser () -> Element -> Either String Put
+runElemParser m e =
+  case unEP m (ParseState (mkElemState e) mempty) of
+    Left err     -> Left err
+    Right (_, s) -> Right (psBuilder s)
+
+-- | Emit a 'Def' into the streaming Binary accumulator.
+emitDef :: Def -> ElemParser ()
+emitDef d = EP $ \s -> Right
+  ( ()
+  , s { psBuilder = psBuilder s <> Bin.put d }
+  )
 
 checkTag :: String -> ElemParser ()
 checkTag nm = do
@@ -158,14 +178,12 @@ checkEnd = do
     Nothing -> return ()
     Just e  -> pushElt e >> fail "Expected end of elements."
 
-remainingElts :: ElemParser a -> ElemParser [a]
-remainingElts p = go []
-  where go r = do
-          me <- getNextElt
-          case me of
-            Nothing -> return (reverse r)
-            Just e  -> do v <- runWithElement p e
-                          go (v:r)
+remainingElts_ :: ElemParser () -> ElemParser ()
+remainingElts_ p = do
+  me <- getNextElt
+  case me of
+    Nothing -> return ()
+    Just e  -> runWithElement p e >> remainingElts_ p
 
 asText :: ElemParser String
 asText = do
@@ -470,7 +488,7 @@ parse_def ::
   [BS.ByteString] ->
   CPURequirement ->
   Maybe Vendor ->
-  ElemParser (Maybe Def)
+  ElemParser ()
 parse_def nm syns creq v = do
   checkTag "def"
   let parse_prefix = fromMaybe [] . fmap words <$> opt "pfx" asText
@@ -481,7 +499,7 @@ parse_def nm syns creq v = do
   creq'      <- parse_CPURequirement creq
   v'         <- parse_vendor v
   checkEnd
-  if creq' `notElem` (Base : supportedCPUReqs) then return Nothing else do
+  when (creq' `elem` (Base : supportedCPUReqs)) $ do
     oprnds <- strictMapList (lookupOperandType nm) oprndNames
     let d0 = Def { _defMnemonic        = nm
                  , _defMnemonicSynonyms = syns
@@ -502,7 +520,7 @@ parse_def nm syns creq v = do
                  , _defOperands        = oprnds
                  }
     d <- seq d0 $ flip execStateT d0 $ mapM_ parse_opcode (words opc_text)
-    return $ if defSupported d then Just d else Nothing
+    if defSupported d then emitDef d else return ()
 
 skipRemainingElts :: ElemParser ()
 skipRemainingElts = do
@@ -511,25 +529,28 @@ skipRemainingElts = do
     Nothing -> return ()
     Just _  -> skipRemainingElts
 
-parse_instruction :: ElemParser [Def]
+parse_instruction :: ElemParser ()
 parse_instruction = do
   checkTag "instruction"
   (mnem, syns) <- parse_mnemonics
   cpuReq       <- parse_CPURequirement Base
   v            <- parse_vendor Nothing
   if cpuReq `notElem` (Base : supportedCPUReqs)
-    then skipRemainingElts >> return []
-    else catMaybes <$> remainingElts (parse_def mnem syns cpuReq v)
+    then skipRemainingElts
+    else remainingElts_ (parse_def mnem syns cpuReq v)
 
-parse_x86_optable :: ElemParser [Def]
+parse_x86_optable :: ElemParser ()
 parse_x86_optable = do
   checkTag "x86optable"
-  concat <$> remainingElts parse_instruction
+  remainingElts_ parse_instruction
 
 -- | Parse the optable.xml file, returning only the 'Def's supported by
--- flexdis86 (i.e., those for which 'defSupported' returns 'True').
-parseOpTable :: BS.ByteString -> Either String [Def]
+-- flexdis86 (i.e., those for which 'defSupported' returns 'True'),
+-- serialized as a 'Data.Binary'-encoded @[Def]@ bytestring.
+parseOpTable :: BS.ByteString -> Either String LBS.ByteString
 parseOpTable bs =
   case parseXMLDoc bs of
     Nothing  -> Left "Not an XML document"
-    Just elt -> runElemParser parse_x86_optable elt
+    Just elt -> case runElemParser parse_x86_optable elt of
+      Left err     -> Left err
+      Right putAcc -> Right $ runPut putAcc
