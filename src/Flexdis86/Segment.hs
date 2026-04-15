@@ -7,6 +7,7 @@ Defines a datatype for segments and supporting operations.
 -}
 
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Safe #-}
 
@@ -27,6 +28,7 @@ module Flexdis86.Segment
 import qualified Control.DeepSeq as DS
 import Data.Word (Word8)
 import GHC.Generics
+import Language.Haskell.TH.Syntax (Lift)
 import qualified Prettyprinter as PP
 
 import Flexdis86.Register
@@ -36,7 +38,7 @@ import Flexdis86.Register
 
 -- | Refers to a memory segment.
 newtype Segment = Segment { _unSegment :: Word8 }
-  deriving (Eq, Generic, Ord)
+  deriving (Eq, Generic, Lift, Ord)
 
 instance DS.NFData Segment
 
