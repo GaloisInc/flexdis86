@@ -24,7 +24,6 @@ library
     microlens,
     microlens-mtl,
     mtl,
-    th-lift-instances,
     prettyprinter,
     template-haskell,
     unordered-containers,
@@ -49,7 +48,7 @@ library
     Flexdis86.Disassembler
     Flexdis86.OpTable
     Flexdis86.OpTable.Parse
-  ghc-options: -Wall -fno-ignore-asserts -O2
+  ghc-options: -Wall -fno-ignore-asserts -O2 -Wno-trustworthy-safe
 
 executable DumpInstr
   default-language: Haskell2010

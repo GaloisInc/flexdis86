@@ -8,7 +8,6 @@ Defines types for x86 registers.
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -87,8 +86,8 @@ import           Control.Exception ( assert )
 import           Data.Bits
 import qualified Data.Vector as V
 import           Data.Word ( Word8 )
-import GHC.Generics
-import Language.Haskell.TH.Syntax (Lift)
+import           Data.Binary (Binary)
+import           GHC.Generics
 import qualified Prettyprinter as PP
 
 ------------------------------------------------------------------------
@@ -281,7 +280,10 @@ pattern EDI = Reg32 7
 
 -- | One of the 16 64-bit general purpose registers.
 newtype Reg64 = Reg64 { unReg64 :: Word8 }
-  deriving (Eq, Generic, Lift, Ord)
+  deriving (Eq, Generic, Ord)
+
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary Reg64
 
 instance DS.NFData Reg64
 
