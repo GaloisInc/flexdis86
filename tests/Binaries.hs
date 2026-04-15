@@ -2,23 +2,23 @@
 
 module Binaries ( binaryTests ) where
 
-import qualified Data.ByteString as LB
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Builder as BB
+import qualified Data.ByteString.Lazy as LB
 import           Data.ElfEdit as ElfEdit
 import           Data.Foldable ( for_ )
-import           Data.Maybe ( catMaybes, fromMaybe )
+import           Data.Maybe ( catMaybes, fromMaybe, mapMaybe )
 import qualified System.Directory as Directory
 import           System.Environment ( lookupEnv )
 import           System.FilePath ( (</>) )
-import qualified System.IO as IO
-import           System.IO.Temp ( withSystemTempFile )
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
 import qualified Flexdis86 as D
 
-getTextSection :: FilePath -> IO LB.ByteString
+getTextSection :: FilePath -> IO B.ByteString
 getTextSection binPath = do
-  elfBS <- LB.readFile binPath
+  elfBS <- B.readFile binPath
   let elf64 =
         case ElfEdit.parseElf elfBS of
           ElfEdit.Elf64Res _ elf -> elf
@@ -48,22 +48,21 @@ binaryTests = T.testCase "Disassemble/reassemble binaries" $ do
       ("Disassembled some instructions in " ++ binPath)
       (length (catMaybes disIns) > minLength)
 
-
-    -- Force full evaluation by writing to a file
-    withSystemTempFile "flexdis86-disassemble-test.txt" $ \_fp handle -> do
-      -- For debugging:
-      -- putStrLn $ "In file " ++ binPath
-      for_ disBuf $ \instr -> do
-        -- putStrLn $ "At offset " ++ (show (D.disOffset instr))
-        IO.hPutStrLn handle (show (D.disOffset instr))
-
-    -- TODO(lb): It would be nice if we could roundtrip all these binaries, but
-    -- at the moment some fail. This would also obviate the hack of writing to
-    -- file above.
-
-    -- case sequence disIns of
-    --   Nothing -> fail $ "Not everything got disassembled: " ++ binPath
-    --   Just disIns' -> do
-    --     asIns <- traverse D.assembleInstruction disIns'
-    --     let assembledInsns = B.toLazyByteString . mconcat $ asIns
-    --     T.assertEqual "Roundtrip" codeBytes (LB.toStrict assembledInsns)
+    -- Roundtrip: disassemble, reassemble, then re-disassemble and compare
+    -- instructions. We compare at the instruction level rather than raw bytes
+    -- because some compilers emit legacy prefixes in non-canonical order (e.g.
+    -- OSO before segment override) while the assembler always emits canonical
+    -- order. Both encodings are architecturally equivalent and disassemble to
+    -- the same InstructionInstance.
+    let origIns = mapMaybe D.disInstruction disBuf
+    T.assertEqual
+      ("Every position disassembled in " ++ binPath)
+      (length disBuf)
+      (length origIns)
+    asIns <- traverse D.assembleInstruction origIns
+    let assembledBS = LB.toStrict $ BB.toLazyByteString $ mconcat asIns
+    let redisIns = mapMaybe D.disInstruction (D.disassembleBuffer assembledBS)
+    T.assertEqual
+      ("Roundtrip instructions in " ++ binPath)
+      origIns
+      redisIns
