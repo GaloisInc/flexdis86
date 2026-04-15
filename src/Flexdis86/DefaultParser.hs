@@ -1,7 +1,7 @@
 {- |
 Module      :  $Header$
-Copyright   :  (c) 2013-2016 Galois, Inc
-Maintainer  :  jhendrix@galois.com
+Copyright   :  (c) Galois, Inc 2013-2026
+Maintainer  :  langston.barrett@gmail.com
 
 Defines the default parser from optable.xml as compiled in.
 -}
@@ -22,7 +22,8 @@ import qualified System.FilePath as F
 
 import           Flexdis86.Assembler
 import           Flexdis86.Disassembler
-import           Flexdis86.OpTable
+import           Flexdis86.OpTable (Def)
+import           Flexdis86.OpTable.Parse (parseOpTable)
 
 -- | The instruction definitions parsed from @optable.xml@ at compile time.
 -- Only definitions supported by flexdis86 are included (see 'defSupported').
