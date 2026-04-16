@@ -7,6 +7,7 @@ The Flexdis assembler.
 -}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -403,8 +404,8 @@ encodeModRMDisp ii
 
 hasModRM :: InstructionInstance -> Bool
 hasModRM ii = or [ isJust (iiRequiredMod ii)
-                 , isJust (iiRequiredReg ii)
-                 , isJust (iiRequiredRM ii)
+                 , iiRequiredReg ii /= NothingFin8
+                 , iiRequiredRM  ii /= NothingFin8
                  , isJust (iiRequiredPrefix ii)
                  , any operandTypeRequiresModRM (map snd (iiArgs ii))
                  ]
@@ -777,8 +778,8 @@ mkModRM :: InstructionInstance -> Word8 -> Word8 -> Word8 -> B.Builder
 mkModRM ii modb regb rmb =
   B.word8 (rm .|. (reg `shiftL` 3) .|. (rmmod `shiftL` 6))
   where
-    reg = maybe regb unFin8 (iiRequiredReg ii)
-    rm = maybe rmb unFin8 (iiRequiredRM ii)
+    reg = case iiRequiredReg ii of { NothingFin8 -> regb; JustFin8 f -> unFin8 f }
+    rm  = case iiRequiredRM  ii of { NothingFin8 -> rmb;  JustFin8 f -> unFin8 f }
     rmmod = maybe modb modConstraintVal (iiRequiredMod ii)
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
@@ -792,8 +793,12 @@ encodeRequiredModRM ii =
   fromMaybe 0 rmod .|. fromMaybe 0 reg .|. fromMaybe 0 rm
   where
     rmod = fmap ((`shiftL`  6) . modConstraintVal) (iiRequiredMod ii)
-    reg = fmap ((`shiftL` 3) . unFin8) (iiRequiredReg ii)
-    rm  = fmap unFin8 (iiRequiredRM ii)
+    reg = case iiRequiredReg ii of
+            NothingFin8      -> Nothing
+            JustFin8 f  -> Just (unFin8 f `shiftL` 3)
+    rm  = case iiRequiredRM  ii of
+            NothingFin8      -> Nothing
+            JustFin8 f  -> Just (unFin8 f)
 
 modConstraintVal :: ModConstraint -> Word8
 modConstraintVal mc =

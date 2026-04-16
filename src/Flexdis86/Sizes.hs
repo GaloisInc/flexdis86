@@ -8,7 +8,9 @@ Defines size types in the udis86 file.
 -}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE ViewPatterns #-}
 module Flexdis86.Sizes (
     SizeConstraint(..)
   , FPSizeConstraint(..)
@@ -17,6 +19,11 @@ module Flexdis86.Sizes (
   , asFin8
   , maskFin8
   , unFin8
+  , MaybeFin8
+  , pattern NothingFin8
+  , pattern JustFin8
+  , someFin8
+  , fromMaybeFin8
   , Fin64
   , asFin64
   , unFin64
@@ -70,6 +77,41 @@ asFin8 b | 0 <= b && b < 8 = Just (Fin8 b)
 -- | Create fin8 from low 3-order bits.
 maskFin8 :: Word8 -> Fin8
 maskFin8 v = Fin8 (v .&. 0x7)
+
+------------------------------------------------------------------------
+-- MaybeFin8
+
+-- | A 'Fin8' that may be absent, stored as a single unboxed 'Word8'.
+-- The value @8@ encodes the absent case; values @0@–@7@ encode 'Fin8'.
+-- This avoids the two-word overhead of @'Maybe' 'Fin8'@.
+newtype MaybeFin8 = MaybeFin8 Word8
+  deriving (Eq, Generic, Ord, Show)
+
+instance DS.NFData MaybeFin8
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary MaybeFin8
+
+-- | The absent case (@Nothing@).
+pattern NothingFin8 :: MaybeFin8
+pattern NothingFin8 = MaybeFin8 8
+
+-- | A present 'Fin8' (@Just@).
+pattern JustFin8 :: Fin8 -> MaybeFin8
+pattern JustFin8 f <- (fromMaybeFin8 -> Just f)
+  where JustFin8 = someFin8
+
+{-# COMPLETE NothingFin8, JustFin8 :: MaybeFin8 #-}
+
+-- | Wrap a 'Fin8' as 'MaybeFin8'.
+someFin8 :: Fin8 -> MaybeFin8
+someFin8 (Fin8 w) = MaybeFin8 w
+{-# INLINE someFin8 #-}
+
+-- | Convert to @'Maybe' 'Fin8'@.
+fromMaybeFin8 :: MaybeFin8 -> Maybe Fin8
+fromMaybeFin8 (MaybeFin8 8) = Nothing
+fromMaybeFin8 (MaybeFin8 w) = Just (Fin8 w)
+{-# INLINE fromMaybeFin8 #-}
 
 -- | A value 0-63.
 newtype Fin64 = Fin64 { unFin64 :: Word8 }

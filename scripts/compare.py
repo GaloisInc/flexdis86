@@ -53,7 +53,33 @@ def git(cmd, cwd):
 # ── git worktree helpers ──────────────────────────────────────────────────────
 
 def add_worktree(repo, path, ref):
+    """Create a git worktree for *ref* at *path*, then populate the files
+    that are not tracked in git but are required for a cabal build:
+
+    - ``cabal.project`` and ``cabal.project.local`` are copied from the
+      main tree (they are intentionally not committed).
+    - Submodule SSH URLs (``git@github.com:``) are rewritten to HTTPS so
+      that ``git submodule update --init`` works without an SSH key.
+    """
+    import shutil
+
     git(f"worktree add --detach {path} {ref}", repo)
+
+    # Copy untracked-but-required project files from the main repo.
+    for name in ("cabal.project", "cabal.project.local"):
+        src = Path(repo) / name
+        if src.exists():
+            shutil.copy2(src, Path(path) / name)
+
+    # Rewrite any SSH submodule URLs to HTTPS, then initialise.
+    gitmodules = Path(path) / '.gitmodules'
+    if gitmodules.exists():
+        text = gitmodules.read_text()
+        text = re.sub(r'git@github\.com:', 'https://github.com/', text)
+        gitmodules.write_text(text)
+        # Sync the rewritten URLs into the worktree's local git config.
+        run("git submodule sync --recursive", cwd=path)
+    run("git submodule update --init --recursive", cwd=path)
 
 
 def remove_worktree(repo, path):
