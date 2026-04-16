@@ -69,7 +69,7 @@ test-suite flexdis86-tests
   hs-source-dirs:
     tests
 
-  ghc-options: -Wall
+  ghc-options: -Wall -rtsopts
 
   build-depends: flexdis86,
                  base,
