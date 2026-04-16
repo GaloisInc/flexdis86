@@ -74,8 +74,9 @@ mkElemState e = ElemState { esName    = elName e
                           , esLine    = elLine e
                           }
 
--- | Full parser state: current element context plus streaming Def accumulator.
--- The accumulator is never saved/restored by 'runWithElement'.
+-- | Full parser state: current element context plus streaming
+-- 'Binary'-serialized Def accumulator ('Put'). The accumulator is never
+-- saved/restored by 'runWithElement'.
 data ParseState = ParseState { psElem    :: !ElemState
                              , psBuilder :: !Put
                              }
@@ -544,9 +545,10 @@ parse_x86_optable = do
   checkTag "x86optable"
   remainingElts_ parse_instruction
 
--- | Parse the optable.xml file, returning only the 'Def's supported by
--- flexdis86 (i.e., those for which 'defSupported' returns 'True'),
--- serialized as a 'Data.Binary'-encoded @[Def]@ bytestring.
+-- | Parse the optable.xml file, returning only the 'Def's as a 'Data.Binary'-encoded bytestring.
+--
+-- Only returns 'Def's supported by flexdis86 (i.e., those for which
+-- 'defSupported' returns 'True').
 parseOpTable :: BS.ByteString -> Either String LBS.ByteString
 parseOpTable bs =
   case parseXMLDoc bs of
