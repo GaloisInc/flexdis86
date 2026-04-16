@@ -65,6 +65,7 @@ import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.PrefixSet
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -481,21 +482,22 @@ type PrefixAssignFun = Prefixes -> Prefixes
 -- | Map prefix bytes corresponding to prefixes to the associated update function.
 type PrefixAssignTable = HM.HashMap Word8 PrefixAssignFun
 
--- Given a list of allowed prefixes
-simplePrefixes :: BS.ByteString -> [String] -> PrefixAssignTable
+-- | Given the allowed-prefix set for an instruction, build the simple
+-- legacy-prefix assignment table.
+simplePrefixes :: BS.ByteString -> PrefixSet -> PrefixAssignTable
 simplePrefixes mnem allowed
-  | "rep" `elem` allowed && "repz" `elem` allowed = error $
+  | hasPfx pfxRep allowed && hasPfx pfxRepz allowed = error $
       "Instruction " ++ BSC.unpack mnem ++ " should not be allowed to have both rep and repz as prefixes"
-  | otherwise = HM.fromList [ v | (name, v) <- simplePrefixBytesFuns, name `elem` allowed ]
+  | otherwise = HM.fromList [ v | (flag, v) <- simplePrefixBytesFuns, hasPfx flag allowed ]
 
-simplePrefixBytesFuns :: [(String, (Word8, PrefixAssignFun))]
+simplePrefixBytesFuns :: [(PrefixSet, (Word8, PrefixAssignFun))]
 simplePrefixBytesFuns =
-  [ ("lock",  (0xf0, set prLockPrefix LockPrefix))
-  , ("repnz", (0xf2, set prLockPrefix RepNZPrefix))
-  , ("repz",  (0xf3, set prLockPrefix RepZPrefix))
-  , ("rep",   (0xf3, set prLockPrefix RepPrefix))
-  , ("oso",   (0x66, set prOSO True))
-  , ("aso",   (0x67, set prASO True))
+  [ (pfxLock,  (0xf0, set prLockPrefix LockPrefix))
+  , (pfxRepnz, (0xf2, set prLockPrefix RepNZPrefix))
+  , (pfxRepz,  (0xf3, set prLockPrefix RepZPrefix))
+  , (pfxRep,   (0xf3, set prLockPrefix RepPrefix))
+  , (pfxOso,   (0x66, set prOSO True))
+  , (pfxAso,   (0x67, set prASO True))
   ]
 
 -- | The simple \"legacy\" prefixes.
@@ -503,10 +505,10 @@ simplePrefixBytes :: HS.HashSet Word8
 simplePrefixBytes = HS.fromList $ map (fst . snd) simplePrefixBytesFuns
 
 -- | Table for segment prefixes
-segPrefixes :: [String] -> PrefixAssignTable
+segPrefixes :: PrefixSet -> PrefixAssignTable
 segPrefixes allowed
-  | "seg" `elem` allowed = HM.fromList [ (x, set prSP (SegmentPrefix x)) | x <- segPrefixBytesList ]
-  | otherwise            = HM.empty
+  | hasPfx pfxSeg allowed = HM.fromList [ (x, set prSP (SegmentPrefix x)) | x <- segPrefixBytesList ]
+  | otherwise             = HM.empty
 
 -- | The segment prefixes.
 segPrefixBytes :: HS.HashSet Word8
@@ -516,7 +518,7 @@ segPrefixBytesList :: [Word8]
 segPrefixBytesList = [0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65]
 
 -- FIXME: we could also decode the REX
-rexPrefixes :: [String] -> PrefixAssignTable
+rexPrefixes :: PrefixSet -> PrefixAssignTable
 rexPrefixes allowed
   | null possibleBits = HM.empty
   | otherwise         = HM.fromList
@@ -524,11 +526,11 @@ rexPrefixes allowed
                           | xs <- subsequences possibleBits
                           , let x = foldl (.|.) rex_instr_pfx xs ]
   where
-    possibleBits  = [ b | (name, b) <- rexPrefixBits, name `elem` allowed ]
-    rexPrefixBits = [ ("rexw", rex_w_bit)
-                    , ("rexr", rex_r_bit)
-                    , ("rexx", rex_x_bit)
-                    , ("rexb", rex_b_bit) ]
+    possibleBits  = [ b | (flag, b) <- rexPrefixBits, hasPfx flag allowed ]
+    rexPrefixBits = [ (pfxRexw, rex_w_bit)
+                    , (pfxRexr, rex_r_bit)
+                    , (pfxRexx, rex_x_bit)
+                    , (pfxRexb, rex_b_bit) ]
 
 -- | The REX prefix bytes.
 rexPrefixBytes :: HS.HashSet Word8
@@ -546,10 +548,10 @@ notrackPrefixBytes :: HS.HashSet Word8
 notrackPrefixBytes = HS.singleton notrackPrefixByte
 
 -- | Table for notrack prefixes
-notrackPrefix :: [String] -> PrefixAssignTable
+notrackPrefix :: PrefixSet -> PrefixAssignTable
 notrackPrefix allowed
-  | "notrack" `elem` allowed = HM.singleton notrackPrefixByte (set prNoTrack True)
-  | otherwise                = HM.empty
+  | hasPfx pfxNotrack allowed = HM.singleton notrackPrefixByte (set prNoTrack True)
+  | otherwise                 = HM.empty
 
 -- | All prefix bytes besides the VEX ones. (See @Note [x86_64 disassembly]@
 -- for why VEX prefix bytes are treated specially.)
