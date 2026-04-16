@@ -6,6 +6,7 @@ Maintainer  :  jhendrix@galois.com
 This defines a disassembler based on optable definitions.
 -}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -31,6 +32,7 @@ module Flexdis86.Disassembler
 
 import           Control.Applicative
 import qualified Control.DeepSeq as DS
+import           Data.Coerce (coerce)
 import           Control.Exception
 import           Control.Monad.Except
 import           Control.Monad.State.Strict
@@ -48,7 +50,6 @@ import qualified Data.HashSet as HS
 import           Data.Maybe
 import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
-import qualified Data.Vector.Mutable as VM
 import           Data.Word
 import           GHC.Stack
 import           Lens.Micro (Lens', lens, (&), (.~), (%~), (^.), _2, over, set)
@@ -58,6 +59,7 @@ import           Lens.Micro.Mtl ((%=), (.=))
 import           Prelude
 
 import           Flexdis86.ByteReader
+import qualified Flexdis86.Trie as Trie
 import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
@@ -349,30 +351,26 @@ data ModTable
 instance DS.NFData ModTable
 
 ------------------------------------------------------------------------
--- OpcodeTable/NextOpcodeTable mutually recursive definitions
+-- OpcodeTable/NextOpcodeTable definitions
+
+-- | The leaf of an opcode lookup table, storing the possible instruction
+-- candidates once all opcode bytes have been parsed.
+data OpcodeTableEntry
+  = OpcodeTableEntry
+      ![(Maybe VEX, Def)] -- Defs expecting a ModR/M byte
+      ![(Maybe VEX, Def)] -- Defs not expecting a ModR/M byte
+  deriving (Generic, Show)
+
+instance DS.NFData OpcodeTableEntry
 
 -- | A table used to look up instructions based on their VEX prefix and opcode
 -- bytes during disassembly. See @Note [x86_64 disassembly]@ for more on how
 -- this table works.
-data OpcodeTable
-   = -- | There are still more opcode bytes to parse.
-     OpcodeTable !NextOpcodeTable
-     -- | All of the opcode bytes have been parsed, resulting in a list of
-     -- possible instruction candidates.
-   | OpcodeTableEntry
-       ![(Maybe VEX, Def)] -- Defs expecting a ModR/M byte
-       ![(Maybe VEX, Def)] -- Defs not expecting a ModR/M byte
-  deriving (Generic)
-
-instance DS.NFData OpcodeTable
+newtype OpcodeTable = OpcodeTable (Trie.Trie8 OpcodeTableEntry)
+  deriving (Generic, DS.NFData, Show)
 
 -- | A NextOpcodeTable describes a table of parsers to read based on the bytes.
-type NextOpcodeTable = V.Vector OpcodeTable
-
-------------------------------------------------------------------------
--- OpcodeTable/NextOpcodeTable instances
-
-deriving instance Show OpcodeTable
+type NextOpcodeTable = Trie.Vec8 OpcodeTable
 
 type ParserGen = Except String
 
@@ -446,17 +444,6 @@ modRMOperand nm =
     IM_SB -> False
     IM_SZ -> False
     VVVV_XMM {} -> False
-
--- | Split entries based on first identifier in list of bytes.
-partitionBy :: [([Word8], a)] -> V.Vector [([Word8], a)]
-partitionBy l = V.create $ do
-  mv <- VM.replicate 256 []
-  let  go ([], _d) = pure ()
-       go (w:wl,d) = do
-         el <- VM.read mv (fromIntegral w)
-         VM.write mv (fromIntegral w) ((wl,d):el)
-  mapM_ go l
-  return mv
 
 -- | Some instructions have multiple interpretations depending on the
 -- size of the operands.  This is represented by multiple instructions
@@ -601,30 +588,13 @@ allVexPrefixesAndOpcodes def
 -- prefix and opcode bytes. See @Note [x86_64 disassembly]@ for more details on
 -- how this works.
 mkOpcodeTable :: [Def] -> ParserGen OpcodeTable
-mkOpcodeTable defs = go (concatMap allVexPrefixesAndOpcodes defs)
-  where -- Recursive function that generates opcode table by parsing
-        -- opcodes in first element of list.
-        go :: -- Potential opcode definitions with the remaining opcode
-              -- bytes each potential definition expects.
-              [([Word8], (Maybe VEX, Def))]
-           -> ParserGen OpcodeTable
-        go l
-           -- If we have parsed all the opcodes expected by the remaining
-           -- definitions.
-          | all opcodeDone l =
-              case partition (expectsModRM.snd) (snd <$> l) of
-                (defsWithModRM, defsWithoutModRM) ->
-                  pure $! OpcodeTableEntry defsWithModRM defsWithoutModRM
-            -- If we still have opcodes to parse, generate table for next
-            -- opcode match.
-          | otherwise = do
-            let v = partitionBy l
-                g i = go (v V.! i)
-            tbl <- V.generateM 256 g
-            pure $! OpcodeTable tbl
-        -- Return whether opcode parsing is done.
-        opcodeDone :: ([Word8], a) -> Bool
-        opcodeDone (remaining,_) = null remaining
+mkOpcodeTable defs =
+  pure $! OpcodeTable $ Trie.mkTrie mkLeaf (concatMap allVexPrefixesAndOpcodes defs)
+  where
+    mkLeaf :: [(Maybe VEX, Def)] -> OpcodeTableEntry
+    mkLeaf vexDefs =
+      let (defsWithModRM, defsWithoutModRM) = partition (expectsModRM . snd) vexDefs
+      in OpcodeTableEntry defsWithModRM defsWithoutModRM
 
 requireModCheck :: Def -> Bool
 requireModCheck d = isJust (d^.requiredMod)
@@ -1034,11 +1004,11 @@ disassembleInstruction tr0 = loopPrefixBytes Seq.empty
       where
         go :: NextOpcodeTable -> Word8 -> m InstructionInstance
         go tr opcodeByte =
-          case tr V.! fromIntegral opcodeByte of
-            OpcodeTable tr' -> do
+          case Trie.index tr opcodeByte of
+            OpcodeTable (Trie.Branch tr') -> do
               opcodeByte' <- readByte
-              go tr' opcodeByte'
-            OpcodeTableEntry defsWithModRM defsWithoutModRM
+              go (coerce tr') opcodeByte'
+            OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWithoutModRM))
               |  -- Check the instruction candidates without a ModR/M byte
                  -- first. If one is found, there is an invariant that none
                  -- of the instruction candidates without a ModR/M byte
@@ -1419,9 +1389,9 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
 -- Create the diassembler
 
 opcodeTableSize :: OpcodeTable -> Int
-opcodeTableSize (OpcodeTable v) =
-  sum (opcodeTableSize <$> v)
-opcodeTableSize (OpcodeTableEntry defsWithModRM defsWithoutModRM) =
+opcodeTableSize (OpcodeTable (Trie.Branch v)) =
+  sum (opcodeTableSize <$> coerce @(Trie.Vec8 (Trie.Trie8 OpcodeTableEntry)) @(Trie.Vec8 OpcodeTable) v)
+opcodeTableSize (OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWithoutModRM))) =
   length defsWithModRM + length defsWithoutModRM
 
 nextOpcodeSize :: NextOpcodeTable -> Int
@@ -1432,7 +1402,7 @@ nextOpcodeSize v = sum (opcodeTableSize <$> v)
 mkX64Disassembler :: BS.ByteString -> Either String NextOpcodeTable
 mkX64Disassembler bs = do
   tbl <- parseOpTable bs
-  mOpTbl <- runParserGen $ mkOpcodeTable (filter defSupported tbl)
+  OpcodeTable mOpTbl <- runParserGen $ mkOpcodeTable (filter defSupported tbl)
   case mOpTbl of
-    OpcodeTable v -> Right $! v
-    OpcodeTableEntry{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+    Trie.Branch v -> Right $! coerce v
+    Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"

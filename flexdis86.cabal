@@ -47,6 +47,7 @@ library
     Flexdis86.DefaultParser
     Flexdis86.Disassembler
     Flexdis86.OpTable
+    Flexdis86.Trie
   ghc-options: -Wall -fno-ignore-asserts -O2
 
 executable DumpInstr
