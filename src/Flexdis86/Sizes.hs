@@ -22,8 +22,9 @@ module Flexdis86.Sizes (
   , MaybeFin8
   , pattern NothingFin8
   , pattern JustFin8
-  , someFin8
-  , fromMaybeFin8
+  , maybeFin8ToMaybe
+  , maybeFin8
+  , mapMaybeFin8
   , Fin64
   , asFin64
   , unFin64
@@ -97,21 +98,28 @@ pattern NothingFin8 = MaybeFin8 8
 
 -- | A present 'Fin8' (@Just@).
 pattern JustFin8 :: Fin8 -> MaybeFin8
-pattern JustFin8 f <- (fromMaybeFin8 -> Just f)
-  where JustFin8 = someFin8
+pattern JustFin8 f <- (maybeFin8ToMaybe -> Just f)
+  where JustFin8 (Fin8 w) = MaybeFin8 w
 
 {-# COMPLETE NothingFin8, JustFin8 :: MaybeFin8 #-}
 
--- | Wrap a 'Fin8' as 'MaybeFin8'.
-someFin8 :: Fin8 -> MaybeFin8
-someFin8 (Fin8 w) = MaybeFin8 w
-{-# INLINE someFin8 #-}
-
 -- | Convert to @'Maybe' 'Fin8'@.
-fromMaybeFin8 :: MaybeFin8 -> Maybe Fin8
-fromMaybeFin8 (MaybeFin8 8) = Nothing
-fromMaybeFin8 (MaybeFin8 w) = Just (Fin8 w)
-{-# INLINE fromMaybeFin8 #-}
+maybeFin8ToMaybe :: MaybeFin8 -> Maybe Fin8
+maybeFin8ToMaybe (MaybeFin8 8) = Nothing
+maybeFin8ToMaybe (MaybeFin8 w) = Just (Fin8 w)
+{-# INLINE maybeFin8ToMaybe #-}
+
+-- | Like 'maybe' for 'MaybeFin8'.
+maybeFin8 :: b -> (Fin8 -> b) -> MaybeFin8 -> b
+maybeFin8 def _ NothingFin8   = def
+maybeFin8 _   f (JustFin8 x)  = f x
+{-# INLINE maybeFin8 #-}
+
+-- | Apply a function to the contained 'Fin8', if present.
+mapMaybeFin8 :: (Fin8 -> Fin8) -> MaybeFin8 -> MaybeFin8
+mapMaybeFin8 _ NothingFin8  = NothingFin8
+mapMaybeFin8 f (JustFin8 x) = JustFin8 (f x)
+{-# INLINE mapMaybeFin8 #-}
 
 -- | A value 0-63.
 newtype Fin64 = Fin64 { unFin64 :: Word8 }

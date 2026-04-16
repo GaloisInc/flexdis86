@@ -778,8 +778,8 @@ mkModRM :: InstructionInstance -> Word8 -> Word8 -> Word8 -> B.Builder
 mkModRM ii modb regb rmb =
   B.word8 (rm .|. (reg `shiftL` 3) .|. (rmmod `shiftL` 6))
   where
-    reg = case iiRequiredReg ii of { NothingFin8 -> regb; JustFin8 f -> unFin8 f }
-    rm  = case iiRequiredRM  ii of { NothingFin8 -> rmb;  JustFin8 f -> unFin8 f }
+    reg = maybeFin8 regb unFin8 (iiRequiredReg ii)
+    rm  = maybeFin8 rmb  unFin8 (iiRequiredRM  ii)
     rmmod = maybe modb modConstraintVal (iiRequiredMod ii)
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
@@ -793,12 +793,8 @@ encodeRequiredModRM ii =
   fromMaybe 0 rmod .|. fromMaybe 0 reg .|. fromMaybe 0 rm
   where
     rmod = fmap ((`shiftL`  6) . modConstraintVal) (iiRequiredMod ii)
-    reg = case iiRequiredReg ii of
-            NothingFin8      -> Nothing
-            JustFin8 f  -> Just (unFin8 f `shiftL` 3)
-    rm  = case iiRequiredRM  ii of
-            NothingFin8      -> Nothing
-            JustFin8 f  -> Just (unFin8 f)
+    reg = maybeFin8 Nothing (Just . (`shiftL` 3) . unFin8) (iiRequiredReg ii)
+    rm  = maybeFin8 Nothing (Just . unFin8)                (iiRequiredRM  ii)
 
 modConstraintVal :: ModConstraint -> Word8
 modConstraintVal mc =

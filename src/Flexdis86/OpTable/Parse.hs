@@ -55,7 +55,7 @@ import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 import           Flexdis86.OpTable
 import           Flexdis86.Sizes ( SizeConstraint(..), ModConstraint(..)
                                  , asFin8, asFin64, maskFin8
-                                 , pattern NothingFin8, someFin8
+                                 , pattern NothingFin8, pattern JustFin8
                                  )
 
 ------------------------------------------------------------------------
@@ -420,11 +420,11 @@ parse_opcode nm = do
     _ | Just r <- List.stripPrefix "/reg=" nm
       , [(b, "")] <- readHex r
       , Just v    <- asFin8 b
-      -> requiredReg .= someFin8 v
+      -> requiredReg .= JustFin8 v
     _ | Just r <- List.stripPrefix "/rm=" nm
       , [(b, "")] <- readHex r
       , Just v    <- asFin8 b
-      -> requiredRM .= someFin8 v
+      -> requiredRM .= JustFin8 v
     _ | Just r <- List.stripPrefix "/3dnow=" nm
       , [(b, "")] <- readHex r
       -> do setDefCPUReq AMD_3DNOW
@@ -440,8 +440,8 @@ parse_opcode nm = do
             x87ModRM ?= modRM
             -- FIXME: sjw: HACK to avoid making the parser more complex.  Basically, we
             -- pretend we want both Reg and R/M
-            requiredRM  .= someFin8 (maskFin8 b) -- bottom 3 bits
-            requiredReg .= someFin8 (maskFin8 (b `shiftR` 3))
+            requiredRM  .= JustFin8 (maskFin8 b) -- bottom 3 bits
+            requiredReg .= JustFin8 (maskFin8 (b `shiftR` 3))
     -- This is a special hack used for the endbr32 and endbr64 instructions.
     -- The first byte in their opcodes is parsed as a REP prefix, so we make
     -- sure that it is present by marking it as a required prefix. See
