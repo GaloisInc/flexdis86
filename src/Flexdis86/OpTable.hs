@@ -171,8 +171,8 @@ data Def = Def  { _defMnemonic         :: !BS.ByteString
                   -- ^ List of opcodes, which should be nonempty for
                   -- a complete 'Def'.
                 , _requiredMod :: Maybe ModConstraint
-                , _requiredReg :: Maybe Fin8
-                , _requiredRM :: Maybe Fin8
+                , _requiredReg :: {-# UNPACK #-} !MaybeFin8
+                , _requiredRM  :: {-# UNPACK #-} !MaybeFin8
                 , _x87ModRM    :: Maybe Fin64
                 , _vexPrefixes  :: ![ [Word8] ]
                   -- ^ Allowed VEX prefixes for this instruction.
@@ -239,12 +239,12 @@ requiredMod = lens _requiredMod (\s v -> s { _requiredMod = v })
 
 -- | Indicates if instruction must have ModR/M value with the
 -- given value in the reg field.
-requiredReg :: Lens' Def (Maybe Fin8)
+requiredReg :: Lens' Def MaybeFin8
 requiredReg = lens _requiredReg (\s v -> s { _requiredReg = v })
 
 -- | Indicates if instruction must have ModR/M value with the
 -- given value in the rm field.
-requiredRM :: Lens' Def (Maybe Fin8)
+requiredRM :: Lens' Def MaybeFin8
 requiredRM = lens _requiredRM (\s v -> s { _requiredRM = v })
 
 -- | An x87 FPU opcode expected in the low 6-bits of a ModRM byte

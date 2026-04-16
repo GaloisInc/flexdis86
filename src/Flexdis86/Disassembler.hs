@@ -15,6 +15,7 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -401,8 +402,8 @@ matchRequiredOpSize pfx d =
 expectsModRM :: Def -> Bool
 expectsModRM d
   =  isJust (d^.requiredMod)
-  || isJust (d^.requiredReg)
-  || isJust (d^.requiredRM)
+  || d^.requiredReg /= NothingFin8
+  || d^.requiredRM  /= NothingFin8
   || isJust (d^.x87ModRM)
   || any modRMOperand (d^.defOperands)
 
@@ -644,8 +645,8 @@ mkModTable defs
 
 checkRequiredReg :: Monad m => DefTableFn m (RegTable ModTable)
 checkRequiredReg defs
-  | any (\(_,d) -> isJust (d^.requiredReg)) defs = do
-    let p i (_,d) = equalsOptConstraint i (d^.requiredReg)
+  | any (\(_,d) -> d^.requiredReg /= NothingFin8) defs = do
+    let p i (_,d) = i `matchesMaybeFin8` (d^.requiredReg)
         eltFn i = mkModTable $ filter (p i) defs
     v <- mkFin8Vector eltFn
     pure $! RegTable v
@@ -663,21 +664,22 @@ mkFin8Vector f = do
          in f j
   V.generateM 8 g
 
--- | Return true if value matches an optional constraint (where 'Nothing' denotes any)
--- and 'Just v' denotes a singleton v.
-equalsOptConstraint :: Eq a => a -> Maybe a -> Bool
-equalsOptConstraint _ Nothing = True
-equalsOptConstraint i (Just c) = i == c
+-- | Return true if a 'Fin8' satisfies a 'MaybeFin8' constraint
+-- (@NothingFin8@ means any value is accepted).
+matchesMaybeFin8 :: Fin8 -> MaybeFin8 -> Bool
+matchesMaybeFin8 _ NothingFin8       = True
+matchesMaybeFin8 i (JustFin8 c) = i == c
+{-# INLINE matchesMaybeFin8 #-}
 
 -- | Return true if the definition matches the Fin8 constraint
 matchRMConstraint :: Fin8 -> (Maybe VEX,Def) -> Bool
-matchRMConstraint i (_,d) = i `equalsOptConstraint` (d^.requiredRM)
+matchRMConstraint i (_,d) = i `matchesMaybeFin8` (d^.requiredRM)
 
 -- | Check required RM if needed, then forward to final table.
 checkRequiredRM :: Monad m => DefTableFn m RMTable
 checkRequiredRM defs
     -- Split on the required RM value if any of the definitions depend on it
-  | any (\(_,d) -> isJust (d^.requiredRM)) defs =
+  | any (\(_,d) -> d^.requiredRM /= NothingFin8) defs =
     let eltFn i = pure $ filter (i `matchRMConstraint`) defs
      in RegTable <$> mkFin8Vector eltFn
   | otherwise = pure $ RegUnchecked defs

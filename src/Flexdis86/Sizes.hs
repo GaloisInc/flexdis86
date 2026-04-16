@@ -8,7 +8,9 @@ Defines size types in the udis86 file.
 -}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE ViewPatterns #-}
 module Flexdis86.Sizes (
     SizeConstraint(..)
   , FPSizeConstraint(..)
@@ -17,6 +19,12 @@ module Flexdis86.Sizes (
   , asFin8
   , maskFin8
   , unFin8
+  , MaybeFin8
+  , pattern NothingFin8
+  , pattern JustFin8
+  , maybeFin8ToMaybe
+  , maybeFin8
+  , mapMaybeFin8
   , Fin64
   , asFin64
   , unFin64
@@ -70,6 +78,48 @@ asFin8 b | 0 <= b && b < 8 = Just (Fin8 b)
 -- | Create fin8 from low 3-order bits.
 maskFin8 :: Word8 -> Fin8
 maskFin8 v = Fin8 (v .&. 0x7)
+
+------------------------------------------------------------------------
+-- MaybeFin8
+
+-- | A 'Fin8' that may be absent, stored as a single unboxed 'Word8'.
+-- The value @8@ encodes the absent case; values @0@–@7@ encode 'Fin8'.
+-- This avoids the two-word overhead of @'Maybe' 'Fin8'@.
+newtype MaybeFin8 = MaybeFin8 Word8
+  deriving (Eq, Generic, Ord, Show)
+
+instance DS.NFData MaybeFin8
+-- | For "Flexdis86.OpTable.Parse".
+instance Binary MaybeFin8
+
+-- | The absent case (@Nothing@).
+pattern NothingFin8 :: MaybeFin8
+pattern NothingFin8 = MaybeFin8 8
+
+-- | A present 'Fin8' (@Just@).
+pattern JustFin8 :: Fin8 -> MaybeFin8
+pattern JustFin8 f <- (maybeFin8ToMaybe -> Just f)
+  where JustFin8 (Fin8 w) = MaybeFin8 w
+
+{-# COMPLETE NothingFin8, JustFin8 :: MaybeFin8 #-}
+
+-- | Convert to @'Maybe' 'Fin8'@.
+maybeFin8ToMaybe :: MaybeFin8 -> Maybe Fin8
+maybeFin8ToMaybe (MaybeFin8 8) = Nothing
+maybeFin8ToMaybe (MaybeFin8 w) = Just (Fin8 w)
+{-# INLINE maybeFin8ToMaybe #-}
+
+-- | Like 'maybe' for 'MaybeFin8'.
+maybeFin8 :: b -> (Fin8 -> b) -> MaybeFin8 -> b
+maybeFin8 def _ NothingFin8   = def
+maybeFin8 _   f (JustFin8 x)  = f x
+{-# INLINE maybeFin8 #-}
+
+-- | Apply a function to the contained 'Fin8', if present.
+mapMaybeFin8 :: (Fin8 -> Fin8) -> MaybeFin8 -> MaybeFin8
+mapMaybeFin8 _ NothingFin8  = NothingFin8
+mapMaybeFin8 f (JustFin8 x) = JustFin8 (f x)
+{-# INLINE mapMaybeFin8 #-}
 
 -- | A value 0-63.
 newtype Fin64 = Fin64 { unFin64 :: Word8 }
