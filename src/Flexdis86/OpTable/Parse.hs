@@ -25,7 +25,7 @@ import           Control.Monad.State ( MonadState(..)
                                      )
 import           Data.Bits ((.|.), shiftL, shiftR)
 import qualified Data.Binary as Bin
-import           Data.Binary.Put (Put, runPut)
+import           Data.Binary.Put (runPut)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as LBS
@@ -74,11 +74,10 @@ mkElemState e = ElemState { esName    = elName e
                           , esLine    = elLine e
                           }
 
--- | Full parser state: current element context plus streaming
--- 'Binary'-serialized Def accumulator ('Put'). The accumulator is never
--- saved/restored by 'runWithElement'.
-data ParseState = ParseState { psElem    :: !ElemState
-                             , psBuilder :: !Put
+-- | Full parser state: current element context plus list of collected 'Def's.
+-- The accumulator is never saved/restored by 'runWithElement'.
+data ParseState = ParseState { psElem :: !ElemState
+                             , psDefs :: ![Def]
                              }
 
 newtype ElemParser a = EP { unEP :: ParseState -> Either String (a, ParseState) }
@@ -120,17 +119,17 @@ runWithElement m e = EP $ \s ->
        Left err       -> Left err
        Right (v, s'') -> Right (v, s'' { psElem = psElem s })
 
-runElemParser :: ElemParser () -> Element -> Either String Put
+runElemParser :: ElemParser () -> Element -> Either String [Def]
 runElemParser m e =
-  case unEP m (ParseState (mkElemState e) mempty) of
+  case unEP m (ParseState (mkElemState e) []) of
     Left err     -> Left err
-    Right (_, s) -> Right (psBuilder s)
+    Right (_, s) -> Right (psDefs s)
 
--- | Emit a 'Def' into the streaming Binary accumulator.
+-- | Emit a 'Def' into the collected accumulator.
 emitDef :: Def -> ElemParser ()
 emitDef d = EP $ \s -> Right
   ( ()
-  , s { psBuilder = psBuilder s <> Bin.put d }
+  , s { psDefs = d : psDefs s }
   )
 
 checkTag :: String -> ElemParser ()
@@ -548,11 +547,19 @@ parse_x86_optable = do
 -- | Parse the optable.xml file, returning only the 'Def's as a 'Data.Binary'-encoded bytestring.
 --
 -- Only returns 'Def's supported by flexdis86 (i.e., those for which
--- 'defSupported' returns 'True').
+-- 'defSupported' returns 'True').  The 'Def's are sorted by
+-- (@'_requiredPrefix'@, @'_defOpcodes'@) so that the embedded blob has a
+-- stable, opcode-order layout.
 parseOpTable :: BS.ByteString -> Either String LBS.ByteString
 parseOpTable bs =
   case parseXMLDoc bs of
     Nothing  -> Left "Not an XML document"
     Just elt -> case runElemParser parse_x86_optable elt of
-      Left err     -> Left err
-      Right putAcc -> Right $ runPut putAcc
+      Left err   -> Left err
+      Right defs -> Right $ runPut $ mapM_ Bin.put (sortDefs defs)
+
+-- | Sort 'Def's by their instruction bytes: required prefix (if any) then
+-- opcode bytes.  Sorting at compile time gives the embedded blob a stable
+-- layout and may improve cache locality when building the opcode trie.
+sortDefs :: [Def] -> [Def]
+sortDefs = List.sortOn (\d -> (_requiredPrefix d, _defOpcodes d))
