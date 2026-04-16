@@ -63,6 +63,7 @@ import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.PrefixSet
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -264,15 +265,15 @@ no_rex = REX 0
 
 -- | Extension of ModR/M reg field.
 rex_r :: REX -> Word8
-rex_r r = (unREX r `shiftL` 1) .&. 0x8
+rex_r r = (unRex r `shiftL` 1) .&. 0x8
 
 -- | Extension of SIB index field.
 rex_x :: REX -> Word8
-rex_x r = (unREX r `shiftL` 2) .&. 0x8
+rex_x r = (unRex r `shiftL` 2) .&. 0x8
 
 -- | Extension of ModR/M r/m field, SIB base field, or Opcode reg field.
 rex_b :: REX -> Word8
-rex_b r = (unREX r `shiftL` 3) .&. 0x8
+rex_b r = (unRex r `shiftL` 3) .&. 0x8
 
 reg8 :: REX -> Word8 -> Reg8
 reg8 rex w | rex == no_rex = if w < 4 then LowReg8 w else HighReg8 (w-4)
@@ -388,9 +389,9 @@ prefixOperandSizeConstraint :: Prefixes -> Def -> OperandSizeConstraint
 prefixOperandSizeConstraint pfx d
   -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
   | Just Default64 <- d^.defMode,
-    pfx^.prOSO == False = OpSize64
+    pfx^.prOso == False = OpSize64
   | (getREX pfx)^.rexW  = OpSize64
-  | pfx^.prOSO          = OpSize16
+  | pfx^.prOso          = OpSize16
   | otherwise           = OpSize32
 
 -- | Returns true if this definition supports the given operand size constaint.
@@ -494,21 +495,22 @@ type PrefixAssignFun = Prefixes -> Prefixes
 -- | Map prefix bytes corresponding to prefixes to the associated update function.
 type PrefixAssignTable = HM.HashMap Word8 PrefixAssignFun
 
--- Given a list of allowed prefixes
-simplePrefixes :: BS.ByteString -> [String] -> PrefixAssignTable
+-- | Given the allowed-prefix set for an instruction, build the simple
+-- legacy-prefix assignment table.
+simplePrefixes :: BS.ByteString -> PrefixSet -> PrefixAssignTable
 simplePrefixes mnem allowed
-  | "rep" `elem` allowed && "repz" `elem` allowed = error $
+  | hasPfx pfxRep allowed && hasPfx pfxRepz allowed = error $
       "Instruction " ++ BSC.unpack mnem ++ " should not be allowed to have both rep and repz as prefixes"
-  | otherwise = HM.fromList [ v | (name, v) <- simplePrefixBytesFuns, name `elem` allowed ]
+  | otherwise = HM.fromList [ v | (flag, v) <- simplePrefixBytesFuns, hasPfx flag allowed ]
 
-simplePrefixBytesFuns :: [(String, (Word8, PrefixAssignFun))]
+simplePrefixBytesFuns :: [(PrefixSet, (Word8, PrefixAssignFun))]
 simplePrefixBytesFuns =
-  [ ("lock",  (0xf0, set prLockPrefix LockPrefix))
-  , ("repnz", (0xf2, set prLockPrefix RepNZPrefix))
-  , ("repz",  (0xf3, set prLockPrefix RepZPrefix))
-  , ("rep",   (0xf3, set prLockPrefix RepPrefix))
-  , ("oso",   (0x66, set prOSO True))
-  , ("aso",   (0x67, set prASO True))
+  [ (pfxLock,  (0xf0, set prLockPrefix LockPrefix))
+  , (pfxRepnz, (0xf2, set prLockPrefix RepNZPrefix))
+  , (pfxRepz,  (0xf3, set prLockPrefix RepZPrefix))
+  , (pfxRep,   (0xf3, set prLockPrefix RepPrefix))
+  , (pfxOso,   (0x66, set prOso True))
+  , (pfxAso,   (0x67, set prAso True))
   ]
 
 -- | The simple \"legacy\" prefixes.
@@ -516,10 +518,10 @@ simplePrefixBytes :: HS.HashSet Word8
 simplePrefixBytes = HS.fromList $ map (fst . snd) simplePrefixBytesFuns
 
 -- | Table for segment prefixes
-segPrefixes :: [String] -> PrefixAssignTable
+segPrefixes :: PrefixSet -> PrefixAssignTable
 segPrefixes allowed
-  | "seg" `elem` allowed = HM.fromList [ (x, set prSP (SegmentPrefix x)) | x <- segPrefixBytesList ]
-  | otherwise            = HM.empty
+  | hasPfx pfxSeg allowed = HM.fromList [ (x, set prSp (SegmentPrefix x)) | x <- segPrefixBytesList ]
+  | otherwise             = HM.empty
 
 -- | The segment prefixes.
 segPrefixBytes :: HS.HashSet Word8
@@ -529,19 +531,19 @@ segPrefixBytesList :: [Word8]
 segPrefixBytesList = [0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65]
 
 -- FIXME: we could also decode the REX
-rexPrefixes :: [String] -> PrefixAssignTable
+rexPrefixes :: PrefixSet -> PrefixAssignTable
 rexPrefixes allowed
   | null possibleBits = HM.empty
   | otherwise         = HM.fromList
-                          [ (x, set prREX (REX x))
+                          [ (x, set prRex (REX x))
                           | xs <- subsequences possibleBits
                           , let x = foldl (.|.) rex_instr_pfx xs ]
   where
-    possibleBits  = [ b | (name, b) <- rexPrefixBits, name `elem` allowed ]
-    rexPrefixBits = [ ("rexw", rex_w_bit)
-                    , ("rexr", rex_r_bit)
-                    , ("rexx", rex_x_bit)
-                    , ("rexb", rex_b_bit) ]
+    possibleBits  = [ b | (flag, b) <- rexPrefixBits, hasPfx flag allowed ]
+    rexPrefixBits = [ (pfxRexw, rex_w_bit)
+                    , (pfxRexr, rex_r_bit)
+                    , (pfxRexx, rex_x_bit)
+                    , (pfxRexb, rex_b_bit) ]
 
 -- | The REX prefix bytes.
 rexPrefixBytes :: HS.HashSet Word8
@@ -559,10 +561,10 @@ notrackPrefixBytes :: HS.HashSet Word8
 notrackPrefixBytes = HS.singleton notrackPrefixByte
 
 -- | Table for notrack prefixes
-notrackPrefix :: [String] -> PrefixAssignTable
+notrackPrefix :: PrefixSet -> PrefixAssignTable
 notrackPrefix allowed
-  | "notrack" `elem` allowed = HM.singleton notrackPrefixByte (set prNoTrack True)
-  | otherwise                = HM.empty
+  | hasPfx pfxNotrack allowed = HM.singleton notrackPrefixByte (set prNoTrack True)
+  | otherwise                 = HM.empty
 
 -- | All prefix bytes besides the VEX ones. (See @Note [x86_64 disassembly]@
 -- for why VEX prefix bytes are treated specially.)
@@ -866,13 +868,13 @@ validatePrefixBytes prefixBytes mbVex def =
     go [] = do
       st <- get
       let pfx = appList (HM.elems (st^.prefixAssignFunMap))
-                        (set prVEX mbVex defaultPrefix)
+                        (set prVex mbVex defaultPrefix)
       (pfx', def') <-
         -- Here is where we perform special cases of instructions that are
         -- similar to nop (opcode 0x90).
         if |  -- If we have a nop with an OSO prefix, what we really have is an
               -- xchg instruction.
-              def^.defOpcodes == [0x90] && pfx^.prOSO
+              def^.defOpcodes == [0x90] && pfx^.prOso
            -> do let xchgMnemonic = "xchg"
                  let mbOprs = do
                        -- The operand types come from here:
@@ -881,7 +883,7 @@ validatePrefixBytes prefixBytes mbVex def =
                        opr2 <- lookupOperandType xchgMnemonic "rAX"
                        pure [opr1, opr2]
                  case mbOprs of
-                   Just oprs -> pure ( pfx & prOSO .~ False
+                   Just oprs -> pure ( pfx & prOso .~ False
                                      , def & defMnemonic .~ xchgMnemonic
                                            & defOpcodes  %~ (0x66:)
                                            & defOperands .~ oprs
@@ -951,11 +953,11 @@ validatePrefixBytes prefixBytes mbVex def =
     notrackPfx = notrackPrefix allowed
 
     defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
-                             , _prSP  = no_seg_prefix
-                             , _prREX = no_rex
-                             , _prVEX = Nothing
-                             , _prASO = False
-                             , _prOSO = False
+                             , _prSp  = no_seg_prefix
+                             , _prRex = no_rex
+                             , _prVex = Nothing
+                             , _prAso = False
+                             , _prOso = False
                              , _prNoTrack = False
                              }
 
@@ -1127,9 +1129,9 @@ memSizeFn osz sz =
 
 
 getREX :: Prefixes -> REX
-getREX p = case p ^. prVEX of
+getREX p = case p ^. prVex of
              Just vex -> vex ^. vexRex
-             _        -> p ^. prREX
+             _        -> p ^. prRex
 
 readOffset :: ByteReader m => Segment -> Bool -> m AddrRef
 readOffset s aso
@@ -1143,9 +1145,9 @@ parseValue :: (ByteReader m, HasCallStack)
            -> OperandType
            -> m Value
 parseValue p osz mmrm tp = do
-  let sp  = p^.prSP
+  let sp  = p^.prSp
       rex = getREX p
-      aso = p^.prASO
+      aso = p^.prAso
       msg = "internal: parseValue missing modRM with operand type: " ++ show tp
       modRM = fromMaybe (error msg) mmrm -- laziness is used here and below, this is not used for e.g. ImmediateSource
 
@@ -1178,7 +1180,7 @@ parseValue p osz mmrm tp = do
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
     OpType VVVV sz
-      | Just vx <- p ^. prVEX -> pure $ regSizeFn osz rex sz $ complement (vx ^. vexVVVV) .&. 0xF
+      | Just vx <- p ^. prVex -> pure $ regSizeFn osz rex sz $ complement (vx ^. vexVVVV) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
     OpType ImmediateSource BSize ->
       ByteImm <$> readByte
@@ -1229,13 +1231,13 @@ parseValue p osz mmrm tp = do
       | Just sz <- mb     -> error ("[RM_XMM] Unexpected size: " ++ show sz)
 
       | Nothing <- mb
-      , Just vx <- p ^. prVEX
+      , Just vx <- p ^. prVex
       , vx ^. vex256      -> Mem256 <$> addr
 
       | otherwise         -> Mem128 <$> addr
 
     VVVV_XMM mb
-      | Just vx <- p ^. prVEX ->
+      | Just vx <- p ^. prVex ->
           return $ largeReg p mb $ complement (vx ^. vexVVVV) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
 
@@ -1294,7 +1296,7 @@ largeReg :: Prefixes -> Maybe OperandSize -> Word8 -> Value
 largeReg p mb num =
   case mb of
 
-    Nothing | Just vx <- p ^. prVEX
+    Nothing | Just vx <- p ^. prVex
             , vx ^. vex256  -> useYMM
             | otherwise     -> useXMM
 
@@ -1313,10 +1315,10 @@ readNoOffset :: ByteReader m
              -> ModRM
              -> m AddrRef
 readNoOffset p modRM = do
-  let aso = p^.prASO
+  let aso = p^.prAso
   let rm = modRM_rm modRM
   let rex = getREX p
-      sp = p^.prSP
+      sp = p^.prSp
   let base_reg  = (rex_b rex .|.)
       index_reg = (rex_x rex .|.)
   if rm == rsp_idx then do
@@ -1348,7 +1350,7 @@ readWithOffset :: ByteReader m
                -> ModRM
                -> m AddrRef
 readWithOffset readDisp aso p modRM = do
-  let sp = p^.prSP
+  let sp = p^.prSp
   let rex = getREX p
   let rm = modRM_rm modRM
   let base_reg  = (rex_b rex .|.)

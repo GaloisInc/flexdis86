@@ -19,11 +19,11 @@ module Flexdis86.Prefixes
   , rexX
   , SegmentPrefix(..)
   , prLockPrefix
-  , prSP
-  , prREX
-  , prVEX
-  , prASO
-  , prOSO
+  , prSp
+  , prRex
+  , prVex
+  , prAso
+  , prOso
   , prNoTrack
   , prAddrSize
   , no_seg_prefix
@@ -94,7 +94,7 @@ ppLockPrefix RepNZPrefix = "repnz"
 -- REX
 
 -- | REX value for 64-bit mode.
-newtype REX = REX { unREX :: Word8 }
+newtype REX = REX { unRex :: Word8 }
   deriving (Eq, Generic)
 
 instance DS.NFData REX
@@ -106,19 +106,19 @@ setBitTo bits bitNo val
 
 -- | Indicates if 64-bit operand size should be used.
 rexW :: Lens' REX Bool
-rexW = lens ((`B.testBit` 3) . unREX) (\(REX r) v -> REX (setBitTo r 3 v))
+rexW = lens ((`B.testBit` 3) . unRex) (\(REX r) v -> REX (setBitTo r 3 v))
 
 -- | Extension of ModR/M reg field.
 rexR :: Lens' REX Bool
-rexR = lens ((`B.testBit` 2) . unREX) (\(REX r) v -> REX (setBitTo r 2 v))
+rexR = lens ((`B.testBit` 2) . unRex) (\(REX r) v -> REX (setBitTo r 2 v))
 
 -- | Extension of SIB index field.
 rexX :: Lens' REX Bool
-rexX = lens ((`B.testBit` 1) . unREX) (\(REX r) v -> REX (setBitTo r 1 v))
+rexX = lens ((`B.testBit` 1) . unRex) (\(REX r) v -> REX (setBitTo r 1 v))
 
 -- | Extension of ModR/M r/m field, SIB base field, or Opcode reg field.
 rexB :: Lens' REX Bool
-rexB = lens ((`B.testBit` 0) . unREX) (\(REX r) v -> REX (setBitTo r 0 v))
+rexB = lens ((`B.testBit` 0) . unRex) (\(REX r) v -> REX (setBitTo r 0 v))
 
 instance Show REX where
   show (REX rex) = printf "0b%08b" rex
@@ -138,11 +138,11 @@ instance DS.NFData VEX
 
 -- | Prefixes for an instruction.
 data Prefixes = Prefixes { _prLockPrefix :: !LockPrefix
-                         , _prSP  :: !SegmentPrefix
-                         , _prREX :: !REX
-                         , _prVEX :: !(Maybe VEX)
-                         , _prASO :: !Bool
-                         , _prOSO :: !Bool
+                         , _prSp  :: !SegmentPrefix
+                         , _prRex :: !REX
+                         , _prVex :: !(Maybe VEX)
+                         , _prAso :: !Bool
+                         , _prOso :: !Bool
                          , _prNoTrack :: !Bool
                          }
                 deriving (Eq, Generic, Show)
@@ -181,7 +181,7 @@ vexRex = vexLens gt1 gt2 st1 st2
                          B..|. B.shiftR (B.complement b1 B..&. 0xE0) 5)
 
   st1 b v     = if v ^. rexR then B.clearBit b 7 else B.setBit b 7
-  st2 b1 b2 v = ( (b1 B..&. 0x1F) B..|. (B.complement (unREX v) `B.shiftL` 5)
+  st2 b1 b2 v = ( (b1 B..&. 0x1F) B..|. (B.complement (unRex v) `B.shiftL` 5)
                 , if v ^. rexW then B.clearBit b2 7 else B.setBit b2 7
                 )
 
@@ -197,24 +197,24 @@ vexVVVV = vexLens gt (\_ b2 -> gt b2)
 prLockPrefix :: Lens' Prefixes LockPrefix
 prLockPrefix = lens _prLockPrefix (\s v -> s { _prLockPrefix = v })
 
-prSP :: Lens' Prefixes SegmentPrefix
-prSP = lens _prSP (\s v -> s { _prSP = v})
+prSp :: Lens' Prefixes SegmentPrefix
+prSp = lens _prSp (\s v -> s { _prSp = v})
 
-prREX :: Lens' Prefixes REX
-prREX = lens _prREX (\s v -> s { _prREX = v })
+prRex :: Lens' Prefixes REX
+prRex = lens _prRex (\s v -> s { _prRex = v })
 
-prVEX :: Lens' Prefixes (Maybe VEX)
-prVEX = lens _prVEX (\s v -> s { _prVEX = v })
+prVex :: Lens' Prefixes (Maybe VEX)
+prVex = lens _prVex (\s v -> s { _prVex = v })
 
-prASO :: Lens' Prefixes Bool
-prASO = lens _prASO (\s v -> s { _prASO = v })
+prAso :: Lens' Prefixes Bool
+prAso = lens _prAso (\s v -> s { _prAso = v })
 
-prOSO :: Lens' Prefixes Bool
-prOSO = lens _prOSO (\s v -> s { _prOSO = v })
+prOso :: Lens' Prefixes Bool
+prOso = lens _prOso (\s v -> s { _prOso = v })
 
 prNoTrack :: Lens' Prefixes Bool
 prNoTrack = lens _prNoTrack (\s v -> s { _prNoTrack = v })
 
 prAddrSize :: Prefixes -> SizeConstraint
-prAddrSize pfx | pfx^.prASO = Size32
+prAddrSize pfx | pfx^.prAso = Size32
                | otherwise  = Size64

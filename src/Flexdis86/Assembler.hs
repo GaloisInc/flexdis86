@@ -104,11 +104,11 @@ findEncoding args def = do
               , iiOp = L.view defMnemonic def
               , iiArgs = argTypes
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
-                                      , _prSP = no_seg_prefix
-                                      , _prREX = rex
-                                      , _prVEX = vex
-                                      , _prASO = aso
-                                      , _prOSO = oso
+                                      , _prSp = no_seg_prefix
+                                      , _prRex = rex
+                                      , _prVex = vex
+                                      , _prAso = aso
+                                      , _prOso = oso
                                       , _prNoTrack = notrack
                                       }
               , iiRequiredPrefix = L.view requiredPrefix def
@@ -259,11 +259,11 @@ setREXFlagIf flg cond rex
 --   , iiPrefixes =
 --       Prefixes
 --         { _prLockPrefix = NoLockPrefix
---         , _prSP = SegmentPrefix { unwrapSegmentPrefix = 0 }
---         , _prREX = 0
---         , _prVEX = Nothing
---         , _prASO = False
---         , _prOSO = False
+--         , _prSp = SegmentPrefix { unwrapSegmentPrefix = 0 }
+--         , _prRex = 0
+--         , _prVex = Nothing
+--         , _prAso = False
+--         , _prOso = False
 --         }
 --   , iiRequiredPrefix = Nothing
 --   , iiOpcode = [ 9 ]
@@ -357,7 +357,7 @@ mkAssembledInstruction ::
   InstructionInstance ->
   m (AssembledInstruction B.Builder)
 mkAssembledInstruction ii = do
-  when (isJust (L.view prVEX pfxs)) $ do
+  when (isJust (L.view prVex pfxs)) $ do
     C.throwM VEXUnsupported
   mdisp <- encodeModRMDisp ii
   return $
@@ -366,7 +366,7 @@ mkAssembledInstruction ii = do
           mconcat [ if spfx == no_seg_prefix
                     then mempty
                     else B.word8 (unwrapSegmentPrefix spfx)
-                  , if L.view prASO pfxs then B.word8 0x67 else mempty
+                  , if L.view prAso pfxs then B.word8 0x67 else mempty
                   , if oso then B.word8 0x66 else mempty
                   , encodeLockPrefix (L.view prLockPrefix pfxs)
                   ]
@@ -377,9 +377,9 @@ mkAssembledInstruction ii = do
       , immediates = map (encodeImmediate rex oso) (iiArgs ii)
       }
   where
-    rex = L.view prREX pfxs
-    oso = L.view prOSO pfxs
-    spfx = L.view prSP pfxs
+    rex = L.view prRex pfxs
+    oso = L.view prOso pfxs
+    spfx = L.view prSp pfxs
     pfxs = iiPrefixes ii
 
 {-
