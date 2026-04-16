@@ -1,7 +1,7 @@
 {- |
 Module      :  $Header$
 Copyright   :  (c) Galois, Inc 2013-2026
-Maintainer  :  langston.barrett@gmail.com
+Maintainer  :  langston@galois.com
 
 Defines the default parser from optable.xml as compiled in.
 -}
