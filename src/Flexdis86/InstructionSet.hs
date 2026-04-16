@@ -26,6 +26,7 @@ import           Control.Applicative
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Int
 import           Data.String (fromString)
+import qualified Data.Vector as V
 import           Data.Word
 import           Numeric (showHex)
 import qualified Prettyprinter as PP
@@ -250,7 +251,7 @@ data InstructionInstanceF a
           -- size override)
         , iiAddrSize :: !SizeConstraint
         , iiOp   :: !BSC.ByteString
-        , iiArgs :: ![a]
+        , iiArgs :: !(V.Vector a)
         , iiPrefixes :: !Prefixes
         , iiRequiredPrefix :: Maybe Word8
           -- | List of opcodes, which should always be nonempty.
@@ -272,7 +273,7 @@ nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]
 ppInstruction :: InstructionInstance -> PP.Doc a
 ppInstruction i =
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
-      args = fst <$> iiArgs i
+      args = V.toList (fst <$> iiArgs i)
       op = BSC.unpack (iiOp i)
   in
    case (op, args) of
@@ -296,7 +297,7 @@ ppInstructionWith ppv i =
   -- FIXME Too much copy-and-paste, but not clear how to abstract
   -- given the special cases
   let sLockPrefix = ppLockPrefix (iiLockPrefix i)
-      args = iiArgs i
+      args = V.toList (iiArgs i)
       op = BSC.unpack (iiOp i)
   in
   case (args, iiLockPrefix i) of

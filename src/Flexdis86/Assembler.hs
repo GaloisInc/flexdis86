@@ -35,6 +35,7 @@ import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
 import           Data.Maybe ( fromMaybe, isJust )
 import           Data.Monoid
+import qualified Data.Vector as V
 import           Data.Word
 import qualified Lens.Micro as L
 import qualified Lens.Micro.Extras as L
@@ -71,7 +72,7 @@ assemblerContext = AssemblerContext . foldr addDef M.empty
     def `addDef` map' = foldr add map' keys
       where
       key `add` map'' = M.alter (Just . (maybe [def] (def:))) key map''
-      keys = L.view defMnemonic def : L.view defMnemonicSynonyms def
+      keys = L.view defMnemonic def : V.toList (L.view defMnemonicSynonyms def)
 
 mkInstruction :: (MonadPlus m)
               => AssemblerContext
@@ -88,8 +89,8 @@ mkInstruction ctx mnemonic args =
 findEncoding :: (MonadPlus m) => [Value] -> Def -> m InstructionInstance
 findEncoding args def = do
   let opTypes = L.view defOperands def
-  guard (length args == length opTypes)
-  let argTypes = zip args opTypes
+  guard (length args == V.length opTypes)
+  let argTypes = zip args (V.toList opTypes)
   -- Always only consider case where address size override is false.
   -- NOTE. We could extend this to consider both options.
   let aso = False
@@ -103,7 +104,7 @@ findEncoding args def = do
               -- based on args or def?
               , iiAddrSize = Size16
               , iiOp = L.view defMnemonic def
-              , iiArgs = argTypes
+              , iiArgs = V.fromList argTypes
               , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
                                       , _prSp = no_seg_prefix
                                       , _prRex = rex
@@ -375,7 +376,7 @@ mkAssembledInstruction ii = do
       , rexPrefix = encodeREXPrefix rex
       , opcode = B.byteString (B.pack (iiOpcode ii))
       , modRmSibDisp = mdisp
-      , immediates = map (encodeImmediate rex oso) (iiArgs ii)
+      , immediates = map (encodeImmediate rex oso) (V.toList (iiArgs ii))
       }
   where
     rex = L.view prRex pfxs
@@ -408,7 +409,7 @@ hasModRM ii = or [ isJust (iiRequiredMod ii)
                  , iiRequiredReg ii /= NothingFin8
                  , iiRequiredRM  ii /= NothingFin8
                  , isJust (iiRequiredPrefix ii)
-                 , any operandTypeRequiresModRM (map snd (iiArgs ii))
+                 , V.any (operandTypeRequiresModRM . snd) (iiArgs ii)
                  ]
 
 operandTypeRequiresModRM :: OperandType -> Bool
@@ -436,7 +437,7 @@ encodeOperandModRM ::
   Word8 ->
   m (f (AssembledModRmSibDisp B.Builder))
 encodeOperandModRM ii reqModRM
-  | [] <- filter (isNotImmediate . fst) (iiArgs ii)
+  | V.null (V.filter (isNotImmediate . fst) (iiArgs ii))
   , reqModRM /= 0
   = return (pure $ AssembledModRmSibDisp
                      { modRm = B.word8 reqModRM
@@ -466,7 +467,7 @@ encodeOperandModRM ii reqModRM
                               (Just sib')
                               (Just disp')))
   where
-    rrv = findRmRegValues (iiArgs ii)
+    rrv = findRmRegValues (V.toList (iiArgs ii))
 
 -- | The arguments (if any) that should be encoded into the rm and reg
 -- bits of the ModRM byte and the corresponding bits in the REX

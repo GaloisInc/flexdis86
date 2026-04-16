@@ -7,6 +7,7 @@ Types describing x86 instruction definitions, and utilities for working
 with them at runtime.  XML parsing lives in "Flexdis86.OpTable.Parse".
 -}
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Flexdis86.OpTable
   ( -- * Primitive types
     Mode(..)
@@ -43,10 +44,11 @@ module Flexdis86.OpTable
 import qualified Control.DeepSeq as DS
 import qualified Control.Monad.Fail as MF
 import           Data.Bits ((.&.))
-import           Data.Binary (Binary)
+import           Data.Binary (Binary, get, put)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Map.Strict as Map
+import qualified Data.Vector as V
 import           Data.Word (Word8)
 import           GHC.Generics (Generic)
 import           Lens.Micro (Lens', lens, (^.))
@@ -119,6 +121,11 @@ instance DS.NFData Vendor
 -- | For "Flexdis86.OpTable.Parse".
 instance Binary Vendor
 
+-- | Orphan instance: 'Binary' has no 'V.Vector' support.
+instance Binary a => Binary (V.Vector a) where
+  put v = put (V.toList v)
+  get   = V.fromList <$> get
+
 ------------------------------------------------------------------------
 -- ModeLimit
 
@@ -153,7 +160,7 @@ instance Binary OperandSizeConstraint
 -- | The definition of an instruction.
 data Def = Def  { _defMnemonic         :: !BS.ByteString
                   -- ^ Canonical mnemonic
-                , _defMnemonicSynonyms :: [BS.ByteString]
+                , _defMnemonicSynonyms :: V.Vector BS.ByteString
                   -- ^ Additional mnemonics, not including
                   -- the canonical mnemonic. Used e.g. by
                   -- jump instructions.
@@ -176,9 +183,9 @@ data Def = Def  { _defMnemonic         :: !BS.ByteString
                 , _requiredReg :: {-# UNPACK #-} !MaybeFin8
                 , _requiredRM  :: {-# UNPACK #-} !MaybeFin8
                 , _x87ModRM    :: Maybe Fin64
-                , _vexPrefixes  :: ![ [Word8] ]
+                , _vexPrefixes  :: !(V.Vector [Word8])
                   -- ^ Allowed VEX prefixes for this instruction.
-                , _defOperands  :: ![OperandType]
+                , _defOperands  :: !(V.Vector OperandType)
                 } deriving (Eq, Generic, Show)
 
 instance DS.NFData Def
@@ -195,7 +202,7 @@ defMnemonic = lens _defMnemonic (\s v -> s { _defMnemonic = v })
 -- | Additional mnemonics, not including the canonical mnemonic.
 --
 -- Used e.g. by jump instructions.
-defMnemonicSynonyms :: Lens' Def [BS.ByteString]
+defMnemonicSynonyms :: Lens' Def (V.Vector BS.ByteString)
 defMnemonicSynonyms =
   lens _defMnemonicSynonyms (\s v -> s { _defMnemonicSynonyms = v })
 
@@ -254,11 +261,11 @@ requiredRM = lens _requiredRM (\s v -> s { _requiredRM = v })
 x87ModRM :: Lens' Def (Maybe Fin64)
 x87ModRM = lens _x87ModRM (\s v -> s { _x87ModRM = v })
 
-vexPrefixes :: Lens' Def [[Word8]]
+vexPrefixes :: Lens' Def (V.Vector [Word8])
 vexPrefixes = lens _vexPrefixes (\s v -> s { _vexPrefixes = v })
 
 -- | Operand descriptions.
-defOperands :: Lens' Def [OperandType]
+defOperands :: Lens' Def (V.Vector OperandType)
 defOperands = lens _defOperands (\s v -> s { _defOperands = v })
 
 ------------------------------------------------------------------------
@@ -274,7 +281,7 @@ supportedCPUReqs =
 x64Compatible :: Def -> Bool
 x64Compatible d
   | [b] <- opcodeListToList (d^.defOpcodes)
-  , null (d^.vexPrefixes)
+  , V.null (d^.vexPrefixes)
   , b .&. 0xF0 == 0x40
   = False
   | otherwise

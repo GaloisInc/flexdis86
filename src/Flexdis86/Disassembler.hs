@@ -409,7 +409,7 @@ expectsModRM d
   || d^.requiredReg /= NothingFin8
   || d^.requiredRM  /= NothingFin8
   || isJust (d^.x87ModRM)
-  || any modRMOperand (d^.defOperands)
+  || V.any modRMOperand (d^.defOperands)
 
 -- | Returns true if operand has a modRMOperand.
 modRMOperand :: OperandType -> Bool
@@ -585,7 +585,7 @@ nonVexPrefixBytes = HS.unions
 -- the pair contains the corresponding 'VEX' (if one exists) and 'Def'.
 allVexPrefixesAndOpcodes :: Def -> [([Word8], (Maybe VEX, Def))]
 allVexPrefixesAndOpcodes def
-  | null (def ^. vexPrefixes)
+  | V.null (def ^. vexPrefixes)
   = [ (opcodeListToList (def^.defOpcodes), (Nothing, def)) ]
 
   | otherwise
@@ -593,7 +593,7 @@ allVexPrefixesAndOpcodes def
     | (vexBytes, vex) <- mkVexPrefixes def ]
   where
     mkVexPrefixes :: Def -> [([Word8], VEX)]
-    mkVexPrefixes df = map cvt (df ^. vexPrefixes)
+    mkVexPrefixes df = map cvt (V.toList (df ^. vexPrefixes))
       where
       cvt pref =
         case pref of
@@ -639,7 +639,7 @@ mkModTable defs
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
-            _ -> not (any modRMRegOperand (d^.defOperands))
+            _ -> not (V.any modRMRegOperand (d^.defOperands))
         modRMRegOperand nm =
           case nm of
             OpType sc _ ->
@@ -654,7 +654,7 @@ mkModTable defs
     let regDef d =
           case d^.requiredMod of
             Just OnlyMem -> False
-            _ -> not (any modRMMemOperand (d^.defOperands))
+            _ -> not (V.any modRMMemOperand (d^.defOperands))
         modRMMemOperand nm =
           case nm of
             OpType sc _ ->
@@ -887,7 +887,7 @@ validatePrefixBytes prefixBytes mbVex def =
                    Just oprs -> pure ( pfx & prOso .~ False
                                      , def & defMnemonic .~ xchgMnemonic
                                            & defOpcodes  %~ consOpcodeList 0x66
-                                           & defOperands .~ oprs
+                                           & defOperands .~ V.fromList oprs
                                      )
                    Nothing -> impossible "Could not find operand types for R0v and rAX"
 

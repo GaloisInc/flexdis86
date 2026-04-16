@@ -35,6 +35,7 @@ import           Data.Containers.ListUtils (nubOrd)
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (fromMaybe)
+import qualified Data.Vector as V
 import           Data.Word (Word8)
 import           Numeric (readDec, readHex)
 import           Text.XML.Light ( Content(..)
@@ -453,7 +454,7 @@ parse_opcode nm = do
       -> requiredPrefix ?= b
     _ | Just r <- List.stripPrefix "/vex=" nm
       -> do setDefCPUReq AVX
-            vexPrefixes .= vexToBytes (parseVex r)
+            vexPrefixes .= V.fromList (vexToBytes (parseVex r))
     _ -> fail $ "Unexpected opcode: " ++ show nm
 
 isMnemonic :: String -> Bool
@@ -508,7 +509,7 @@ parse_def nm syns creq v = do
   when (creq' `elem` (Base : supportedCPUReqs)) $ do
     oprnds <- strictMapList (lookupOperandType nm) oprndNames
     let d0 = Def { _defMnemonic        = nm
-                 , _defMnemonicSynonyms = syns
+                 , _defMnemonicSynonyms = V.fromList syns
                  , _defCPUReq          = creq'
                  , _defVendor          = v'
                  , _modeLimit          = AnyMode
@@ -522,8 +523,8 @@ parse_def nm syns creq v = do
                  , _requiredReg        = NothingFin8
                  , _requiredRM         = NothingFin8
                  , _x87ModRM           = Nothing
-                 , _vexPrefixes        = []
-                 , _defOperands        = oprnds
+                 , _vexPrefixes        = V.empty
+                 , _defOperands        = V.fromList oprnds
                  }
     d <- seq d0 $ flip execStateT d0 $ mapM_ parse_opcode (words opc_text)
     if defSupported d then emitDef d else return ()
