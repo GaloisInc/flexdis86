@@ -21,6 +21,7 @@ Requirements:
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -30,6 +31,7 @@ import time
 from pathlib import Path
 
 OPT_LEVELS = [0, 1, 2]
+CACHE_FILE = Path('.flexdis86-compare-cache.json')
 
 
 # ── subprocess helpers ────────────────────────────────────────────────────────
@@ -204,6 +206,7 @@ def measure_build(worktree, opt):
         test_bin     – test binary size (bytes), if found
     Returns None on build failure.
     """
+    assert_load(f'before build -O{opt}')
     run('cabal clean', cwd=worktree)
     original = _write_project_local(worktree, opt)
     try:
@@ -212,6 +215,7 @@ def measure_build(worktree, opt):
         elapsed = time.monotonic() - t0
     finally:
         _restore_project_local(worktree, original)
+    assert_load(f'after build -O{opt}')
 
     if r.returncode != 0:
         print(f'  build -O{opt} FAILED:\n{r.stdout[-3000:]}', file=sys.stderr)
@@ -232,6 +236,7 @@ def measure_test(worktree, opt):
     -rtsopts=some, which allows -s) for RTS stats to be collected.
     An empty dict is returned on failure or if stats are unavailable.
     """
+    assert_load(f'before test -O{opt}')
     r = run(
         'cabal test flexdis86-tests --test-options="+RTS -s -RTS"',
         cwd=worktree, timeout=600
@@ -239,6 +244,7 @@ def measure_test(worktree, opt):
     if r.returncode != 0:
         print(f'  test -O{opt} FAILED', file=sys.stderr)
         return {}
+    assert_load(f'after test -O{opt}')
     return parse_test_rts(r.stdout)
 
 
@@ -285,6 +291,39 @@ def md_table(caption, rows):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+LOAD_THRESHOLD = 2.0
+
+
+def assert_load(context=''):
+    load1 = os.getloadavg()[0]
+    if load1 > LOAD_THRESHOLD:
+        msg = f'system load is {load1:.1f} (threshold {LOAD_THRESHOLD})'
+        if context:
+            msg = f'{context}: {msg}'
+        sys.exit(f'error: {msg} — aborting to avoid noisy measurements')
+
+
+# ── incremental cache ─────────────────────────────────────────────────────────
+
+def load_cache(repo):
+    p = Path(repo) / CACHE_FILE
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def save_cache(repo, cache):
+    p = Path(repo) / CACHE_FILE
+    p.write_text(json.dumps(cache, indent=2))
+
+
+def cache_key(sha, opt):
+    return f'{sha}:{opt}'
+
+
 def main():
     ap = argparse.ArgumentParser(
         description='Compare flexdis86 build/test metrics between two git refs.',
@@ -306,27 +345,50 @@ def main():
         return run(f'git rev-parse --short {ref}', cwd=repo,
                    check=True).stdout.strip()
 
+    assert_load('before run')
     h1, h2 = resolve(r1), resolve(r2)
     lbl1 = f'`{r1}` ({h1})'
     lbl2 = f'`{r2}` ({h2})'
     print(f'Comparing {lbl1}  vs  {lbl2}', file=sys.stderr)
 
+    cache = load_cache(repo)
     data = {r1: {}, r2: {}}
 
-    with tempfile.TemporaryDirectory(prefix='flexdis86-cmp-') as tmp:
-        wt = {}
-        try:
-            for ref in (r1, r2):
-                path = os.path.join(
-                    tmp,
-                    ref.replace('/', '_').replace('~', '_').replace('^', '_')
-                )
-                print(f'\nCreating worktree for {ref} ...', file=sys.stderr)
-                add_worktree(repo, path, ref)
-                wt[ref] = path
+    # Populate data from cache for any ref/opt already measured cleanly.
+    for ref, sha in ((r1, h1), (r2, h2)):
+        for opt in OPT_LEVELS:
+            k = cache_key(sha, opt)
+            if k in cache:
+                print(f'  (cached) {ref} -O{opt}', file=sys.stderr)
+                data[ref][opt] = cache[k]
 
-            for ref, path in wt.items():
-                for opt in OPT_LEVELS:
+    # Determine which (ref, opt) pairs still need measuring.
+    needed = [
+        (ref, sha, opt)
+        for (ref, sha) in ((r1, h1), (r2, h2))
+        for opt in OPT_LEVELS
+        if opt not in data[ref]
+    ]
+
+    if not needed:
+        print('All measurements found in cache.', file=sys.stderr)
+    else:
+        with tempfile.TemporaryDirectory(prefix='flexdis86-cmp-') as tmp:
+            wt = {}
+            refs_needed = dict.fromkeys(ref for ref, _, _ in needed)
+            try:
+                for ref in refs_needed:
+                    path = os.path.join(
+                        tmp,
+                        ref.replace('/', '_').replace('~', '_').replace('^', '_')
+                    )
+                    print(f'\nCreating worktree for {ref} ...', file=sys.stderr)
+                    add_worktree(repo, path, ref)
+                    wt[ref] = path
+
+                sha_for = {r1: h1, r2: h2}
+                for ref, sha, opt in needed:
+                    path = wt[ref]
                     print(f'\n=== {ref}  -O{opt} ===', file=sys.stderr)
 
                     print(f'  building...', file=sys.stderr)
@@ -336,17 +398,17 @@ def main():
                     tm = measure_test(path, opt)
 
                     if bm is not None:
-                        data[ref][opt] = {
-                            **bm,
-                            **{'t_' + k: v for k, v in tm.items()},
-                        }
+                        entry = {**bm, **{'t_' + k: v for k, v in tm.items()}}
+                        data[ref][opt] = entry
+                        cache[cache_key(sha, opt)] = entry
+                        save_cache(repo, cache)
 
-        finally:
-            for ref, path in wt.items():
-                try:
-                    remove_worktree(repo, path)
-                except Exception as e:
-                    print(f'Warning: failed to remove worktree {path}: {e}',
+            finally:
+                for ref, path in wt.items():
+                    try:
+                        remove_worktree(repo, path)
+                    except Exception as e:
+                        print(f'Warning: failed to remove worktree {path}: {e}',
                           file=sys.stderr)
 
     hdr = ['Metric', 'Opt', lbl1, lbl2, 'Change']
