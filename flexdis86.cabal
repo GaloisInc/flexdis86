@@ -37,6 +37,7 @@ library
     Flexdis86.InstructionSet
     Flexdis86.Operand
     Flexdis86.Prefixes
+    Flexdis86.PrefixSet
     Flexdis86.Register
     Flexdis86.Relocation
     Flexdis86.Segment
