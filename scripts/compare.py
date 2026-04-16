@@ -206,7 +206,7 @@ def measure_build(worktree, opt):
         test_bin     – test binary size (bytes), if found
     Returns None on build failure.
     """
-    assert_load(f'before build -O{opt}')
+    assert_load(f'before build/test -O{opt}')
     run('cabal clean', cwd=worktree)
     original = _write_project_local(worktree, opt)
     try:
@@ -215,12 +215,12 @@ def measure_build(worktree, opt):
         elapsed = time.monotonic() - t0
     finally:
         _restore_project_local(worktree, original)
-    assert_load(f'after build -O{opt}')
 
     if r.returncode != 0:
         print(f'  build -O{opt} FAILED:\n{r.stdout[-3000:]}', file=sys.stderr)
         return None
 
+    # Don't check load here — the build itself elevates the 1-min average.
     m = {'build_time': elapsed}
     rss = parse_build_rts(r.stdout)
     if rss is not None:
@@ -291,13 +291,18 @@ def md_table(caption, rows):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-LOAD_THRESHOLD = 2.0
+def _load_threshold():
+    # Allow up to half the available CPUs of background load before
+    # flagging interference.  A freshly-finished cabal build on N cores
+    # leaves a 1-minute average well below N/2 once compilation is done.
+    return max(2.0, (os.cpu_count() or 2) / 2)
 
 
 def assert_load(context=''):
     load1 = os.getloadavg()[0]
-    if load1 > LOAD_THRESHOLD:
-        msg = f'system load is {load1:.1f} (threshold {LOAD_THRESHOLD})'
+    threshold = _load_threshold()
+    if load1 > threshold:
+        msg = f'system load is {load1:.1f} (threshold {threshold:.1f})'
         if context:
             msg = f'{context}: {msg}'
         sys.exit(f'error: {msg} — aborting to avoid noisy measurements')
