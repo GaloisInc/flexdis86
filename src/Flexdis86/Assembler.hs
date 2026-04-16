@@ -42,6 +42,7 @@ import           Lens.Micro ((^.))
 
 import           Prelude
 
+import           Flexdis86.OpcodeList (opcodeListToList)
 import           Flexdis86.Operand
 import           Flexdis86.OpTable
 import           Flexdis86.InstructionSet
@@ -112,7 +113,7 @@ findEncoding args def = do
                                       , _prNoTrack = notrack
                                       }
               , iiRequiredPrefix = L.view requiredPrefix def
-              , iiOpcode      = L.view defOpcodes  def
+              , iiOpcode      = opcodeListToList (L.view defOpcodes def)
               , iiRequiredMod = L.view requiredMod def
               , iiRequiredReg = L.view requiredReg def
               , iiRequiredRM  = L.view requiredRM  def

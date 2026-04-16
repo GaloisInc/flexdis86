@@ -36,6 +36,7 @@ library
     Flexdis86.ByteReader
     Flexdis86.InstructionSet
     Flexdis86.Operand
+    Flexdis86.OpcodeList
     Flexdis86.Prefixes
     Flexdis86.PrefixSet
     Flexdis86.Register

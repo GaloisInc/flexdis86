@@ -52,6 +52,7 @@ import           Text.XML.Light ( Content(..)
 
 import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 
+import           Flexdis86.OpcodeList (snocOpcodeList, emptyOpcodeList)
 import           Flexdis86.OpTable
 import           Flexdis86.PrefixSet (prefixSetFromNames)
 import           Flexdis86.Sizes ( SizeConstraint(..), ModConstraint(..)
@@ -382,7 +383,7 @@ vexToBytes vp = short ++ long
 -- Opcode / mnemonic parsers
 
 addOpcode :: MonadState Def m => Word8 -> m ()
-addOpcode c = defOpcodes %= (++ [c])
+addOpcode c = defOpcodes %= (`snocOpcodeList` c)
 
 setDefCPUReq :: MonadState Def m => CPURequirement -> m ()
 setDefCPUReq r = do
@@ -516,7 +517,7 @@ parse_def nm syns creq v = do
                  , _reqOpSize          = Nothing
                  , _defPrefix          = prefix
                  , _requiredPrefix     = Nothing
-                 , _defOpcodes         = []
+                 , _defOpcodes         = emptyOpcodeList
                  , _requiredMod        = Nothing
                  , _requiredReg        = NothingFin8
                  , _requiredRM         = NothingFin8

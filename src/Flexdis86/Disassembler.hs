@@ -59,6 +59,7 @@ import           Lens.Micro.Mtl ((%=), (.=))
 import           Prelude
 
 import           Flexdis86.ByteReader
+import           Flexdis86.OpcodeList
 import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
@@ -585,10 +586,10 @@ nonVexPrefixBytes = HS.unions
 allVexPrefixesAndOpcodes :: Def -> [([Word8], (Maybe VEX, Def))]
 allVexPrefixesAndOpcodes def
   | null (def ^. vexPrefixes)
-  = [ (def^.defOpcodes, (Nothing, def)) ]
+  = [ (opcodeListToList (def^.defOpcodes), (Nothing, def)) ]
 
   | otherwise
-  = [ (vexBytes ++ def^.defOpcodes, (Just vex, def))
+  = [ (vexBytes ++ opcodeListToList (def^.defOpcodes), (Just vex, def))
     | (vexBytes, vex) <- mkVexPrefixes def ]
   where
     mkVexPrefixes :: Def -> [([Word8], VEX)]
@@ -751,7 +752,7 @@ parseReadTable prefixBytes modRM dfs = do
             iiArgs = args,
             iiPrefixes = pfx,
             iiRequiredPrefix = view requiredPrefix df,
-            iiOpcode = view defOpcodes df,
+            iiOpcode = opcodeListToList (view defOpcodes df),
             iiRequiredMod = view requiredMod df,
             iiRequiredReg = view requiredReg df,
             iiRequiredRM = view requiredRM df
@@ -874,7 +875,7 @@ validatePrefixBytes prefixBytes mbVex def =
         -- similar to nop (opcode 0x90).
         if |  -- If we have a nop with an OSO prefix, what we really have is an
               -- xchg instruction.
-              def^.defOpcodes == [0x90] && pfx^.prOso
+              def^.defOpcodes == singletonOpcodeList 0x90 && pfx^.prOso
            -> do let xchgMnemonic = "xchg"
                  let mbOprs = do
                        -- The operand types come from here:
@@ -885,27 +886,17 @@ validatePrefixBytes prefixBytes mbVex def =
                  case mbOprs of
                    Just oprs -> pure ( pfx & prOso .~ False
                                      , def & defMnemonic .~ xchgMnemonic
-                                           & defOpcodes  %~ (0x66:)
+                                           & defOpcodes  %~ consOpcodeList 0x66
                                            & defOperands .~ oprs
                                      )
                    Nothing -> impossible "Could not find operand types for R0v and rAX"
 
            |  -- If we have a nop with a REP prefix, what we really have is a
               -- pause instruction.
-              def^.defOpcodes == [0x90] && pfx^.prLockPrefix == RepPrefix
+              def^.defOpcodes == singletonOpcodeList 0x90 && pfx^.prLockPrefix == RepPrefix
            -> pure ( pfx & prLockPrefix .~ NoLockPrefix
                    , def & defMnemonic .~ "pause"
-                         & defOpcodes  %~ (0xf3:)
-                   )
-
-           |  -- We have to lop off the 0xf3 part of the opcode for endbr32 and
-              -- endbr64 to avoid ambiguity with REP prefixes, so add the 0xf3
-              -- bit back to the opcode post facto.
-              mnem `elem` ["endbr32", "endbr64"]
-           ,  Just reqPfx <- def^.requiredPrefix
-           -> pure ( pfx
-                   , def & defOpcodes     %~ (reqPfx:)
-                         & requiredPrefix .~ Nothing
+                         & defOpcodes  %~ consOpcodeList 0xf3
                    )
 
            |  otherwise
@@ -1084,7 +1075,7 @@ disassembleInstruction tr0 = loopPrefixBytes Seq.empty
                  , iiArgs = args
                  , iiPrefixes = pfx
                  , iiRequiredPrefix = view requiredPrefix df
-                 , iiOpcode = view defOpcodes df
+                 , iiOpcode = opcodeListToList (view defOpcodes df)
                  , iiRequiredMod = view requiredMod df
                  , iiRequiredReg = view requiredReg df
                  , iiRequiredRM = view requiredRM df

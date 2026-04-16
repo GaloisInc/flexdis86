@@ -52,6 +52,7 @@ import           GHC.Generics (Generic)
 import           Lens.Micro (Lens', lens, (^.))
 
 import           Flexdis86.Operand
+import           Flexdis86.OpcodeList
 import           Flexdis86.PrefixSet
 import           Flexdis86.Register
 import           Flexdis86.Segment
@@ -168,8 +169,8 @@ data Def = Def  { _defMnemonic         :: !BS.ByteString
                 , _defPrefix :: !PrefixSet
                   -- ^ Set of allowed prefixes.
                 , _requiredPrefix :: Maybe Word8
-                , _defOpcodes :: [Word8]
-                  -- ^ List of opcodes, which should be nonempty for
+                , _defOpcodes :: !OpcodeList
+                  -- ^ Opcode bytes, which should be nonempty for
                   -- a complete 'Def'.
                 , _requiredMod :: Maybe ModConstraint
                 , _requiredReg :: {-# UNPACK #-} !MaybeFin8
@@ -231,7 +232,7 @@ requiredPrefix :: Lens' Def (Maybe Word8)
 requiredPrefix = lens _requiredPrefix (\s v -> s { _requiredPrefix = v })
 
 -- | Opcodes on instruction. This should be nonempty for a complete 'Def'.
-defOpcodes :: Lens' Def [Word8]
+defOpcodes :: Lens' Def OpcodeList
 defOpcodes = lens _defOpcodes (\s v -> s { _defOpcodes = v })
 
 -- | Constraint on the modRM.mod value.
@@ -271,10 +272,13 @@ supportedCPUReqs =
 
 -- | Return true if this instruction is compatible with 64-bit mode.
 x64Compatible :: Def -> Bool
-x64Compatible d =
-  case d^.defOpcodes of
-    [b] | null (d^.vexPrefixes) && (b .&. 0xF0 == 0x40) -> False
-    _   -> valid64 (d^.modeLimit)
+x64Compatible d
+  | [b] <- opcodeListToList (d^.defOpcodes)
+  , null (d^.vexPrefixes)
+  , b .&. 0xF0 == 0x40
+  = False
+  | otherwise
+  = valid64 (d^.modeLimit)
 
 -- | Return true if this definition is one supported by flexdis86.
 defSupported :: Def -> Bool
