@@ -7,6 +7,7 @@ This declares the main datatypes for the instruction set.
 -}
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Flexdis86.InstructionSet
   ( -- * Instruction information
@@ -255,8 +256,8 @@ data InstructionInstanceF a
           -- | List of opcodes, which should always be nonempty.
         , iiOpcode :: [Word8]
         , iiRequiredMod :: Maybe ModConstraint
-        , iiRequiredReg :: Maybe Fin8
-        , iiRequiredRM :: Maybe Fin8
+        , iiRequiredReg :: {-# UNPACK #-} !MaybeFin8
+        , iiRequiredRM  :: {-# UNPACK #-} !MaybeFin8
         }
   deriving (Show, Eq)
 
