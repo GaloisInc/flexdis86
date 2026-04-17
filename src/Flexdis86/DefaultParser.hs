@@ -105,15 +105,18 @@ optableDefs = runGet getBlob (LBS.fromStrict (fst optableBlobs))
       nDefs <- Bin.get :: Get Word32
       replicateM (fromIntegral nDefs) Bin.get
 
--- | Decode the pairs blob into pre-sorted expanded trie entries, using the
--- already-decoded 'optableDefs' list for Def lookup.
---
--- This is intentionally not a CAF: it is called once inside
--- 'defaultX64Disassembler' so that the resulting list is GC\'d as soon as
--- the trie is built.
-decodeExpandedPairs :: [([Word8], (Maybe VEX, Def))]
-decodeExpandedPairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
+defaultX64Disassembler :: NextOpcodeTable
+{-# NOINLINE defaultX64Disassembler #-}
+defaultX64Disassembler =
+    case mkX64DisassemblerFromExpanded pairs of
+      Right v -> v
+      Left  s -> error ("defaultX64Disassembler: " ++ s)
   where
+    -- Local binding: not a CAF, so the decoded list is GC'd once the trie
+    -- thunk is reduced to its result.
+    pairs :: [([Word8], (Maybe VEX, Def))]
+    pairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
+
     defVec :: V.Vector Def
     defVec = V.fromList optableDefs
 
@@ -134,13 +137,6 @@ decodeExpandedPairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
     vexFromKey (0xC5 : b       : _) = Just (VEX2 b)
     vexFromKey (0xC4 : b1 : b2 : _) = Just (VEX3 b1 b2)
     vexFromKey _                    = Nothing
-
-defaultX64Disassembler :: NextOpcodeTable
-{-# NOINLINE defaultX64Disassembler #-}
-defaultX64Disassembler =
-  case mkX64DisassemblerFromExpanded decodeExpandedPairs of
-    Right v -> v
-    Left  s -> error ("defaultX64Disassembler: " ++ s)
 
 defaultX64Assembler :: AssemblerContext
 defaultX64Assembler = mkX64Assembler optableDefs
