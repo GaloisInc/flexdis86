@@ -558,8 +558,15 @@ parseOpTable bs =
       Left err   -> Left err
       Right defs -> Right $ runPut $ mapM_ Bin.put (sortDefs defs)
 
--- | Sort 'Def's by their instruction bytes: required prefix (if any) then
--- opcode bytes.  Sorting at compile time gives the embedded blob a stable
--- layout and may improve cache locality when building the opcode trie.
+-- | Sort 'Def's by their trie key: VEX prefix bytes (if any) followed by
+-- opcode bytes.  This matches the key used by 'Flexdis86.Trie.mkTrieSorted'
+-- so the compile-time sort transfers directly to the runtime expanded-pair
+-- list (for non-VEX instructions, the expanded list inherits the same order;
+-- VEX instructions all cluster under the 0xC4\/0xC5 byte and are re-sorted
+-- at runtime before trie construction).
 sortDefs :: [Def] -> [Def]
-sortDefs = List.sortOn (\d -> (_requiredPrefix d, _defOpcodes d))
+sortDefs = List.sortOn defTrieKey
+  where
+    defTrieKey d = case _vexPrefixes d of
+      []     -> _defOpcodes d
+      (vp:_) -> vp ++ _defOpcodes d

@@ -9,6 +9,7 @@ module Flexdis86.Trie
   , indexM
   , Trie8(..)
   , mkTrie
+  , mkTrieSorted
   ) where
 
 import qualified Control.DeepSeq as DS
@@ -82,14 +83,51 @@ instance DS.NFData a => DS.NFData (Trie8 a)
 -- | Construct a 'Trie8' from a list of byte-list prefixes and a leaf
 -- constructor.
 mkTrie :: ([a] -> b) -> [([Word8], a)] -> Trie8 b
-mkTrie mkLeaf l
-  | all done l = Leaf (mkLeaf (snd <$> l))
-  | otherwise =
-    let v = partitionBy l
-        g i = mkTrie mkLeaf (v `index` i)
-        tbl = generate g
-    in Branch tbl
+mkTrie mkLeaf = go
   where
+    emptyLeaf = Leaf (mkLeaf [])
+    go l
+      | all done l = Leaf (mkLeaf (snd <$> l))
+      | otherwise  =
+          let v = partitionBy l
+              g i = case v `index` i of
+                      [] -> emptyLeaf
+                      bucket -> go bucket
+          in Branch (generate g)
     done :: ([Word8], a) -> Bool
     done (remaining, _) = null remaining
+
+-- | Like 'mkTrie' but assumes the input is already sorted lexicographically
+-- by its @'[Word8]'@ keys.  Uses a linear group-by scan instead of
+-- 'partitionBy'\'s mutable-vector, and shares a single @emptyLeaf@ value
+-- across all vacant branches.
+mkTrieSorted :: ([a] -> b) -> [([Word8], a)] -> Trie8 b
+mkTrieSorted mkLeaf = go
+  where
+    emptyLeaf = Leaf (mkLeaf [])
+    go l
+      | all done l = Leaf (mkLeaf (map snd l))
+      | otherwise  =
+          Branch $ Vec8 $ V.create $ do
+            mv <- VM.replicate 256 emptyLeaf
+            mapM_ (\(b, bucket) ->
+                    VM.write mv (word8ToInt b) (go bucket))
+                  (groupByFirstByte l)
+            return mv
+    done :: ([Word8], a) -> Bool
+    done (remaining, _) = null remaining
+
+-- | Group a sorted @[('[Word8]', a)]@ list by the first byte of each key,
+-- stripping that byte from each entry in the resulting groups.  Entries
+-- with an empty key are skipped (they are already handled by the 'done'
+-- branch in 'mkTrieSorted').
+groupByFirstByte :: [([Word8], a)] -> [(Word8, [([Word8], a)])]
+groupByFirstByte []              = []
+groupByFirstByte (([], _) :rest) = groupByFirstByte rest
+groupByFirstByte ((w:ws, d):rest) =
+  let sameFirst (w':_, _) = w' == w
+      sameFirst ([]  , _) = False
+      (same, diff) = span sameFirst rest
+      bucket = (ws, d) : [(ws', d') | (_:ws', d') <- same]
+  in (w, bucket) : groupByFirstByte diff
 

@@ -44,7 +44,7 @@ import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Foldable as F
 import           GHC.Generics
 import           Data.Int
-import           Data.List (subsequences, partition)
+import           Data.List (partition, sortOn, subsequences)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import           Data.Maybe
@@ -589,7 +589,8 @@ allVexPrefixesAndOpcodes def
 -- how this works.
 mkOpcodeTable :: [Def] -> ParserGen OpcodeTable
 mkOpcodeTable defs =
-  pure $! OpcodeTable $ Trie.mkTrie mkLeaf (concatMap allVexPrefixesAndOpcodes defs)
+  pure $! OpcodeTable $ Trie.mkTrieSorted mkLeaf
+    (sortOn fst (concatMap allVexPrefixesAndOpcodes defs))
   where
     mkLeaf :: [(Maybe VEX, Def)] -> OpcodeTableEntry
     mkLeaf vexDefs =
