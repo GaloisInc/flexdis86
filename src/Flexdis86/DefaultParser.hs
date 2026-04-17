@@ -32,20 +32,30 @@ import           Flexdis86.OpTable (Def)
 import           Flexdis86.OpTable.Parse (parseOpTable)
 import           Flexdis86.Prefixes (VEX(..))
 
--- | The instruction definitions parsed from @optable.xml@ at compile time,
--- serialized via 'Data.Binary' and embedded as a single @Addr#@ string
--- literal ('StringPrimL').
+-- | Both compile-time blobs embedded as @Addr#@ string literals
+-- ('StringPrimL'), computed from @optable.xml@ in a single TH splice so
+-- the XML is only parsed once at compile time.
 --
--- This is Pareto-optimal among compile-time embedding strategies, when
--- considering trade-offs including compile time, compiler memory usage,
--- runtime, and artifact size. Alternatives considered:
+-- * @fst@: the def blob — @nDefs :: Word32@ + @nDefs@ 'Binary'-encoded
+--   'Def' values, sorted by trie key.  Used by the assembler and as the
+--   Def-index lookup table when decoding the pairs blob.
+--
+-- * @snd@: the pairs blob — @nPairs :: Word32@ + @nPairs@
+--   @(keyLen :: Word8, key :: [Word8], idx :: Word32)@ entries, sorted by
+--   key.  Used once at disassembler startup, then GC\'d.
+--
+-- Keeping the two blobs separate means the decoded pairs (which are large
+-- at runtime) need not be kept live alongside the @['Def']@ list that the
+-- assembler holds.
+--
+-- This is Pareto-optimal among compile-time embedding strategies:
 --
 -- * Embedding the XML file: requires otherwise-unnecessary runtime XML parsing
 -- * Running @mkOpcodeTable@ in TH: OOMs due to construction of huge trie
 -- * @Lift@ing the @Def@s: huge artifacts due to one relocation per ADT field
-optableBytes :: BS.ByteString
-{-# NOINLINE optableBytes #-}
-optableBytes =
+optableBlobs :: (BS.ByteString, BS.ByteString)
+{-# NOINLINE optableBlobs #-}
+optableBlobs =
  -- The @getPathToOptableXML@ computes an absolute path to the XML
  -- file. This is helpful in case our current working directory is not
  -- the directory containing the @flexdis86.cabal@ file. This happens,
@@ -69,41 +79,51 @@ optableBytes =
       path <- qRunIO getPathToOptableXML
       qAddDependentFile path
       contents <- qRunIO $ BS.readFile path
-      encoded <- case parseOpTable contents of
-                   Left  e -> fail ("optableBytes: failed to parse optable.xml: " ++ e)
-                   Right b -> return b
-      let n  = LBS.length encoded
-          ws = LBS.unpack encoded
+      (defBlob, pairBlob) <-
+        case parseOpTable contents of
+          Left  e -> fail ("optableBlobs: failed to parse optable.xml: " ++ e)
+          Right p -> return p
       -- Emit: unsafePerformIO (BSU.unsafePackAddressLen n "\xNN..."#)
       -- StringPrimL puts the bytes in .rodata as a single Addr# literal —
       -- one blob, zero relocations.
-      return $
-        AppE (VarE 'unsafePerformIO) $
-        AppE (AppE (VarE 'BSU.unsafePackAddressLen)
-                   (LitE (IntegerL (fromIntegral n))))
-             (LitE (StringPrimL ws)))
+      let mkBlobExp blob =
+            let n  = LBS.length blob
+                ws = LBS.unpack blob
+            in AppE (VarE 'unsafePerformIO) $
+               AppE (AppE (VarE 'BSU.unsafePackAddressLen)
+                          (LitE (IntegerL (fromIntegral n))))
+                    (LitE (StringPrimL ws))
+      return $ TupE [Just (mkBlobExp defBlob), Just (mkBlobExp pairBlob)])
 
--- | Both decoded sections of the compile-time blob, evaluated once.
---
--- Section 1: the sorted @['Def']@ array (for the assembler and as a lookup
--- table for expanded pairs).  Section 2: pre-sorted
--- @[('[Word8]', ('Maybe' 'VEX', 'Def'))]@ expanded pairs ready for
--- 'Flexdis86.Disassembler.mkX64DisassemblerFromExpanded'.
-optableDecoded :: ([Def], [([Word8], (Maybe VEX, Def))])
-{-# NOINLINE optableDecoded #-}
-optableDecoded = runGet getBlob (LBS.fromStrict optableBytes)
+-- | Instruction definitions decoded from the def blob, for the assembler.
+optableDefs :: [Def]
+{-# NOINLINE optableDefs #-}
+optableDefs = runGet getBlob (LBS.fromStrict (fst optableBlobs))
   where
-    getBlob :: Get ([Def], [([Word8], (Maybe VEX, Def))])
+    getBlob :: Get [Def]
     getBlob = do
       nDefs <- Bin.get :: Get Word32
-      defs  <- replicateM (fromIntegral nDefs) Bin.get
-      let defVec = V.fromList defs
-      nPairs <- Bin.get :: Get Word32
-      pairs  <- replicateM (fromIntegral nPairs) (getPair defVec)
-      return (defs, pairs)
+      replicateM (fromIntegral nDefs) Bin.get
 
-    getPair :: V.Vector Def -> Get ([Word8], (Maybe VEX, Def))
-    getPair defVec = do
+-- | Decode the pairs blob into pre-sorted expanded trie entries, using the
+-- already-decoded 'optableDefs' list for Def lookup.
+--
+-- This is intentionally not a CAF: it is called once inside
+-- 'defaultX64Disassembler' so that the resulting list is GC\'d as soon as
+-- the trie is built.
+decodeExpandedPairs :: [([Word8], (Maybe VEX, Def))]
+decodeExpandedPairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
+  where
+    defVec :: V.Vector Def
+    defVec = V.fromList optableDefs
+
+    getPairs :: Get [([Word8], (Maybe VEX, Def))]
+    getPairs = do
+      nPairs <- Bin.get :: Get Word32
+      replicateM (fromIntegral nPairs) getPair
+
+    getPair :: Get ([Word8], (Maybe VEX, Def))
+    getPair = do
       keyLen <- Bin.get :: Get Word8
       key    <- replicateM (fromIntegral keyLen) Bin.get
       idx    <- Bin.get :: Get Word32
@@ -115,20 +135,12 @@ optableDecoded = runGet getBlob (LBS.fromStrict optableBytes)
     vexFromKey (0xC4 : b1 : b2 : _) = Just (VEX3 b1 b2)
     vexFromKey _                    = Nothing
 
--- | Instruction definitions (Section 1 of the blob), for the assembler.
-optableDefs :: [Def]
-optableDefs = fst optableDecoded
-
--- | Pre-sorted expanded trie entries (Section 2 of the blob), for the
--- disassembler.
-optableExpanded :: [([Word8], (Maybe VEX, Def))]
-optableExpanded = snd optableDecoded
-
 defaultX64Disassembler :: NextOpcodeTable
-defaultX64Disassembler = p
-  where p = case mkX64DisassemblerFromExpanded optableExpanded of
-              Right v -> v
-              Left  s -> error ("defaultX64Disassembler: " ++ s)
+{-# NOINLINE defaultX64Disassembler #-}
+defaultX64Disassembler = unsafePerformIO $
+  case mkX64DisassemblerFromExpanded decodeExpandedPairs of
+    Right v -> return v
+    Left  s -> error ("defaultX64Disassembler: " ++ s)
 
 defaultX64Assembler :: AssemblerContext
 defaultX64Assembler = mkX64Assembler optableDefs

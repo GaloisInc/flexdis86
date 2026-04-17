@@ -544,33 +544,41 @@ parse_x86_optable = do
   checkTag "x86optable"
   remainingElts_ parse_instruction
 
--- | Parse @optable.xml@, returning a two-section 'Data.Binary'-encoded blob:
+-- | Parse @optable.xml@, returning two separate 'Data.Binary'-encoded blobs:
 --
--- * Section 1 – @nDefs :: Word32@ followed by @nDefs@ 'Def' values, sorted
---   by trie key (VEX prefix bytes if any, then opcode bytes).
+-- * Blob 1 (\'def blob\') – @nDefs :: Word32@ followed by @nDefs@ 'Def'
+--   values, sorted by trie key (VEX prefix bytes if any, then opcode bytes).
+--   Consumed by the assembler and by the Def-index lookup in blob 2.
 --
--- * Section 2 – @nPairs :: Word32@ followed by @nPairs@ @(key, defIndex)@
---   entries: for each Def and each of its VEX-prefix variants (non-VEX Defs
---   contribute one entry), a length-prefixed @'[Word8]'@ key and a 'Word32'
---   index into the Section-1 Def array.  The pairs are sorted by key so that
---   the runtime disassembler can feed them directly to
---   'Flexdis86.Trie.mkTrieSorted' without an additional O(n log n) sort.
+-- * Blob 2 (\'pairs blob\') – @nPairs :: Word32@ followed by @nPairs@
+--   @(key, defIndex)@ entries: for each Def and each of its VEX-prefix
+--   variants (non-VEX Defs contribute one entry), a length-prefixed
+--   @'[Word8]'@ key and a 'Word32' index into the blob-1 Def array.  The
+--   pairs are sorted by key so that the runtime disassembler can feed them
+--   directly to 'Flexdis86.Trie.mkTrieSorted' without an additional
+--   O(n log n) sort.
+--
+-- The two blobs are kept separate so that the decoded pairs (which are large
+-- at runtime) can be GC\'d immediately after the trie is built, without
+-- holding them live alongside the @['Def']@ list that the assembler needs.
 --
 -- Only 'Def's for which 'defSupported' returns 'True' are included.
-parseOpTable :: BS.ByteString -> Either String LBS.ByteString
+parseOpTable :: BS.ByteString -> Either String (LBS.ByteString, LBS.ByteString)
 parseOpTable bs =
   case parseXMLDoc bs of
     Nothing  -> Left "Not an XML document"
     Just elt -> case runElemParser parse_x86_optable elt of
       Left err   -> Left err
       Right defs ->
-        let sorted = sortDefs defs
-            pairs  = expandedKeys sorted
-        in Right $ runPut $ do
-             Bin.put (fromIntegral (length sorted) :: Word32)
-             mapM_ Bin.put sorted
-             Bin.put (fromIntegral (length pairs) :: Word32)
-             mapM_ putPair pairs
+        let sorted   = sortDefs defs
+            pairs    = expandedKeys sorted
+            defBlob  = runPut $ do
+              Bin.put (fromIntegral (length sorted) :: Word32)
+              mapM_ Bin.put sorted
+            pairBlob = runPut $ do
+              Bin.put (fromIntegral (length pairs) :: Word32)
+              mapM_ putPair pairs
+        in Right (defBlob, pairBlob)
   where
     putPair (key, idx) = do
       Bin.put (fromIntegral (length key) :: Word8)
