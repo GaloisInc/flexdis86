@@ -15,12 +15,12 @@ module Flexdis86.DefaultParser
 
 import           Control.Monad (replicateM, when)
 import qualified Data.Binary as Bin
-import           Data.Binary.Get (Get, getByteString, runGet)
+import           Data.Binary.Get (Get, runGet)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Unsafe as BSU
 import qualified Data.Vector as V
-import           Data.Word (Word32, Word8)
+import           Data.Word (Word32)
 import           Language.Haskell.TH.Syntax (Exp(..), Lit(..), qAddDependentFile, qRunIO)
 import qualified System.Directory as D
 import qualified System.FilePath as F
@@ -30,7 +30,6 @@ import           Flexdis86.Assembler
 import           Flexdis86.Disassembler
 import           Flexdis86.OpTable (Def)
 import           Flexdis86.OpTable.Parse (parseOpTable)
-import           Flexdis86.Prefixes (VEX(..))
 
 -- | Both compile-time blobs embedded as @Addr#@ string literals
 -- ('StringPrimL'), computed from @optable.xml@ in a single TH splice so
@@ -108,43 +107,12 @@ optableDefs = runGet getBlob (LBS.fromStrict (fst optableBlobs))
 defaultX64Disassembler :: NextOpcodeTable
 {-# NOINLINE defaultX64Disassembler #-}
 defaultX64Disassembler =
-    case mkX64DisassemblerFromExpanded pairs of
+    case mkX64DisassemblerFromBlob (snd optableBlobs) defVec of
       Right v -> v
       Left  s -> error ("defaultX64Disassembler: " ++ s)
   where
-    -- Local binding: not a CAF, so the decoded list is GC'd once the trie
-    -- thunk is reduced to its result.
-    pairs :: [(BS.ByteString, (Maybe VEX, Def))]
-    pairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
-
     defVec :: V.Vector Def
     defVec = V.fromList optableDefs
-
-    getPairs :: Get [(BS.ByteString, (Maybe VEX, Def))]
-    getPairs = do
-      nPairs <- Bin.get :: Get Word32
-      replicateM (fromIntegral nPairs) getPair
-
-    -- | Decode one pair: read the key as a single 'getByteString' call
-    -- (one bounds check, no per-byte 'Get' overhead) then look up the
-    -- 'Def' by its pre-sorted index.
-    getPair :: Get (BS.ByteString, (Maybe VEX, Def))
-    getPair = do
-      keyLen <- Bin.get :: Get Word8
-      key    <- getByteString (fromIntegral keyLen)
-      idx    <- Bin.get :: Get Word32
-      let d = defVec V.! fromIntegral idx
-      return (key, (vexFromKey key, d))
-
-    vexFromKey :: BS.ByteString -> Maybe VEX
-    vexFromKey key
-      | BS.length key >= 2
-      , BS.index key 0 == 0xC5
-      = Just (VEX2 (BS.index key 1))
-      | BS.length key >= 3
-      , BS.index key 0 == 0xC4
-      = Just (VEX3 (BS.index key 1) (BS.index key 2))
-      | otherwise = Nothing
 
 defaultX64Assembler :: AssemblerContext
 defaultX64Assembler = mkX64Assembler optableDefs

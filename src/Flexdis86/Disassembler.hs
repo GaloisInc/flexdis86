@@ -22,7 +22,7 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Disassembler
   ( mkX64Disassembler
-  , mkX64DisassemblerFromExpanded
+  , mkX64DisassemblerFromBlob
   , NextOpcodeTable
   , nextOpcodeSize
   , disassembleInstruction
@@ -51,6 +51,8 @@ import qualified Data.HashSet as HS
 import           Data.Maybe
 import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import           Data.Word
 import           GHC.Stack
 import           Lens.Micro (Lens', lens, (&), (.~), (%~), (^.), _2, over, set)
@@ -1408,26 +1410,63 @@ mkX64Disassembler defs = do
     Trie.Branch v -> Right $! coerce v
     Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
 
--- | Like 'mkX64Disassembler' but accepts pre-expanded, pre-sorted trie
--- entries produced at compile time (e.g. from the pairs blob in
--- "Flexdis86.DefaultParser").  The entries must be sorted lexicographically
--- by their 'BS.ByteString' key; this invariant is checked only by
--- 'Flexdis86.Trie.mkTrieSorted'.  Using pre-sorted input avoids the
--- O(n log n) runtime sort that 'mkX64Disassembler' would otherwise perform
--- via 'allVexPrefixesAndOpcodes'.
-mkX64DisassemblerFromExpanded
-  :: [(BS.ByteString, (Maybe VEX, Def))]
+-- | Build a disassembler directly from the pairs blob and a def-lookup
+-- vector, without materialising an intermediate list of decoded pairs.
+--
+-- The pairs blob format is: @nPairs :: Word32@ (big-endian) followed by
+-- @nPairs@ entries, each @keyLen :: Word8@ + @key :: [keyLen bytes]@ +
+-- @defIndex :: Word32@ (big-endian).  The entries must be sorted
+-- lexicographically by key.
+mkX64DisassemblerFromBlob
+  :: BS.ByteString   -- ^ Pairs blob (from compile-time embedding)
+  -> V.Vector Def    -- ^ Def lookup vector (indexed by the Word32 in each entry)
   -> Either String NextOpcodeTable
-mkX64DisassemblerFromExpanded pairs = do
-  OpcodeTable mOpTbl <- runParserGen $ mkOpcodeTableFromExpanded pairs
-  case mOpTbl of
-    Trie.Branch v -> Right $! coerce v
-    Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
-
-mkOpcodeTableFromExpanded :: [(BS.ByteString, (Maybe VEX, Def))] -> ParserGen OpcodeTable
-mkOpcodeTableFromExpanded pairs =
-  pure $! OpcodeTable $ Trie.mkTrieSorted mkLeaf pairs
+mkX64DisassemblerFromBlob blob defVec =
+  let offsets = scanPairOffsets blob
+      trie    = Trie.mkTrieFromBlob mkLeaf blob mkVal offsets
+  in case trie of
+       Trie.Branch v -> Right $! coerce v
+       Trie.Leaf{}   -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
   where
+    mkLeaf :: [(Maybe VEX, Def)] -> OpcodeTableEntry
     mkLeaf vexDefs =
       let (defsWithModRM, defsWithoutModRM) = partition (expectsModRM . snd) vexDefs
       in OpcodeTableEntry defsWithModRM defsWithoutModRM
+
+    mkVal :: Int -> (Maybe VEX, Def)
+    mkVal off =
+      let kl  = fromIntegral (BS.index blob off) :: Int
+          idx = readWord32BE blob (off + 1 + kl)
+          d   = defVec `V.unsafeIndex` fromIntegral idx
+          -- Read VEX prefix directly from the blob rather than
+          -- constructing a ByteString key.
+          vex | kl >= 2, BS.index blob (off + 1) == 0xC5
+              = Just (VEX2 (BS.index blob (off + 2)))
+              | kl >= 3, BS.index blob (off + 1) == 0xC4
+              = Just (VEX3 (BS.index blob (off + 2)) (BS.index blob (off + 3)))
+              | otherwise = Nothing
+      in (vex, d)
+
+-- | Scan the pairs blob to collect the start offset of each entry into an
+-- unboxed vector.  The blob header (4 bytes for nPairs) is skipped.
+scanPairOffsets :: BS.ByteString -> VU.Vector Int
+scanPairOffsets blob = VU.create $ do
+    mv <- VUM.unsafeNew nPairs
+    let go i off
+          | i >= nPairs = return ()
+          | otherwise   = do
+              VUM.unsafeWrite mv i off
+              let off' = off + 1 + fromIntegral (BS.index blob off) + 4
+              off' `seq` go (i + 1) off'
+    go 0 4
+    return mv
+  where
+    nPairs = fromIntegral (readWord32BE blob 0)
+
+-- | Read a big-endian 'Word32' from a 'BS.ByteString' at the given offset.
+readWord32BE :: BS.ByteString -> Int -> Word32
+readWord32BE bs off =
+      fromIntegral (BS.index bs  off)      `shiftL` 24
+  .|. fromIntegral (BS.index bs (off + 1)) `shiftL` 16
+  .|. fromIntegral (BS.index bs (off + 2)) `shiftL`  8
+  .|. fromIntegral (BS.index bs (off + 3))

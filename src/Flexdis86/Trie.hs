@@ -10,6 +10,7 @@ module Flexdis86.Trie
   , Trie8(..)
   , mkTrie
   , mkTrieSorted
+  , mkTrieFromBlob
   ) where
 
 import qualified Control.DeepSeq as DS
@@ -17,6 +18,7 @@ import qualified Data.ByteString as BS
 import           Data.Word (Word8)
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Unboxed as VU
 import           GHC.Generics (Generic)
 
 -- | A 'V.Vector' of exactly 256 elements.
@@ -145,4 +147,60 @@ groupByFirstByte = go
       Just (w', ws')
         | w' == w    -> collect w ((ws', d):acc) rest
         | otherwise  -> (w, acc) : go ((bs, d):rest)
+
+-- | Build a trie directly from a binary blob of sorted entries, without
+-- materialising an intermediate list.
+--
+-- Each entry at offset @off@ in the blob is encoded as:
+--
+-- @
+--   keyLen :: Word8          (1 byte)
+--   key    :: [Word8]        (keyLen bytes)
+--   ...payload...            (opaque to this function)
+-- @
+--
+-- The caller provides a 'VU.Vector' of entry-start offsets (pointing at the
+-- @keyLen@ byte) and a @mkVal@ callback that constructs a leaf value from an
+-- offset.  The trie is built by grouping entries on their key byte at the
+-- current depth — a contiguous-range scan over the offset vector — so the
+-- only heap objects allocated during construction are the trie nodes
+-- themselves and the leaf-value lists.
+mkTrieFromBlob
+  :: ([a] -> b)        -- ^ Construct a leaf from the values at a trie node
+  -> BS.ByteString     -- ^ Binary blob
+  -> (Int -> a)        -- ^ Construct a value from a blob offset
+  -> VU.Vector Int     -- ^ Sorted entry-start offsets into the blob
+  -> Trie8 b
+mkTrieFromBlob mkLeaf blob mkVal offsets = go 0 0 (VU.length offsets)
+  where
+    emptyLeaf = Leaf (mkLeaf [])
+
+    keyLen off = word8ToInt (BS.index blob off)
+    {-# INLINE keyLen #-}
+
+    keyByte off depth = BS.index blob (off + 1 + depth)
+    {-# INLINE keyByte #-}
+
+    go depth lo hi
+      | lo >= hi
+      = emptyLeaf
+      | depth >= keyLen (offsets `VU.unsafeIndex` lo)
+      = Leaf (mkLeaf [mkVal (offsets `VU.unsafeIndex` i) | i <- [lo .. hi - 1]])
+      | otherwise
+      = Branch $ Vec8 $ V.create $ do
+          mv <- VM.replicate 256 emptyLeaf
+          let scan i
+                | i >= hi   = return ()
+                | otherwise = do
+                    let off = offsets `VU.unsafeIndex` i
+                        b   = keyByte off depth
+                        findEnd k
+                          | k >= hi = k
+                          | keyByte (offsets `VU.unsafeIndex` k) depth == b = findEnd (k + 1)
+                          | otherwise = k
+                        j = findEnd (i + 1)
+                    VM.write mv (word8ToInt b) (go (depth + 1) i j)
+                    scan j
+          scan lo
+          return mv
 
