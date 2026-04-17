@@ -15,7 +15,7 @@ module Flexdis86.DefaultParser
 
 import           Control.Monad (replicateM, when)
 import qualified Data.Binary as Bin
-import           Data.Binary.Get (Get, runGet)
+import           Data.Binary.Get (Get, getByteString, runGet)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Unsafe as BSU
@@ -114,29 +114,37 @@ defaultX64Disassembler =
   where
     -- Local binding: not a CAF, so the decoded list is GC'd once the trie
     -- thunk is reduced to its result.
-    pairs :: [([Word8], (Maybe VEX, Def))]
+    pairs :: [(BS.ByteString, (Maybe VEX, Def))]
     pairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
 
     defVec :: V.Vector Def
     defVec = V.fromList optableDefs
 
-    getPairs :: Get [([Word8], (Maybe VEX, Def))]
+    getPairs :: Get [(BS.ByteString, (Maybe VEX, Def))]
     getPairs = do
       nPairs <- Bin.get :: Get Word32
       replicateM (fromIntegral nPairs) getPair
 
-    getPair :: Get ([Word8], (Maybe VEX, Def))
+    -- | Decode one pair: read the key as a single 'getByteString' call
+    -- (one bounds check, no per-byte 'Get' overhead) then look up the
+    -- 'Def' by its pre-sorted index.
+    getPair :: Get (BS.ByteString, (Maybe VEX, Def))
     getPair = do
       keyLen <- Bin.get :: Get Word8
-      key    <- replicateM (fromIntegral keyLen) Bin.get
+      key    <- getByteString (fromIntegral keyLen)
       idx    <- Bin.get :: Get Word32
       let d = defVec V.! fromIntegral idx
       return (key, (vexFromKey key, d))
 
-    vexFromKey :: [Word8] -> Maybe VEX
-    vexFromKey (0xC5 : b       : _) = Just (VEX2 b)
-    vexFromKey (0xC4 : b1 : b2 : _) = Just (VEX3 b1 b2)
-    vexFromKey _                    = Nothing
+    vexFromKey :: BS.ByteString -> Maybe VEX
+    vexFromKey key
+      | BS.length key >= 2
+      , BS.index key 0 == 0xC5
+      = Just (VEX2 (BS.index key 1))
+      | BS.length key >= 3
+      , BS.index key 0 == 0xC4
+      = Just (VEX3 (BS.index key 1) (BS.index key 2))
+      | otherwise = Nothing
 
 defaultX64Assembler :: AssemblerContext
 defaultX64Assembler = mkX64Assembler optableDefs

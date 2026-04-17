@@ -13,6 +13,7 @@ module Flexdis86.Trie
   ) where
 
 import qualified Control.DeepSeq as DS
+import qualified Data.ByteString as BS
 import           Data.Word (Word8)
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
@@ -98,10 +99,15 @@ mkTrie mkLeaf = go
     done (remaining, _) = null remaining
 
 -- | Like 'mkTrie' but assumes the input is already sorted lexicographically
--- by its @'[Word8]'@ keys.  Uses a linear group-by scan instead of
+-- by its 'BS.ByteString' keys.  Uses a linear group-by scan instead of
 -- 'partitionBy'\'s mutable-vector, and shares a single @emptyLeaf@ value
 -- across all vacant branches.
-mkTrieSorted :: ([a] -> b) -> [([Word8], a)] -> Trie8 b
+--
+-- Keys are 'BS.ByteString' rather than @['Word8']@ so that callers can
+-- pass zero-copy slices into an embedded @.rodata@ blob; each trie level
+-- peels one byte with 'BS.uncons' (a pointer-bump on the slice header)
+-- instead of following a cons-cell chain.
+mkTrieSorted :: ([a] -> b) -> [(BS.ByteString, a)] -> Trie8 b
 mkTrieSorted mkLeaf = go
   where
     emptyLeaf = Leaf (mkLeaf [])
@@ -114,28 +120,29 @@ mkTrieSorted mkLeaf = go
                     VM.write mv (word8ToInt b) (go bucket))
                   (groupByFirstByte l)
             return mv
-    done :: ([Word8], a) -> Bool
-    done (remaining, _) = null remaining
+    done :: (BS.ByteString, a) -> Bool
+    done (remaining, _) = BS.null remaining
 
--- | Group a sorted @[('[Word8]', a)]@ list by the first byte of each key,
--- stripping that byte from every entry in the group.  Entries with an
--- empty key are skipped (they are already handled by the 'done' branch
--- in 'mkTrieSorted').
+-- | Group a sorted @[('BS.ByteString', a)]@ list by the first byte of each
+-- key, stripping that byte from every entry in the group.  Entries with an
+-- empty key are skipped (they are already handled by the 'done' branch in
+-- 'mkTrieSorted').
 --
 -- Uses an accumulator instead of 'span' to avoid materialising the same
--- entries twice (once for the @same@ sublist and once for the stripped
--- bucket), keeping allocation at O(n) — the same as 'partitionBy'.
--- The bucket is accumulated in reverse order, matching 'partitionBy'.
-groupByFirstByte :: [([Word8], a)] -> [(Word8, [([Word8], a)])]
+-- entries twice.  The bucket is accumulated in reverse order, matching
+-- 'partitionBy'.
+groupByFirstByte :: [(BS.ByteString, a)] -> [(Word8, [(BS.ByteString, a)])]
 groupByFirstByte = go
   where
-    go []                  = []
-    go (([]   , _):rest)   = go rest
-    go ((w:ws , d):rest)   = collect w [(ws, d)] rest
+    go []             = []
+    go ((bs, d):rest) = case BS.uncons bs of
+      Nothing      -> go rest
+      Just (w, ws) -> collect w [(ws, d)] rest
 
-    collect w acc []                    = [(w, acc)]
-    collect w acc (([]    , _):rest)    = collect w acc rest
-    collect w acc ((w':ws', d):rest)
-      | w' == w                         = collect w ((ws', d):acc) rest
-      | otherwise                       = (w, acc) : go ((w':ws', d):rest)
+    collect w acc []             = [(w, acc)]
+    collect w acc ((bs, d):rest) = case BS.uncons bs of
+      Nothing        -> collect w acc rest
+      Just (w', ws')
+        | w' == w    -> collect w ((ws', d):acc) rest
+        | otherwise  -> (w, acc) : go ((bs, d):rest)
 
