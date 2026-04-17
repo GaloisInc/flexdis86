@@ -24,7 +24,7 @@ import           Data.Word (Word32, Word8)
 import           Language.Haskell.TH.Syntax (Exp(..), Lit(..), qAddDependentFile, qRunIO)
 import qualified System.Directory as D
 import qualified System.FilePath as F
-import           System.IO.Unsafe (unsafePerformIO)
+import           System.IO.Unsafe (unsafePerformIO) -- for optableBlobs
 
 import           Flexdis86.Assembler
 import           Flexdis86.Disassembler
@@ -137,9 +137,9 @@ decodeExpandedPairs = runGet getPairs (LBS.fromStrict (snd optableBlobs))
 
 defaultX64Disassembler :: NextOpcodeTable
 {-# NOINLINE defaultX64Disassembler #-}
-defaultX64Disassembler = unsafePerformIO $
+defaultX64Disassembler =
   case mkX64DisassemblerFromExpanded decodeExpandedPairs of
-    Right v -> return v
+    Right v -> v
     Left  s -> error ("defaultX64Disassembler: " ++ s)
 
 defaultX64Assembler :: AssemblerContext
