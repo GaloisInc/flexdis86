@@ -118,16 +118,24 @@ mkTrieSorted mkLeaf = go
     done (remaining, _) = null remaining
 
 -- | Group a sorted @[('[Word8]', a)]@ list by the first byte of each key,
--- stripping that byte from each entry in the resulting groups.  Entries
--- with an empty key are skipped (they are already handled by the 'done'
--- branch in 'mkTrieSorted').
+-- stripping that byte from every entry in the group.  Entries with an
+-- empty key are skipped (they are already handled by the 'done' branch
+-- in 'mkTrieSorted').
+--
+-- Uses an accumulator instead of 'span' to avoid materialising the same
+-- entries twice (once for the @same@ sublist and once for the stripped
+-- bucket), keeping allocation at O(n) — the same as 'partitionBy'.
+-- The bucket is accumulated in reverse order, matching 'partitionBy'.
 groupByFirstByte :: [([Word8], a)] -> [(Word8, [([Word8], a)])]
-groupByFirstByte []              = []
-groupByFirstByte (([], _) :rest) = groupByFirstByte rest
-groupByFirstByte ((w:ws, d):rest) =
-  let sameFirst (w':_, _) = w' == w
-      sameFirst ([]  , _) = False
-      (same, diff) = span sameFirst rest
-      bucket = (ws, d) : [(ws', d') | (_:ws', d') <- same]
-  in (w, bucket) : groupByFirstByte diff
+groupByFirstByte = go
+  where
+    go []                  = []
+    go (([]   , _):rest)   = go rest
+    go ((w:ws , d):rest)   = collect w [(ws, d)] rest
+
+    collect w acc []                    = [(w, acc)]
+    collect w acc (([]    , _):rest)    = collect w acc rest
+    collect w acc ((w':ws', d):rest)
+      | w' == w                         = collect w ((ws', d):acc) rest
+      | otherwise                       = (w, acc) : go ((w':ws', d):rest)
 
