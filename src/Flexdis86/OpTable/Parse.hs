@@ -34,7 +34,7 @@ import           Data.Containers.ListUtils (nubOrd)
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (fromMaybe)
-import           Data.Word (Word8)
+import           Data.Word (Word8, Word32)
 import           Numeric (readDec, readHex)
 import           Text.XML.Light ( Content(..)
                                 , Element(..)
@@ -544,26 +544,59 @@ parse_x86_optable = do
   checkTag "x86optable"
   remainingElts_ parse_instruction
 
--- | Parse the optable.xml file, returning only the 'Def's as a 'Data.Binary'-encoded bytestring.
+-- | Parse @optable.xml@, returning a two-section 'Data.Binary'-encoded blob:
 --
--- Only returns 'Def's supported by flexdis86 (i.e., those for which
--- 'defSupported' returns 'True').  The 'Def's are sorted by
--- (@'_requiredPrefix'@, @'_defOpcodes'@) so that the embedded blob has a
--- stable, opcode-order layout.
+-- * Section 1 – @nDefs :: Word32@ followed by @nDefs@ 'Def' values, sorted
+--   by trie key (VEX prefix bytes if any, then opcode bytes).
+--
+-- * Section 2 – @nPairs :: Word32@ followed by @nPairs@ @(key, defIndex)@
+--   entries: for each Def and each of its VEX-prefix variants (non-VEX Defs
+--   contribute one entry), a length-prefixed @'[Word8]'@ key and a 'Word32'
+--   index into the Section-1 Def array.  The pairs are sorted by key so that
+--   the runtime disassembler can feed them directly to
+--   'Flexdis86.Trie.mkTrieSorted' without an additional O(n log n) sort.
+--
+-- Only 'Def's for which 'defSupported' returns 'True' are included.
 parseOpTable :: BS.ByteString -> Either String LBS.ByteString
 parseOpTable bs =
   case parseXMLDoc bs of
     Nothing  -> Left "Not an XML document"
     Just elt -> case runElemParser parse_x86_optable elt of
       Left err   -> Left err
-      Right defs -> Right $ runPut $ mapM_ Bin.put (sortDefs defs)
+      Right defs ->
+        let sorted = sortDefs defs
+            pairs  = expandedKeys sorted
+        in Right $ runPut $ do
+             Bin.put (fromIntegral (length sorted) :: Word32)
+             mapM_ Bin.put sorted
+             Bin.put (fromIntegral (length pairs) :: Word32)
+             mapM_ putPair pairs
+  where
+    putPair (key, idx) = do
+      Bin.put (fromIntegral (length key) :: Word8)
+      mapM_ Bin.put key
+      Bin.put (idx :: Word32)
+
+-- | Produce the sorted @(key, defIndex)@ pairs for Section 2 of the blob.
+--
+-- For non-VEX 'Def's there is one pair: @('_defOpcodes', index)@.
+-- For VEX 'Def's there is one pair per entry in '_vexPrefixes':
+-- @(vexBytes '++' '_defOpcodes', index)@.
+-- The result is sorted lexicographically by key.
+expandedKeys :: [Def] -> [([Word8], Word32)]
+expandedKeys defs =
+  List.sortOn fst
+    [ (key, fromIntegral idx)
+    | (idx, d) <- zip [(0 :: Word32) ..] defs
+    , key      <- defKeys d
+    ]
+  where
+    defKeys d
+      | null (_vexPrefixes d) = [_defOpcodes d]
+      | otherwise             = [vp ++ _defOpcodes d | vp <- _vexPrefixes d]
 
 -- | Sort 'Def's by their trie key: VEX prefix bytes (if any) followed by
--- opcode bytes.  This matches the key used by 'Flexdis86.Trie.mkTrieSorted'
--- so the compile-time sort transfers directly to the runtime expanded-pair
--- list (for non-VEX instructions, the expanded list inherits the same order;
--- VEX instructions all cluster under the 0xC4\/0xC5 byte and are re-sorted
--- at runtime before trie construction).
+-- opcode bytes.
 sortDefs :: [Def] -> [Def]
 sortDefs = List.sortOn defTrieKey
   where

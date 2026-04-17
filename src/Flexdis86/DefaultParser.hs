@@ -13,12 +13,14 @@ module Flexdis86.DefaultParser
   , defaultX64Assembler
   ) where
 
-import           Control.Monad (when)
+import           Control.Monad (replicateM, when)
 import qualified Data.Binary as Bin
-import           Data.Binary.Get (isEmpty, runGet)
+import           Data.Binary.Get (Get, runGet)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Unsafe as BSU
+import qualified Data.Vector as V
+import           Data.Word (Word32, Word8)
 import           Language.Haskell.TH.Syntax (Exp(..), Lit(..), qAddDependentFile, qRunIO)
 import qualified System.Directory as D
 import qualified System.FilePath as F
@@ -28,6 +30,7 @@ import           Flexdis86.Assembler
 import           Flexdis86.Disassembler
 import           Flexdis86.OpTable (Def)
 import           Flexdis86.OpTable.Parse (parseOpTable)
+import           Flexdis86.Prefixes (VEX(..))
 
 -- | The instruction definitions parsed from @optable.xml@ at compile time,
 -- serialized via 'Data.Binary' and embedded as a single @Addr#@ string
@@ -80,19 +83,50 @@ optableBytes =
                    (LitE (IntegerL (fromIntegral n))))
              (LitE (StringPrimL ws)))
 
--- | Pre-parsed instruction definitions, decoded from the compile-time
--- Binary blob at first use.
-optableDefs :: [Def]
-optableDefs = runGet getDefs (LBS.fromStrict optableBytes)
+-- | Both decoded sections of the compile-time blob, evaluated once.
+--
+-- Section 1: the sorted @['Def']@ array (for the assembler and as a lookup
+-- table for expanded pairs).  Section 2: pre-sorted
+-- @[('[Word8]', ('Maybe' 'VEX', 'Def'))]@ expanded pairs ready for
+-- 'Flexdis86.Disassembler.mkX64DisassemblerFromExpanded'.
+optableDecoded :: ([Def], [([Word8], (Maybe VEX, Def))])
+{-# NOINLINE optableDecoded #-}
+optableDecoded = runGet getBlob (LBS.fromStrict optableBytes)
   where
-    getDefs = do
-      empty <- isEmpty
-      if empty then return []
-               else (:) <$> Bin.get <*> getDefs
+    getBlob :: Get ([Def], [([Word8], (Maybe VEX, Def))])
+    getBlob = do
+      nDefs <- Bin.get :: Get Word32
+      defs  <- replicateM (fromIntegral nDefs) Bin.get
+      let defVec = V.fromList defs
+      nPairs <- Bin.get :: Get Word32
+      pairs  <- replicateM (fromIntegral nPairs) (getPair defVec)
+      return (defs, pairs)
+
+    getPair :: V.Vector Def -> Get ([Word8], (Maybe VEX, Def))
+    getPair defVec = do
+      keyLen <- Bin.get :: Get Word8
+      key    <- replicateM (fromIntegral keyLen) Bin.get
+      idx    <- Bin.get :: Get Word32
+      let d = defVec V.! fromIntegral idx
+      return (key, (vexFromKey key, d))
+
+    vexFromKey :: [Word8] -> Maybe VEX
+    vexFromKey (0xC5 : b       : _) = Just (VEX2 b)
+    vexFromKey (0xC4 : b1 : b2 : _) = Just (VEX3 b1 b2)
+    vexFromKey _                    = Nothing
+
+-- | Instruction definitions (Section 1 of the blob), for the assembler.
+optableDefs :: [Def]
+optableDefs = fst optableDecoded
+
+-- | Pre-sorted expanded trie entries (Section 2 of the blob), for the
+-- disassembler.
+optableExpanded :: [([Word8], (Maybe VEX, Def))]
+optableExpanded = snd optableDecoded
 
 defaultX64Disassembler :: NextOpcodeTable
 defaultX64Disassembler = p
-  where p = case mkX64Disassembler optableDefs of
+  where p = case mkX64DisassemblerFromExpanded optableExpanded of
               Right v -> v
               Left  s -> error ("defaultX64Disassembler: " ++ s)
 

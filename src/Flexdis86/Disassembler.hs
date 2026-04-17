@@ -22,6 +22,7 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Disassembler
   ( mkX64Disassembler
+  , mkX64DisassemblerFromExpanded
   , NextOpcodeTable
   , nextOpcodeSize
   , disassembleInstruction
@@ -1406,3 +1407,27 @@ mkX64Disassembler defs = do
   case mOpTbl of
     Trie.Branch v -> Right $! coerce v
     Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+
+-- | Like 'mkX64Disassembler' but accepts pre-expanded, pre-sorted trie
+-- entries produced at compile time (e.g. from @optableExpanded@ in
+-- "Flexdis86.DefaultParser").  The entries must be sorted lexicographically
+-- by their @'[Word8]'@ key; this invariant is checked only by
+-- 'Flexdis86.Trie.mkTrieSorted'.  Using pre-sorted input avoids the
+-- O(n log n) runtime sort that 'mkX64Disassembler' would otherwise perform
+-- via 'allVexPrefixesAndOpcodes'.
+mkX64DisassemblerFromExpanded
+  :: [([Word8], (Maybe VEX, Def))]
+  -> Either String NextOpcodeTable
+mkX64DisassemblerFromExpanded pairs = do
+  OpcodeTable mOpTbl <- runParserGen $ mkOpcodeTableFromExpanded pairs
+  case mOpTbl of
+    Trie.Branch v -> Right $! coerce v
+    Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+
+mkOpcodeTableFromExpanded :: [([Word8], (Maybe VEX, Def))] -> ParserGen OpcodeTable
+mkOpcodeTableFromExpanded pairs =
+  pure $! OpcodeTable $ Trie.mkTrieSorted mkLeaf pairs
+  where
+    mkLeaf vexDefs =
+      let (defsWithModRM, defsWithoutModRM) = partition (expectsModRM . snd) vexDefs
+      in OpcodeTableEntry defsWithModRM defsWithoutModRM
