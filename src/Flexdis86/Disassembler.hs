@@ -1005,10 +1005,11 @@ disassembleInstruction tr0 = loopPrefixBytes Seq.empty
         go :: NextOpcodeTable -> Word8 -> m InstructionInstance
         go tr opcodeByte =
           case Trie.index tr opcodeByte of
-            OpcodeTable (Trie.Branch tr') -> do
+            Nothing -> invalidInstruction
+            Just (OpcodeTable (Trie.Branch tr')) -> do
               opcodeByte' <- readByte
               go (coerce tr') opcodeByte'
-            OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWithoutModRM))
+            Just (OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWithoutModRM)))
               |  -- Check the instruction candidates without a ModR/M byte
                  -- first. If one is found, there is an invariant that none
                  -- of the instruction candidates without a ModR/M byte
@@ -1390,7 +1391,7 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
 
 opcodeTableSize :: OpcodeTable -> Int
 opcodeTableSize (OpcodeTable (Trie.Branch v)) =
-  sum (opcodeTableSize <$> coerce @(Trie.Vec8 (Trie.Trie8 OpcodeTableEntry)) @(Trie.Vec8 OpcodeTable) v)
+  sum (opcodeTableSize . OpcodeTable <$> v)
 opcodeTableSize (OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWithoutModRM))) =
   length defsWithModRM + length defsWithoutModRM
 
