@@ -6,7 +6,7 @@ Maintainer  : langston@galois.com
 A compact Word16 bitset representing the set of prefixes allowed on an
 x86 instruction definition.
 -}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Flexdis86.PrefixSet
   ( PrefixSet
@@ -28,20 +28,22 @@ module Flexdis86.PrefixSet
   ) where
 
 import           Data.Bits
+import qualified Data.Binary as Bin
 import           Data.Binary (Binary)
 import qualified Control.DeepSeq as DS
 import           Data.Word (Word16)
-import           GHC.Generics (Generic)
 
 -- | A set of allowed x86 instruction prefixes, packed as a 'Word16' bitset.
 -- Each bit corresponds to one of the twelve prefix names recognised in
 -- @optable.xml@.
 newtype PrefixSet = PrefixSet Word16
-  deriving (Bits, Eq, Generic, Ord, Show)
+  deriving (Bits, Eq, Ord, Show)
 
-instance DS.NFData PrefixSet
+instance DS.NFData PrefixSet where rnf !_ = ()
 -- | For "Flexdis86.OpTable.Parse".
-instance Binary PrefixSet
+instance Binary PrefixSet where
+  put (PrefixSet w) = Bin.put w
+  get = PrefixSet <$> Bin.get
 
 -- | An empty 'PrefixSet' (no prefixes allowed).
 noPrefixes :: PrefixSet

@@ -56,7 +56,7 @@ import           Flexdis86.OpTable
 import           Flexdis86.PrefixSet (prefixSetFromNames)
 import           Flexdis86.Sizes ( SizeConstraint(..), ModConstraint(..)
                                  , asFin8, asFin64, maskFin8
-                                 , pattern NothingFin8, pattern JustFin8
+                                 , MaybeFin8(..)
                                  )
 
 ------------------------------------------------------------------------

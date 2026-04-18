@@ -6,6 +6,7 @@ Maintainer  : jhendrix@galois.com
 
 Defines size types in the udis86 file.
 -}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -19,18 +20,17 @@ module Flexdis86.Sizes (
   , asFin8
   , maskFin8
   , unFin8
-  , MaybeFin8
-  , pattern NothingFin8
-  , pattern JustFin8
+  , MaybeFin8(NothingFin8, JustFin8)
   , maybeFin8ToMaybe
   , maybeFin8
-  , mapMaybeFin8
+  , matchesMaybeFin8
   , Fin64
   , asFin64
   , unFin64
   ) where
 
 import qualified Control.DeepSeq as DS
+import qualified Data.Binary as Bin
 import           Data.Binary (Binary)
 import           Data.Bits
 import           Data.Word ( Word8 )
@@ -85,12 +85,17 @@ maskFin8 v = Fin8 (v .&. 0x7)
 -- | A 'Fin8' that may be absent, stored as a single unboxed 'Word8'.
 -- The value @8@ encodes the absent case; values @0@–@7@ encode 'Fin8'.
 -- This avoids the two-word overhead of @'Maybe' 'Fin8'@.
+--
+-- __Invariant:__ the underlying 'Word8' is always in the range @0@–@8@;
+-- values @9@–@255@ are never used.
 newtype MaybeFin8 = MaybeFin8 Word8
-  deriving (Eq, Generic, Ord, Show)
+  deriving (Eq, Ord, Show)
 
-instance DS.NFData MaybeFin8
+instance DS.NFData MaybeFin8 where rnf !_ = ()
 -- | For "Flexdis86.OpTable.Parse".
-instance Binary MaybeFin8
+instance Binary MaybeFin8 where
+  put (MaybeFin8 w) = Bin.put w
+  get = MaybeFin8 <$> Bin.get
 
 -- | The absent case (@Nothing@).
 pattern NothingFin8 :: MaybeFin8
@@ -115,11 +120,12 @@ maybeFin8 def _ NothingFin8   = def
 maybeFin8 _   f (JustFin8 x)  = f x
 {-# INLINE maybeFin8 #-}
 
--- | Apply a function to the contained 'Fin8', if present.
-mapMaybeFin8 :: (Fin8 -> Fin8) -> MaybeFin8 -> MaybeFin8
-mapMaybeFin8 _ NothingFin8  = NothingFin8
-mapMaybeFin8 f (JustFin8 x) = JustFin8 (f x)
-{-# INLINE mapMaybeFin8 #-}
+-- | Return true if a 'Fin8' satisfies a 'MaybeFin8' constraint
+-- (@NothingFin8@ means any value is accepted).
+matchesMaybeFin8 :: Fin8 -> MaybeFin8 -> Bool
+matchesMaybeFin8 _ NothingFin8   = True
+matchesMaybeFin8 i (JustFin8 c)  = i == c
+{-# INLINE matchesMaybeFin8 #-}
 
 -- | A value 0-63.
 newtype Fin64 = Fin64 { unFin64 :: Word8 }
