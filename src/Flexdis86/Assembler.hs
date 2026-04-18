@@ -33,7 +33,7 @@ import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
-import           Data.Maybe ( fromMaybe, isJust )
+import           Data.Maybe ( isJust )
 import           Data.Monoid
 import           Data.Word
 import qualified Lens.Micro as L
@@ -790,11 +790,11 @@ mkModRM ii modb regb rmb =
 -- missing values.
 encodeRequiredModRM :: InstructionInstance -> Word8
 encodeRequiredModRM ii =
-  fromMaybe 0 rmod .|. fromMaybe 0 reg .|. fromMaybe 0 rm
+  rm .|. (reg `shiftL` 3) .|. (rmod `shiftL` 6)
   where
-    rmod = fmap ((`shiftL`  6) . modConstraintVal) (iiRequiredMod ii)
-    reg = maybeFin8 Nothing (Just . (`shiftL` 3) . unFin8) (iiRequiredReg ii)
-    rm  = maybeFin8 Nothing (Just . unFin8)                (iiRequiredRM  ii)
+    reg = maybeFin8 0 unFin8 (iiRequiredReg ii)
+    rm  = maybeFin8 0 unFin8 (iiRequiredRM  ii)
+    rmod = maybe 0 modConstraintVal (iiRequiredMod ii)
 
 modConstraintVal :: ModConstraint -> Word8
 modConstraintVal mc =

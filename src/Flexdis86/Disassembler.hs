@@ -666,13 +666,6 @@ mkFin8Vector f = do
          in f j
   V.generateM 8 g
 
--- | Return true if a 'Fin8' satisfies a 'MaybeFin8' constraint
--- (@NothingFin8@ means any value is accepted).
-matchesMaybeFin8 :: Fin8 -> MaybeFin8 -> Bool
-matchesMaybeFin8 _ NothingFin8       = True
-matchesMaybeFin8 i (JustFin8 c) = i == c
-{-# INLINE matchesMaybeFin8 #-}
-
 -- | Return true if the definition matches the Fin8 constraint
 matchRMConstraint :: Fin8 -> (Maybe VEX,Def) -> Bool
 matchRMConstraint i (_,d) = i `matchesMaybeFin8` (d^.requiredRM)
