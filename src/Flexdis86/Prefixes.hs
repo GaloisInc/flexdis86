@@ -27,6 +27,12 @@ module Flexdis86.Prefixes
   , prNoTrack
   , prAddrSize
   , no_seg_prefix
+  , notrackPrefixByte
+  , addrSizeOverrideByte
+  , operandSizeOverrideByte
+  , lockPrefixByte
+  , repNZPrefixByte
+  , repPrefixByte
   , setDefault
   , LockPrefix(..)
   , ppLockPrefix
@@ -47,6 +53,34 @@ import           Text.Printf
 
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
+
+-- | The byte used for the @notrack@ CET prefix.
+--
+-- This should not be confused with the DS segment override, which uses the same
+-- byte. Instructions uphold the convention that notrack and segment overrides
+-- are not used simultaneously to avoid ambiguity.
+notrackPrefixByte :: Word8
+notrackPrefixByte = 0x3e
+
+-- | The address-size override prefix byte.
+addrSizeOverrideByte :: Word8
+addrSizeOverrideByte = 0x67
+
+-- | The operand-size override prefix byte.
+operandSizeOverrideByte :: Word8
+operandSizeOverrideByte = 0x66
+
+-- | The @LOCK@ prefix byte.
+lockPrefixByte :: Word8
+lockPrefixByte = 0xF0
+
+-- | The @REPNZ@/@REPNE@ prefix byte.
+repNZPrefixByte :: Word8
+repNZPrefixByte = 0xF2
+
+-- | The @REP@/@REPZ@/@REPE@ prefix byte.
+repPrefixByte :: Word8
+repPrefixByte = 0xF3
 
 ------------------------------------------------------------------------
 -- SegmentPrefix

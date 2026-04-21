@@ -492,12 +492,12 @@ simplePrefixes mnem allowed
 
 simplePrefixBytesFuns :: [(PrefixSet, (Word8, PrefixAssignFun))]
 simplePrefixBytesFuns =
-  [ (pfxLock,  (0xf0, set prLockPrefix LockPrefix))
-  , (pfxRepnz, (0xf2, set prLockPrefix RepNZPrefix))
-  , (pfxRepz,  (0xf3, set prLockPrefix RepZPrefix))
-  , (pfxRep,   (0xf3, set prLockPrefix RepPrefix))
-  , (pfxOso,   (0x66, set prOSO True))
-  , (pfxAso,   (0x67, set prASO True))
+  [ (pfxLock,  (lockPrefixByte, set prLockPrefix LockPrefix))
+  , (pfxRepnz, (repNZPrefixByte, set prLockPrefix RepNZPrefix))
+  , (pfxRepz,  (repPrefixByte, set prLockPrefix RepZPrefix))
+  , (pfxRep,   (repPrefixByte, set prLockPrefix RepPrefix))
+  , (pfxOso,   (operandSizeOverrideByte, set prOSO True))
+  , (pfxAso,   (addrSizeOverrideByte, set prASO True))
   ]
 
 -- | The simple \"legacy\" prefixes.
@@ -538,11 +538,6 @@ rexPrefixBytes = HS.fromList
   [ foldl (.|.) rex_instr_pfx xs
   | xs <- subsequences [ rex_w_bit, rex_r_bit, rex_x_bit, rex_b_bit ]
   ]
-
--- | `notrack` prefix bytes overlap with `seg` prefix bytes, but in practice
--- should be on strictly distinct sets of opcodes.
-notrackPrefixByte :: Word8
-notrackPrefixByte = 0x3e
 
 notrackPrefixBytes :: HS.HashSet Word8
 notrackPrefixBytes = HS.singleton notrackPrefixByte
@@ -848,7 +843,7 @@ validatePrefixBytes prefixBytes mbVex def =
                  case mbOprs of
                    Just oprs -> pure ( pfx & prOSO .~ False
                                      , def & defMnemonic .~ xchgMnemonic
-                                           & defOpcodes  %~ (0x66:)
+                                           & defOpcodes  %~ (operandSizeOverrideByte:)
                                            & defOperands .~ oprs
                                      )
                    Nothing -> impossible "Could not find operand types for R0v and rAX"
@@ -858,7 +853,7 @@ validatePrefixBytes prefixBytes mbVex def =
               def^.defOpcodes == [0x90] && pfx^.prLockPrefix == RepPrefix
            -> pure ( pfx & prLockPrefix .~ NoLockPrefix
                    , def & defMnemonic .~ "pause"
-                         & defOpcodes  %~ (0xf3:)
+                         & defOpcodes  %~ (repPrefixByte:)
                    )
 
            |  -- We have to lop off the 0xf3 part of the opcode for endbr32 and

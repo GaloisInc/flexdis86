@@ -366,9 +366,9 @@ mkAssembledInstruction ii = do
           mconcat [ if spfx == no_seg_prefix
                     then mempty
                     else B.word8 (unwrapSegmentPrefix spfx)
-                  , if L.view prNoTrack pfxs then B.word8 0x3e else mempty
-                  , if L.view prASO pfxs then B.word8 0x67 else mempty
-                  , if oso then B.word8 0x66 else mempty
+                  , if L.view prNoTrack pfxs then B.word8 notrackPrefixByte else mempty
+                  , if L.view prASO pfxs then B.word8 addrSizeOverrideByte else mempty
+                  , if oso then B.word8 operandSizeOverrideByte else mempty
                   , encodeLockPrefix (L.view prLockPrefix pfxs)
                   ]
       , assembledRequiredPrefix = encodeRequiredPrefix (iiRequiredPrefix ii)
@@ -810,10 +810,10 @@ encodeLockPrefix :: LockPrefix -> B.Builder
 encodeLockPrefix pfx =
   case pfx of
     NoLockPrefix -> mempty
-    LockPrefix -> B.word8 0xF0
-    RepNZPrefix -> B.word8 0xF2
-    RepPrefix -> B.word8 0xF3
-    RepZPrefix -> B.word8 0xF3
+    LockPrefix -> B.word8 lockPrefixByte
+    RepNZPrefix -> B.word8 repNZPrefixByte
+    RepPrefix -> B.word8 repPrefixByte
+    RepZPrefix -> B.word8 repPrefixByte
 
 -- | Right now, a zero REX prefix is ignored and any other value is
 -- returned directly.  Not entirely sure if that is correct, but it
