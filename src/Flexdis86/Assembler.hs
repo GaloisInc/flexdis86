@@ -366,6 +366,7 @@ mkAssembledInstruction ii = do
           mconcat [ if spfx == no_seg_prefix
                     then mempty
                     else B.word8 (unwrapSegmentPrefix spfx)
+                  , if L.view prNoTrack pfxs then B.word8 0x3e else mempty
                   , if L.view prASO pfxs then B.word8 0x67 else mempty
                   , if oso then B.word8 0x66 else mempty
                   , encodeLockPrefix (L.view prLockPrefix pfxs)
