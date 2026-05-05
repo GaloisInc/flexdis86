@@ -781,7 +781,10 @@ mkModRM ii modb regb rmb =
   where
     reg = maybeFin8 regb unFin8 (iiRequiredReg ii)
     rm  = maybeFin8 rmb  unFin8 (iiRequiredRM  ii)
-    rmmod = maybe modb modConstraintVal (iiRequiredMod ii)
+    rmmod = case iiRequiredMod ii of
+              Nothing      -> modb
+              Just OnlyReg -> modConstraintVal OnlyReg
+              Just OnlyMem -> modb
 
 -- | Build a ModRM byte from a full set of entirely specified mod/rm
 -- bits.
