@@ -5,6 +5,7 @@ Maintainer  :  jhendrix@galois.com
 
 This defines a disassembler based on optable definitions.
 -}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DoAndIfThenElse #-}
@@ -36,26 +37,21 @@ import qualified Control.DeepSeq as DS
 import           Data.Coerce (coerce)
 import           Control.Exception
 import           Control.Monad.Except
-import           Control.Monad.State.Strict
 import           Data.Binary.Get (Decoder(..), runGetIncremental)
 import           Data.Bits
 import qualified Data.ByteString as BS
 import           Data.Either (isLeft)
 import qualified Data.ByteString.Char8 as BSC
-import qualified Data.Foldable as F
 import           GHC.Generics
 import           Data.Int
 import           Data.List (subsequences, partition)
-import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import           Data.Maybe
-import qualified Data.Sequence as Seq
 import qualified Data.Vector as V
 import           Data.Word
 import           GHC.Stack
-import           Lens.Micro (Lens', lens, (&), (.~), (%~), (^.), _2, over, set)
+import           Lens.Micro ((&), (.~), (%~), (^.), _2, over)
 import           Lens.Micro.Extras (view)
-import           Lens.Micro.Mtl ((%=), (.=))
 
 import           Prelude
 
@@ -64,8 +60,8 @@ import qualified Flexdis86.Trie as Trie
 import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
+import           Flexdis86.PrefixAccum (PrefixCode, emptyPrefixCode, addPrefix, materializePrefixes, checkPrefixCode)
 import           Flexdis86.Prefixes
-import           Flexdis86.PrefixSet
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -475,62 +471,8 @@ validPrefix pfx d = matchRequiredOpSize pfx d
 -- seem to allow other prefixes sometimes, along with REX.
 --
 
--- | A function which given an assignment of viewed prefixes, returns the modifies
--- set based on a particular value seen.
-type PrefixAssignFun = Prefixes -> Prefixes
-
--- | Map prefix bytes corresponding to prefixes to the associated update function.
-type PrefixAssignTable = HM.HashMap Word8 PrefixAssignFun
-
--- | Given the allowed-prefix set for an instruction, build the simple
--- legacy-prefix assignment table.
-simplePrefixes :: BS.ByteString -> PrefixSet -> PrefixAssignTable
-simplePrefixes mnem allowed
-  | hasPfx pfxRep allowed && hasPfx pfxRepz allowed = error $
-      "Instruction " ++ BSC.unpack mnem ++ " should not be allowed to have both rep and repz as prefixes"
-  | otherwise = HM.fromList [ v | (flag, v) <- simplePrefixBytesFuns, hasPfx flag allowed ]
-
-simplePrefixBytesFuns :: [(PrefixSet, (Word8, PrefixAssignFun))]
-simplePrefixBytesFuns =
-  [ (pfxLock,  (lockPrefixByte, set prLockPrefix LockPrefix))
-  , (pfxRepnz, (repNZPrefixByte, set prLockPrefix RepNZPrefix))
-  , (pfxRepz,  (repPrefixByte, set prLockPrefix RepZPrefix))
-  , (pfxRep,   (repPrefixByte, set prLockPrefix RepPrefix))
-  , (pfxOso,   (operandSizeOverrideByte, set prOSO True))
-  , (pfxAso,   (addrSizeOverrideByte, set prASO True))
-  ]
-
--- | The simple \"legacy\" prefixes.
-simplePrefixBytes :: HS.HashSet Word8
-simplePrefixBytes = HS.fromList $ map (fst . snd) simplePrefixBytesFuns
-
--- | Table for segment prefixes
-segPrefixes :: PrefixSet -> PrefixAssignTable
-segPrefixes allowed
-  | hasPfx pfxSeg allowed = HM.fromList [ (x, set prSP (SegmentPrefix x)) | x <- segPrefixBytesList ]
-  | otherwise             = HM.empty
-
--- | The segment prefixes.
-segPrefixBytes :: HS.HashSet Word8
-segPrefixBytes = HS.fromList segPrefixBytesList
-
 segPrefixBytesList :: [Word8]
 segPrefixBytesList = [0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65]
-
--- FIXME: we could also decode the REX
-rexPrefixes :: PrefixSet -> PrefixAssignTable
-rexPrefixes allowed
-  | null possibleBits = HM.empty
-  | otherwise         = HM.fromList
-                          [ (x, set prREX (REX x))
-                          | xs <- subsequences possibleBits
-                          , let x = foldl (.|.) rex_instr_pfx xs ]
-  where
-    possibleBits  = [ b | (flag, b) <- rexPrefixBits, hasPfx flag allowed ]
-    rexPrefixBits = [ (pfxRexw, rex_w_bit)
-                    , (pfxRexr, rex_r_bit)
-                    , (pfxRexx, rex_x_bit)
-                    , (pfxRexb, rex_b_bit) ]
 
 -- | The REX prefix bytes.
 rexPrefixBytes :: HS.HashSet Word8
@@ -539,24 +481,20 @@ rexPrefixBytes = HS.fromList
   | xs <- subsequences [ rex_w_bit, rex_r_bit, rex_x_bit, rex_b_bit ]
   ]
 
-notrackPrefixBytes :: HS.HashSet Word8
-notrackPrefixBytes = HS.singleton notrackPrefixByte
-
--- | Table for notrack prefixes
-notrackPrefix :: PrefixSet -> PrefixAssignTable
-notrackPrefix allowed
-  | hasPfx pfxNotrack allowed = HM.singleton notrackPrefixByte (set prNoTrack True)
-  | otherwise                 = HM.empty
-
 -- | All prefix bytes besides the VEX ones. (See @Note [x86_64 disassembly]@
 -- for why VEX prefix bytes are treated specially.)
 nonVexPrefixBytes :: HS.HashSet Word8
 nonVexPrefixBytes = HS.unions
   [ simplePrefixBytes
-  , segPrefixBytes
+  , HS.fromList segPrefixBytesList
   , rexPrefixBytes
-  , notrackPrefixBytes
   ]
+  where
+    simplePrefixBytes = HS.fromList
+      [ lockPrefixByte, repNZPrefixByte, repPrefixByte
+      , operandSizeOverrideByte, addrSizeOverrideByte
+      , notrackPrefixByte
+      ]
 
 -- | Given a 'Def', construct all possible combinations of bytes representing
 -- valid VEX prefix and opcode bytes for that instruction. (See
@@ -694,12 +632,12 @@ read_disp8 :: ByteReader m => m Displacement
 read_disp8 = Disp8 <$> readSByte
 
 parseReadTable :: ByteReader m
-               => [Word8]
+               => PrefixCode
                -> ModRM
                -> [(Maybe VEX, Def)]
                -> m InstructionInstance
-parseReadTable prefixBytes modRM dfs = do
-  (pfx, df) <- matchDefWithPrefixBytes prefixBytes dfs
+parseReadTable pc modRM dfs = do
+  (pfx, df) <- matchDefWithPrefixCode pc dfs
   let osz = prefixOperandSizeConstraint pfx df
   let finish args =
         II
@@ -734,47 +672,6 @@ getRMTable modRM mtbl =
       | otherwise -> x
     ModUnchecked x -> x
 
--- | The state of what prefixes have been seen during prefix byte validation.
--- Note that this data type is only used in 'validatePrefixBytes'.
-data ValidatePrefixState = ValidatePrefixState
-  { _seenRequiredPrefix :: Bool
-  , _seenREX :: Bool
-  , _prefixAssignFunMap :: HM.HashMap Word8 PrefixAssignFun
-    -- ^ For each prefix byte that we have seen, record what effect it has on
-    -- a 'Prefixes' value. At the end of 'validatePrefixBytes', all of the
-    -- recorded 'PrefixAssignFun's will be applied to construct the final
-    -- 'Prefixes' value.
-  }
-
--- | The starting state at the beginning of prefix byte validation (see
--- 'validatePrefixBytes').
-defaultValidatePrefixState :: ValidatePrefixState
-defaultValidatePrefixState = ValidatePrefixState
-  { _seenRequiredPrefix = False
-  , _seenREX = False
-  , _prefixAssignFunMap = HM.empty
-  }
-
-seenRequiredPrefix :: Lens' ValidatePrefixState Bool
-seenRequiredPrefix = lens _seenRequiredPrefix (\s v -> s { _seenRequiredPrefix = v })
-
-seenREX :: Lens' ValidatePrefixState Bool
-seenREX = lens _seenREX (\s v -> s { _seenREX = v })
-
-prefixAssignFunMap :: Lens' ValidatePrefixState (HM.HashMap Word8 PrefixAssignFun)
-prefixAssignFunMap = lens _prefixAssignFunMap (\s v -> s { _prefixAssignFunMap = v })
-
--- | A monad (internal to 'validatePrefixBytes') used for validating prefix bytes.
-newtype ValidatePrefixM a =
-    ValidatePrefixM (ExceptT String (State ValidatePrefixState) a)
-  deriving ( Functor, Applicative, Monad
-           , MonadError String
-           , MonadState ValidatePrefixState
-           )
-
-evalValidatePrefixM :: ValidatePrefixState -> ValidatePrefixM a -> Either String a
-evalValidatePrefixM st (ValidatePrefixM ma) = evalState (runExceptT ma) st
-
 -- | Given a set of prefix bytes and a 'Def', check to see if the 'Def'
 -- actually accepts the prefixes. If so, return @'Right' (pfx, def)@, where
 -- @pfx@ is a 'Prefixes' value representing the prefix bytes and @def@ is the
@@ -786,141 +683,65 @@ evalValidatePrefixM st (ValidatePrefixM ma) = evalState (runExceptT ma) st
 -- Note that this list of checks is almost certainly incomplete. We aim to only
 -- include only those checks that are actually necessary to disambiguate 'Def's
 -- with identical opcodes, and no more than that.
-validatePrefixBytes :: [Word8] -> Maybe VEX -> Def
-                    -> Either String (Prefixes, Def)
-validatePrefixBytes prefixBytes mbVex def =
-  evalValidatePrefixM defaultValidatePrefixState (go prefixBytes)
+validatePrefixCode :: PrefixCode -> Maybe VEX -> Def
+                   -> Either String (Prefixes, Def)
+validatePrefixCode pc mbVex def
+  | not (checkPrefixCode pc mbVex allowed reqPfx)
+  = Left $ "Invalid prefix bytes for " ++ BSC.unpack (def ^. defMnemonic)
+  | validPrefix pfx def'
+  = Right (pfx, def')
+  | otherwise
+  = Left $ "Invalid prefix bytes for " ++ BSC.unpack (def ^. defMnemonic)
   where
-    go :: [Word8] -> ValidatePrefixM (Prefixes, Def)
-    go (b:bs)
-      | def^.requiredPrefix == Just b
-      = do seenRequiredPrefix .= True
-           -- Required prefix doesn't do anything, but must occur
-           prefixAssignFunMap %= HM.insert b id
-           go bs
+    allowed = def ^. defPrefix
+    reqPfx = def ^. requiredPrefix
+    rawPfx = materializePrefixes pc mbVex allowed reqPfx
+    (pfx, def') = applyNopFamilyFixups rawPfx def
 
-      | Just fun <- HM.lookup b rexPfxs
-      = do seenREX .= True
-           prefixAssignFunMap %= HM.insert b fun
-           go bs
+-- | Here is where we perform special cases of instructions that are similar
+-- to nop (opcode 0x90).
+applyNopFamilyFixups :: Prefixes -> Def -> (Prefixes, Def)
+applyNopFamilyFixups pfx def
+  -- If we have a nop with an OSO prefix, what we really have is an
+  -- xchg instruction.
+  | def ^. defOpcodes == [0x90], pfx ^. prOSO
+  , let xchgMnemonic = "xchg"
+        -- The operand types come from here:
+        -- https://github.com/vmt/udis86/blob/56ff6c87c11de0ffa725b14339004820556e343d/docs/x86/optable.xml#L8447
+        xchgOperands = do
+          opr1 <- lookupOperandType xchgMnemonic "R0v"
+          opr2 <- lookupOperandType xchgMnemonic "rAX"
+          pure [opr1, opr2]
+  = case xchgOperands of
+      Just oprs ->
+        ( pfx & prOSO .~ False
+        , def & defMnemonic .~ xchgMnemonic
+              & defOpcodes  %~ (operandSizeOverrideByte:)
+              & defOperands .~ oprs
+        )
+      Nothing -> error "Could not find operand types for R0v and rAX"
 
-      | Just fun <- HM.lookup b simplePfxs
-      = do prefixAssignFunMap %= HM.insert b fun
-           go bs
+  -- If we have a nop with a REP prefix, what we really have is a
+  -- pause instruction.
+  | def ^. defOpcodes == [0x90], pfx ^. prLockPrefix == RepPrefix
+  = ( pfx & prLockPrefix .~ NoLockPrefix
+    , def & defMnemonic .~ "pause"
+          & defOpcodes  %~ (repPrefixByte:)
+    )
 
-      | Just fun <- HM.lookup b segPfxs
-      = do prefixAssignFunMap %= HM.insert b fun
-           go bs
+  -- We have to lop off the 0xf3 part of the opcode for endbr32 and
+  -- endbr64 to avoid ambiguity with REP prefixes, so add the 0xf3
+  -- bit back to the opcode post facto.
+  | mnem `elem` ["endbr32", "endbr64"]
+  , Just reqPfx <- def ^. requiredPrefix
+  = ( pfx
+    , def & defOpcodes     %~ (reqPfx:)
+          & requiredPrefix .~ Nothing
+    )
 
-      | Just fun <- HM.lookup b notrackPfx
-      = do prefixAssignFunMap %= HM.insert b fun
-           go bs
-
-      | otherwise
-      = throwError $ unlines
-          [ "Encountered a " ++ BSC.unpack mnem ++ " instruction " ++
-              "with a " ++ show b ++ " prefix byte,"
-          , "which is not permitted"
-          ]
-
-    go [] = do
-      st <- get
-      let pfx = appList (HM.elems (st^.prefixAssignFunMap))
-                        (set prVEX mbVex defaultPrefix)
-      (pfx', def') <-
-        -- Here is where we perform special cases of instructions that are
-        -- similar to nop (opcode 0x90).
-        if |  -- If we have a nop with an OSO prefix, what we really have is an
-              -- xchg instruction.
-              def^.defOpcodes == [0x90] && pfx^.prOSO
-           -> do let xchgMnemonic = "xchg"
-                 let mbOprs = do
-                       -- The operand types come from here:
-                       -- https://github.com/vmt/udis86/blob/56ff6c87c11de0ffa725b14339004820556e343d/docs/x86/optable.xml#L8447
-                       opr1 <- lookupOperandType xchgMnemonic "R0v"
-                       opr2 <- lookupOperandType xchgMnemonic "rAX"
-                       pure [opr1, opr2]
-                 case mbOprs of
-                   Just oprs -> pure ( pfx & prOSO .~ False
-                                     , def & defMnemonic .~ xchgMnemonic
-                                           & defOpcodes  %~ (operandSizeOverrideByte:)
-                                           & defOperands .~ oprs
-                                     )
-                   Nothing -> impossible "Could not find operand types for R0v and rAX"
-
-           |  -- If we have a nop with a REP prefix, what we really have is a
-              -- pause instruction.
-              def^.defOpcodes == [0x90] && pfx^.prLockPrefix == RepPrefix
-           -> pure ( pfx & prLockPrefix .~ NoLockPrefix
-                   , def & defMnemonic .~ "pause"
-                         & defOpcodes  %~ (repPrefixByte:)
-                   )
-
-           |  -- We have to lop off the 0xf3 part of the opcode for endbr32 and
-              -- endbr64 to avoid ambiguity with REP prefixes, so add the 0xf3
-              -- bit back to the opcode post facto.
-              mnem `elem` ["endbr32", "endbr64"]
-           ,  Just reqPfx <- def^.requiredPrefix
-           -> pure ( pfx
-                   , def & defOpcodes     %~ (reqPfx:)
-                         & requiredPrefix .~ Nothing
-                   )
-
-           |  otherwise
-           -> pure (pfx, def)
-      if |  Just reqPfx <- def'^.requiredPrefix
-         ,  not (st^.seenRequiredPrefix)
-         -> throwError $ unlines
-              [ "The " ++ BSC.unpack mnem ++ " instruction has a required " ++
-                  "prefix of " ++ show reqPfx ++ ","
-              , "but the disassembled prefixes did not contain it"
-              ]
-
-         |  -- Having both REX and VEX prefixes is #UD.
-            st^.seenREX, isJust mbVex
-         -> impossible $
-              BSC.unpack mnem ++ " instruction encountered with both " ++
-              "REX and VEX prefixes"
-
-         |  validPrefix pfx' def'
-         -> pure (pfx', def')
-
-         |  otherwise
-         -> throwError $ unlines
-              [ "Could not validate the " ++ BSC.unpack mnem ++ " instruction " ++
-                  "against the following bytes: "
-              , show prefixBytes
-              ]
-
-    appList :: [a -> a] -> a -> a
-    appList = foldl (.) id
-
-    mnem = def^.defMnemonic
-    -- Get list of permitted prefixes
-    allowed = def^.defPrefix
-    -- Get all subsets of allowed segmented prefixes
-    segPfxs :: PrefixAssignTable
-    segPfxs = segPrefixes allowed
-    -- Get all subsets of allowed legacy prefixes
-    simplePfxs :: PrefixAssignTable
-    simplePfxs = simplePrefixes mnem allowed
-    -- Get all subsets of allowed REX prefixes
-    rexPfxs :: PrefixAssignTable
-    rexPfxs = rexPrefixes allowed
-    notrackPfx :: PrefixAssignTable
-    notrackPfx = notrackPrefix allowed
-
-    defaultPrefix = Prefixes { _prLockPrefix = NoLockPrefix
-                             , _prSP  = no_seg_prefix
-                             , _prREX = no_rex
-                             , _prVEX = Nothing
-                             , _prASO = False
-                             , _prOSO = False
-                             , _prNoTrack = False
-                             }
-
-    -- Reserved for situations that should never happen
-    impossible = error
+  | otherwise = (pfx, def)
+  where
+    mnem = def ^. defMnemonic
 
 -- | What can go wrong when searching for an instruction that validates against
 -- a set of prefix bytes.
@@ -937,10 +758,10 @@ data DefSearchError
 -- exactly one such candidate can be found, return 'Right'. If no candidate
 -- is found or multiple candidates are found (i.e., an ambiguity is
 -- encountered), return 'Left'.
-findDefWithPrefixBytes :: [Word8]
-                       -> [(Maybe VEX, Def)]
-                       -> Either DefSearchError (Prefixes, Def)
-findDefWithPrefixBytes prefixBytes defs =
+findDefWithPrefixCode :: PrefixCode
+                      -> [(Maybe VEX, Def)]
+                      -> Either DefSearchError (Prefixes, Def)
+findDefWithPrefixCode pc defs =
   case mapMaybe match defs of
     [pfxdef]    -> Right pfxdef
     []          -> Left NoDefFound
@@ -949,50 +770,52 @@ findDefWithPrefixBytes prefixBytes defs =
   where
     match :: (Maybe VEX, Def) -> Maybe (Prefixes, Def)
     match (mbVex, def) =
-      case validatePrefixBytes prefixBytes mbVex def of
+      case validatePrefixCode pc mbVex def of
         Left _err    -> Nothing
         Right pfxdef -> Just pfxdef
 
 -- | Return the instruction that matches the set of prefix bytes from a set of
 -- candidates, throwing an error if that instruction cannot be found.
-matchDefWithPrefixBytes :: ByteReader m
-                        => [Word8]
-                        -> [(Maybe VEX, Def)]
-                        -> m (Prefixes, Def)
-matchDefWithPrefixBytes prefixBytes defs =
-  case findDefWithPrefixBytes prefixBytes defs of
+matchDefWithPrefixCode :: ByteReader m
+                       => PrefixCode
+                       -> [(Maybe VEX, Def)]
+                       -> m (Prefixes, Def)
+matchDefWithPrefixCode pc defs =
+  case findDefWithPrefixCode pc defs of
     Right pfxdef -> pure pfxdef
     Left NoDefFound -> invalidInstruction
     Left (MultipleDefsFound defNms) -> error $ unlines $
-      ("Multiple instructions match: " ++ show prefixBytes) : defNms
+      "Multiple instructions match" : defNms
 
 -- | Parse instruction using byte reader.
 disassembleInstruction :: forall m
                         . ByteReader m
                        => NextOpcodeTable
                        -> m InstructionInstance
-disassembleInstruction tr0 = loopPrefixBytes Seq.empty
+disassembleInstruction tr0 = loopPrefixBytes emptyPrefixCode
   where
     -- Parse as many bytes as possible that are known to be prefix bytes. Once
     -- we encounter the first byte that isn't a prefix byte, move on to parsing
     -- opcode bytes.
-    loopPrefixBytes :: Seq.Seq Word8 -> m InstructionInstance
-    loopPrefixBytes prefixBytes = do
+    loopPrefixBytes :: PrefixCode -> m InstructionInstance
+    loopPrefixBytes !acc = do
       b <- readByte
       if |  HS.member b nonVexPrefixBytes
-         -> loopPrefixBytes (prefixBytes Seq.|> b)
+         -> case addPrefix acc b of
+              Just acc' -> loopPrefixBytes acc'
+              Nothing   -> invalidInstruction
 
          |  otherwise
-         -> loopOpcodes (F.toList prefixBytes) tr0 b
+         -> loopOpcodes acc tr0 b
 
     -- Parse opcode byte and use them to navigate through the opcode table.
     -- Once we have parsed all of the opcode bytes in an instruction,
     -- disassemble the rest of the instruction.
-    loopOpcodes :: [Word8]
+    loopOpcodes :: PrefixCode
                 -> NextOpcodeTable
                 -> Word8
                 -> m InstructionInstance
-    loopOpcodes prefixBytes = go
+    loopOpcodes !pc = go
       where
         go :: NextOpcodeTable -> Word8 -> m InstructionInstance
         go tr opcodeByte =
@@ -1005,28 +828,28 @@ disassembleInstruction tr0 = loopPrefixBytes Seq.empty
                  -- first. If one is found, there is an invariant that none
                  -- of the instruction candidates without a ModR/M byte
                  -- should validate with the set of parsed prefixes.
-                 Right (pfx, def) <- findDefWithPrefixBytes prefixBytes defsWithoutModRM
+                 Right (pfx, def) <- findDefWithPrefixCode pc defsWithoutModRM
               -> assert (all (\(mbVex, df) ->
-                               isLeft $ validatePrefixBytes prefixBytes mbVex df)
+                               isLeft $ validatePrefixCode pc mbVex df)
                              defsWithModRM) $
                  disassembleWithoutModRM def pfx
 
               |  otherwise
-              -> disassembleWithModRM prefixBytes defsWithModRM
+              -> disassembleWithModRM pc defsWithModRM
 
     -- Disassemble instruction candidates with a ModR/M byte.
-    disassembleWithModRM :: [Word8]
+    disassembleWithModRM :: PrefixCode
                          -> [(Maybe VEX, Def)]
                          -> m InstructionInstance
-    disassembleWithModRM prefixBytes defs = do
+    disassembleWithModRM pc defs = do
       tbl <- checkRequiredReg defs
       modRM <- readModRM
       case tbl of
         RegTable v ->
           let mtbl = v V.! fromIntegral (modRM_reg modRM) in
-          parseReadTable prefixBytes modRM (getReadTable modRM (getRMTable modRM mtbl))
+          parseReadTable pc modRM (getReadTable modRM (getRMTable modRM mtbl))
         RegUnchecked mtbl ->
-          parseReadTable prefixBytes modRM (getReadTable modRM (getRMTable modRM mtbl))
+          parseReadTable pc modRM (getReadTable modRM (getRMTable modRM mtbl))
 
     -- Disassemble an instruction without a ModR/M byte.
     disassembleWithoutModRM :: Def

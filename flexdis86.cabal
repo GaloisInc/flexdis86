@@ -49,6 +49,7 @@ library
     Flexdis86.Disassembler
     Flexdis86.OpTable
     Flexdis86.OpTable.Parse
+    Flexdis86.PrefixAccum
     Flexdis86.Trie
   ghc-options: -Wall -fno-ignore-asserts -O2 -Wno-trustworthy-safe
 
