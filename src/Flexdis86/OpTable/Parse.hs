@@ -53,7 +53,7 @@ import           Text.XML.Light ( Content(..)
 import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 
 import           Flexdis86.OpTable
-import           Flexdis86.PrefixSet (prefixSetFromNames)
+import           Flexdis86.Prefixes.Allowed (allowedFromNames)
 import           Flexdis86.Sizes ( SizeConstraint(..), ModConstraint(..)
                                  , asFin8, asFin64, maskFin8
                                  , MaybeFin8(..)
@@ -497,7 +497,7 @@ parse_def ::
   ElemParser ()
 parse_def nm syns creq v = do
   checkTag "def"
-  let parse_prefix = prefixSetFromNames . fromMaybe [] . fmap words <$> opt "pfx" asText
+  let parse_prefix = allowedFromNames . fromMaybe [] . fmap words <$> opt "pfx" asText
   prefix     <- parse_prefix
   opc_text   <- required_text "opc"
   oprndNames <- fromMaybe [] . fmap words <$> opt "opr" asText

@@ -37,7 +37,6 @@ library
     Flexdis86.InstructionSet
     Flexdis86.Operand
     Flexdis86.Prefixes
-    Flexdis86.PrefixSet
     Flexdis86.Register
     Flexdis86.Relocation
     Flexdis86.Segment
@@ -49,7 +48,9 @@ library
     Flexdis86.Disassembler
     Flexdis86.OpTable
     Flexdis86.OpTable.Parse
-    Flexdis86.PrefixAccum
+    Flexdis86.Prefixes.Allowed
+    Flexdis86.Prefixes.Code
+    Flexdis86.Prefixes.Seen
     Flexdis86.Trie
   ghc-options: -Wall -fno-ignore-asserts -O2 -Wno-trustworthy-safe
 
