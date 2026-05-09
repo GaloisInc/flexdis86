@@ -36,7 +36,6 @@ import           Control.Applicative
 import qualified Control.DeepSeq as DS
 import           Data.Coerce (coerce)
 import           Control.Exception
-import           Control.Monad.Except
 import           Data.Binary.Get (Decoder(..), runGetIncremental)
 import           Data.Bits
 import qualified Data.ByteString as BS
@@ -354,8 +353,8 @@ instance DS.NFData ModTable
 -- candidates once all opcode bytes have been parsed.
 data OpcodeTableEntry
   = OpcodeTableEntry
-      ![(Maybe VEX, Def)] -- Defs expecting a ModR/M byte
-      ![(Maybe VEX, Def)] -- Defs not expecting a ModR/M byte
+      !(RegTable ModTable) -- Defs expecting a ModR/M byte
+      ![(Maybe VEX, Def)]  -- Defs not expecting a ModR/M byte
   deriving (Generic, Show)
 
 instance DS.NFData OpcodeTableEntry
@@ -369,14 +368,9 @@ newtype OpcodeTable = OpcodeTable (Trie.Trie8 OpcodeTableEntry)
 -- | A NextOpcodeTable describes a table of parsers to read based on the bytes.
 type NextOpcodeTable = Trie.Vec8 OpcodeTable
 
-type ParserGen = Except String
-
-runParserGen :: ParserGen a -> Either String a
-runParserGen p = runExcept p
-
-type DefTableFn m t = [(Maybe VEX, Def)] -> m t
--- ^ Given a list of pairs of VEX prefixes and definitions, parse a table of
--- possible instructions in the supplied 'Monad'.
+type DefTableFn t = [(Maybe VEX, Def)] -> t
+-- ^ Given a list of pairs of VEX prefixes and definitions, build a table of
+-- possible instructions.
 
 prefixOperandSizeConstraint :: Prefixes -> Def -> OperandSizeConstraint
 prefixOperandSizeConstraint pfx d
@@ -522,21 +516,21 @@ allVexPrefixesAndOpcodes def
 -- | Given a list of instruction 'Def's, compute a lookup table for its VEX
 -- prefix and opcode bytes. See @Note [x86_64 disassembly]@ for more details on
 -- how this works.
-mkOpcodeTable :: [Def] -> ParserGen OpcodeTable
+mkOpcodeTable :: [Def] -> OpcodeTable
 mkOpcodeTable defs =
-  pure $! OpcodeTable $ Trie.mkTrie mkLeaf (concatMap allVexPrefixesAndOpcodes defs)
+  OpcodeTable (Trie.mkTrie mkLeaf (concatMap allVexPrefixesAndOpcodes defs))
   where
     mkLeaf :: [(Maybe VEX, Def)] -> OpcodeTableEntry
     mkLeaf vexDefs =
       let (defsWithModRM, defsWithoutModRM) = partition (expectsModRM . snd) vexDefs
-      in OpcodeTableEntry defsWithModRM defsWithoutModRM
+      in OpcodeTableEntry (checkRequiredReg defsWithModRM) defsWithoutModRM
 
 requireModCheck :: Def -> Bool
 requireModCheck d = isJust (d^.requiredMod)
 
-mkModTable :: Monad m => DefTableFn m ModTable
+mkModTable :: DefTableFn ModTable
 mkModTable defs
-  | any (requireModCheck . snd) defs = do
+  | any (requireModCheck . snd) defs =
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
@@ -552,7 +546,7 @@ mkModTable defs
             RG_XMM_rm {} -> True
             RG_ST _   -> True
             _         -> False
-    let regDef d =
+        regDef d =
           case d^.requiredMod of
             Just OnlyMem -> False
             _ -> not (any modRMMemOperand (d^.defOperands))
@@ -570,46 +564,38 @@ mkModTable defs
             RM_MMX  -> True
             RM_XMM {} -> True
             _       -> False
-    memTbl <- checkRequiredRM (filter (memDef . snd) defs)
-    regTbl <- checkRequiredRM (filter (regDef . snd) defs)
-    pure $! ModTable memTbl regTbl
-  | otherwise = do
-    tbl <- checkRequiredRM defs
-    pure $! ModUnchecked tbl
+        memTbl = checkRequiredRM (filter (memDef . snd) defs)
+        regTbl = checkRequiredRM (filter (regDef . snd) defs)
+    in ModTable memTbl regTbl
+  | otherwise = ModUnchecked (checkRequiredRM defs)
 
-checkRequiredReg :: Monad m => DefTableFn m (RegTable ModTable)
+checkRequiredReg :: DefTableFn (RegTable ModTable)
 checkRequiredReg defs
-  | any (\(_,d) -> d^.requiredReg /= NothingFin8) defs = do
+  | any (\(_,d) -> d^.requiredReg /= NothingFin8) defs =
     let p i (_,d) = i `matchesMaybeFin8` (d^.requiredReg)
-        eltFn i = mkModTable $ filter (p i) defs
-    v <- mkFin8Vector eltFn
-    pure $! RegTable v
-  | otherwise = do
-      tbl <- mkModTable defs
-      pure $! RegUnchecked tbl
+        eltFn i = mkModTable (filter (p i) defs)
+    in RegTable (mkFin8Vector eltFn)
+  | otherwise = RegUnchecked (mkModTable defs)
 
 -- | Make a vector with length 8 from a function over fin8.
-mkFin8Vector :: Monad m => (Fin8 -> m v) -> m (V.Vector v)
-mkFin8Vector f = do
-  let g i =
-        let j = case asFin8 (fromIntegral i) of
-                  Just j' -> j'
-                  Nothing -> error $ "internal: Expected number between 0-7, received " ++ show i
-         in f j
-  V.generateM 8 g
+mkFin8Vector :: (Fin8 -> v) -> V.Vector v
+mkFin8Vector f = V.generate 8 g
+  where
+    g i = case asFin8 (fromIntegral i) of
+            Just j  -> f j
+            Nothing -> error $ "internal: Expected number between 0-7, received " ++ show i
 
 -- | Return true if the definition matches the Fin8 constraint
 matchRMConstraint :: Fin8 -> (Maybe VEX,Def) -> Bool
 matchRMConstraint i (_,d) = i `matchesMaybeFin8` (d^.requiredRM)
 
 -- | Check required RM if needed, then forward to final table.
-checkRequiredRM :: Monad m => DefTableFn m RMTable
+checkRequiredRM :: DefTableFn RMTable
 checkRequiredRM defs
     -- Split on the required RM value if any of the definitions depend on it
   | any (\(_,d) -> d^.requiredRM /= NothingFin8) defs =
-    let eltFn i = pure $ filter (i `matchRMConstraint`) defs
-     in RegTable <$> mkFin8Vector eltFn
-  | otherwise = pure $ RegUnchecked defs
+      RegTable (mkFin8Vector (\i -> filter (i `matchRMConstraint`) defs))
+  | otherwise = RegUnchecked defs
 
 ------------------------------------------------------------------------
 -- Parsing
@@ -835,7 +821,7 @@ disassembleInstruction tr0 = loopPrefixBytes emptySeen
                  Right (pfx, def) <- findDefWithSeen pc defsWithoutModRM
               -> assert (all (\(mbVex, df) ->
                                isLeft $ validateSeen pc mbVex df)
-                             defsWithModRM) $
+                             (flattenRegTable defsWithModRM)) $
                  disassembleWithoutModRM def pfx
 
               |  otherwise
@@ -843,10 +829,9 @@ disassembleInstruction tr0 = loopPrefixBytes emptySeen
 
     -- Disassemble instruction candidates with a ModR/M byte.
     disassembleWithModRM :: Seen
-                         -> [(Maybe VEX, Def)]
+                         -> RegTable ModTable
                          -> m InstructionInstance
-    disassembleWithModRM pc defs = do
-      tbl <- checkRequiredReg defs
+    disassembleWithModRM pc tbl = do
       modRM <- readModRM
       case tbl of
         RegTable v ->
@@ -1207,11 +1192,25 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
 ------------------------------------------------------------------------
 -- Create the diassembler
 
+-- | Flatten all candidate defs stored in a 'RegTable' 'ModTable' into a
+-- list. Used by decoder assertions and for size accounting.
+flattenRegTable :: RegTable ModTable -> [(Maybe VEX, Def)]
+flattenRegTable (RegUnchecked mt) = flattenModTable mt
+flattenRegTable (RegTable v) = concatMap flattenModTable (V.toList v)
+
+flattenModTable :: ModTable -> [(Maybe VEX, Def)]
+flattenModTable (ModUnchecked rm) = flattenRMTable rm
+flattenModTable (ModTable m r) = flattenRMTable m ++ flattenRMTable r
+
+flattenRMTable :: RMTable -> [(Maybe VEX, Def)]
+flattenRMTable (RegUnchecked xs) = xs
+flattenRMTable (RegTable v) = concat (V.toList v)
+
 opcodeTableSize :: OpcodeTable -> Int
 opcodeTableSize (OpcodeTable (Trie.Branch v)) =
   sum (opcodeTableSize <$> coerce @(Trie.Vec8 (Trie.Trie8 OpcodeTableEntry)) @(Trie.Vec8 OpcodeTable) v)
-opcodeTableSize (OpcodeTable (Trie.Leaf (OpcodeTableEntry defsWithModRM defsWithoutModRM))) =
-  length defsWithModRM + length defsWithoutModRM
+opcodeTableSize (OpcodeTable (Trie.Leaf (OpcodeTableEntry modRMTbl defsWithoutModRM))) =
+  length (flattenRegTable modRMTbl) + length defsWithoutModRM
 
 nextOpcodeSize :: NextOpcodeTable -> Int
 nextOpcodeSize v = sum (opcodeTableSize <$> v)
@@ -1220,8 +1219,9 @@ nextOpcodeSize v = sum (opcodeTableSize <$> v)
 -- The caller is responsible for providing only supported defs (see
 -- 'defSupported' in "Flexdis86.OpTable").
 mkX64Disassembler :: [Def] -> Either String NextOpcodeTable
-mkX64Disassembler defs = do
-  OpcodeTable mOpTbl <- runParserGen $ mkOpcodeTable defs
+mkX64Disassembler defs =
   case mOpTbl of
     Trie.Branch v -> Right $! coerce v
     Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+  where
+    OpcodeTable mOpTbl = mkOpcodeTable defs
