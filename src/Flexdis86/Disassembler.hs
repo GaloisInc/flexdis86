@@ -60,8 +60,8 @@ import qualified Flexdis86.Trie as Trie
 import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
-import           Flexdis86.PrefixAccum (PrefixCode, emptyPrefixCode, addPrefix, materializePrefixes, checkPrefixCode)
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, materializePrefixes, checkAllowed)
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -123,9 +123,8 @@ suspend your disbelief for the time being. We'll provide a more complete
 explanation later.) Instead, we begin disassembly by parsing as many bytes as
 possible that are known to be prefix bytes. These include:
 
-* Simple "legacy" prefixes (see `simplePrefixBytes`)
-* Segment prefixes (see `segPrefixBytes`)
-* REX prefixes (see `rexPrefixBytes`)
+* Legacy prefixes (lock/rep, segment, REX, OSO, ASO, notrack; see
+  `Flexdis86.Prefixes.Seen.addPrefix`)
 * VEX prefixes (see `mkVexPrefixes`)
 
 Once we encounter the first byte that is not a known prefix byte, we begin
@@ -632,12 +631,12 @@ read_disp8 :: ByteReader m => m Displacement
 read_disp8 = Disp8 <$> readSByte
 
 parseReadTable :: ByteReader m
-               => PrefixCode
+               => Seen
                -> ModRM
                -> [(Maybe VEX, Def)]
                -> m InstructionInstance
 parseReadTable pc modRM dfs = do
-  (pfx, df) <- matchDefWithPrefixCode pc dfs
+  (pfx, df) <- matchDefWithSeen pc dfs
   let osz = prefixOperandSizeConstraint pfx df
   let finish args =
         II
@@ -673,7 +672,7 @@ getRMTable modRM mtbl =
     ModUnchecked x -> x
 
 -- | Given a set of prefix bytes and a 'Def', check to see if the 'Def'
--- actually accepts the prefixes. If so, return @'Right' (pfx, def)@, where
+-- actually accepts the 'Seen' prefixes. If so, return @'Right' (pfx, def)@, where
 -- @pfx@ is a 'Prefixes' value representing the prefix bytes and @def@ is the
 -- input 'Def', possibly with some minor fixups applied in certain special
 -- cases. (See @Note [x86_64 disassembly]@ for more about these special cases
@@ -683,10 +682,13 @@ getRMTable modRM mtbl =
 -- Note that this list of checks is almost certainly incomplete. We aim to only
 -- include only those checks that are actually necessary to disambiguate 'Def's
 -- with identical opcodes, and no more than that.
-validatePrefixCode :: PrefixCode -> Maybe VEX -> Def
-                   -> Either String (Prefixes, Def)
-validatePrefixCode pc mbVex def
-  | not (checkPrefixCode pc mbVex allowed reqPfx)
+validateSeen ::
+  Seen ->
+  Maybe VEX ->
+  Def ->
+  Either String (Prefixes, Def)
+validateSeen pc mbVex def
+  | not (checkAllowed pc mbVex allowed reqPfx)
   = Left $ "Invalid prefix bytes for " ++ BSC.unpack (def ^. defMnemonic)
   | validPrefix pfx def'
   = Right (pfx, def')
@@ -754,14 +756,15 @@ data DefSearchError
     MultipleDefsFound [String] -- The names of each found instruction
 
 -- | Given a list of prefix bytes and a set of candidate instruction
--- definitions, find a candidate for which the prefix bytes are valid. If
+-- definitions, find a candidate for which the 'Seen' prefix bytes are valid. If
 -- exactly one such candidate can be found, return 'Right'. If no candidate
 -- is found or multiple candidates are found (i.e., an ambiguity is
 -- encountered), return 'Left'.
-findDefWithPrefixCode :: PrefixCode
-                      -> [(Maybe VEX, Def)]
-                      -> Either DefSearchError (Prefixes, Def)
-findDefWithPrefixCode pc defs =
+findDefWithSeen ::
+  Seen ->
+  [(Maybe VEX, Def)] ->
+  Either DefSearchError (Prefixes, Def)
+findDefWithSeen pc defs =
   case mapMaybe match defs of
     [pfxdef]    -> Right pfxdef
     []          -> Left NoDefFound
@@ -770,18 +773,19 @@ findDefWithPrefixCode pc defs =
   where
     match :: (Maybe VEX, Def) -> Maybe (Prefixes, Def)
     match (mbVex, def) =
-      case validatePrefixCode pc mbVex def of
+      case validateSeen pc mbVex def of
         Left _err    -> Nothing
         Right pfxdef -> Just pfxdef
 
--- | Return the instruction that matches the set of prefix bytes from a set of
--- candidates, throwing an error if that instruction cannot be found.
-matchDefWithPrefixCode :: ByteReader m
-                       => PrefixCode
-                       -> [(Maybe VEX, Def)]
-                       -> m (Prefixes, Def)
-matchDefWithPrefixCode pc defs =
-  case findDefWithPrefixCode pc defs of
+-- | Return the instruction that matches the set of 'Seen' prefix bytes from a
+-- set of candidates, throwing an error if that instruction cannot be found.
+matchDefWithSeen ::
+  ByteReader m =>
+  Seen ->
+  [(Maybe VEX, Def)] ->
+  m (Prefixes, Def)
+matchDefWithSeen pc defs =
+  case findDefWithSeen pc defs of
     Right pfxdef -> pure pfxdef
     Left NoDefFound -> invalidInstruction
     Left (MultipleDefsFound defNms) -> error $ unlines $
@@ -792,12 +796,12 @@ disassembleInstruction :: forall m
                         . ByteReader m
                        => NextOpcodeTable
                        -> m InstructionInstance
-disassembleInstruction tr0 = loopPrefixBytes emptyPrefixCode
+disassembleInstruction tr0 = loopPrefixBytes emptySeen
   where
     -- Parse as many bytes as possible that are known to be prefix bytes. Once
     -- we encounter the first byte that isn't a prefix byte, move on to parsing
     -- opcode bytes.
-    loopPrefixBytes :: PrefixCode -> m InstructionInstance
+    loopPrefixBytes :: Seen -> m InstructionInstance
     loopPrefixBytes !acc = do
       b <- readByte
       if |  HS.member b nonVexPrefixBytes
@@ -811,7 +815,7 @@ disassembleInstruction tr0 = loopPrefixBytes emptyPrefixCode
     -- Parse opcode byte and use them to navigate through the opcode table.
     -- Once we have parsed all of the opcode bytes in an instruction,
     -- disassemble the rest of the instruction.
-    loopOpcodes :: PrefixCode
+    loopOpcodes :: Seen
                 -> NextOpcodeTable
                 -> Word8
                 -> m InstructionInstance
@@ -828,9 +832,9 @@ disassembleInstruction tr0 = loopPrefixBytes emptyPrefixCode
                  -- first. If one is found, there is an invariant that none
                  -- of the instruction candidates without a ModR/M byte
                  -- should validate with the set of parsed prefixes.
-                 Right (pfx, def) <- findDefWithPrefixCode pc defsWithoutModRM
+                 Right (pfx, def) <- findDefWithSeen pc defsWithoutModRM
               -> assert (all (\(mbVex, df) ->
-                               isLeft $ validatePrefixCode pc mbVex df)
+                               isLeft $ validateSeen pc mbVex df)
                              defsWithModRM) $
                  disassembleWithoutModRM def pfx
 
@@ -838,7 +842,7 @@ disassembleInstruction tr0 = loopPrefixBytes emptyPrefixCode
               -> disassembleWithModRM pc defsWithModRM
 
     -- Disassemble instruction candidates with a ModR/M byte.
-    disassembleWithModRM :: PrefixCode
+    disassembleWithModRM :: Seen
                          -> [(Maybe VEX, Def)]
                          -> m InstructionInstance
     disassembleWithModRM pc defs = do

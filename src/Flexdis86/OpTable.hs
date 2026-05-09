@@ -52,7 +52,7 @@ import           GHC.Generics (Generic)
 import           Lens.Micro (Lens', lens, (^.))
 
 import           Flexdis86.Operand
-import           Flexdis86.PrefixSet
+import           Flexdis86.Prefixes.Allowed
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -165,7 +165,7 @@ data Def = Def  { _defMnemonic         :: !BS.ByteString
                 , _defMode   :: Maybe Mode
                 , _reqAddrSize :: Maybe SizeConstraint
                 , _reqOpSize :: Maybe OperandSizeConstraint
-                , _defPrefix :: !PrefixSet
+                , _defPrefix :: !Allowed
                   -- ^ Set of allowed prefixes.
                 , _requiredPrefix :: Maybe Word8
                 , _defOpcodes :: [Word8]
@@ -223,7 +223,7 @@ reqOpSize :: Lens' Def (Maybe OperandSizeConstraint)
 reqOpSize = lens _reqOpSize (\s v -> s { _reqOpSize = v })
 
 -- | Prefixes allowed on instruction.
-defPrefix :: Lens' Def PrefixSet
+defPrefix :: Lens' Def Allowed
 defPrefix = lens _defPrefix (\s v -> s { _defPrefix = v })
 
 -- | Prefixe required by an instruction, if any.
