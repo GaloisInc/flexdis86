@@ -33,6 +33,13 @@ module Flexdis86.Prefixes
   , lockPrefixByte
   , repNZPrefixByte
   , repPrefixByte
+  , esPrefixByte
+  , csPrefixByte
+  , ssPrefixByte
+  , dsPrefixByte
+  , fsPrefixByte
+  , gsPrefixByte
+  , isRexPrefixByte
   , setDefault
   , LockPrefix(..)
   , ppLockPrefix
@@ -81,6 +88,23 @@ repNZPrefixByte = 0xF2
 -- | The @REP@/@REPZ@/@REPE@ prefix byte.
 repPrefixByte :: Word8
 repPrefixByte = 0xF3
+
+-- | The segment-override prefix bytes: ES, CS, SS, DS, FS, GS.
+--
+-- Note that the DS byte (0x3E) is the same byte as 'notrackPrefixByte'; which
+-- role it plays depends on the instruction.
+esPrefixByte, csPrefixByte, ssPrefixByte, dsPrefixByte :: Word8
+fsPrefixByte, gsPrefixByte :: Word8
+esPrefixByte = 0x26
+csPrefixByte = 0x2E
+ssPrefixByte = 0x36
+dsPrefixByte = 0x3E
+fsPrefixByte = 0x64
+gsPrefixByte = 0x65
+
+-- | Is the given byte a REX prefix (0x40..0x4F)?
+isRexPrefixByte :: Word8 -> Bool
+isRexPrefixByte b = b B..&. 0xF0 == 0x40
 
 ------------------------------------------------------------------------
 -- SegmentPrefix
