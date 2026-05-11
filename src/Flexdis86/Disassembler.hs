@@ -61,6 +61,7 @@ import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.Required (noRequired, requiredFromByte)
 import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, materializePrefixes, checkAllowed)
 import           Flexdis86.Register
 import           Flexdis86.Segment
@@ -696,7 +697,7 @@ validateSeen pc mbVex def
   = Left $ "Invalid prefix bytes for " ++ BSC.unpack (def ^. defMnemonic)
   where
     allowed = def ^. defPrefix
-    reqPfx = def ^. requiredPrefix
+    reqPfx = maybe noRequired requiredFromByte (def ^. requiredPrefix)
     rawPfx = materializePrefixes pc mbVex allowed reqPfx
     (pfx, def') = applyNopFamilyFixups rawPfx def
 

@@ -28,6 +28,7 @@ import           Data.Word (Word8, Word16, Word64)
 import           Flexdis86.Prefixes
 import           Flexdis86.Prefixes.Allowed
 import           Flexdis86.Prefixes.Code
+import           Flexdis86.Prefixes.Required
 
 -- | What prefix bytes have been observed in the byte stream. Wraps a
 -- 'PrefixCode'; see "Flexdis86.Prefixes.Code" for the bit layout. The
@@ -135,45 +136,32 @@ lookupSegByte pc@(PrefixCode w_) =
 {-# INLINE lookupSegByte #-}
 
 -- | Check whether an observed 'Seen' is compatible with a def's allowed
--- prefix set. The def's required prefix byte (if any) is temporarily
--- added to the allowed mask for validation - SSE instructions encode
--- required-prefix bytes that are bitwise identical to legacy-prefix
--- bytes (e.g. @0xF3@ is both a required prefix for @endbr32@ and the
--- wire byte for @REP@), so such bytes are permitted even when the
--- corresponding legacy-prefix bit is not in @allowed@.
-checkAllowed :: Seen -> Maybe VEX -> Allowed -> Maybe Word8 -> Bool
-checkAllowed (Seen seen) mbVex allowed mbReq =
+-- prefix set. The def's 'Required' bits are temporarily OR'd into the
+-- effective allowed mask - SSE instructions encode required-prefix bytes
+-- that are bitwise identical to legacy-prefix bytes (e.g. @0xF3@ is both
+-- a required prefix for @endbr32@ and the wire byte for @REP@), so such
+-- bytes are permitted even when the corresponding legacy-prefix bit is not
+-- in @allowed@.
+checkAllowed :: Seen -> Maybe VEX -> Allowed -> Required -> Bool
+checkAllowed (Seen seen) mbVex allowed req =
   seen `containedIn` effectiveAllowed && requiredSeen && rexVexDisjoint
   where
-    -- The required-prefix byte (if any) also serves as a legacy prefix
-    -- byte; admit it in the effective allowed mask so its observation
-    -- passes 'containedIn'.
-    effectiveAllowed = case mbReq of
-      Just b  -> allowedCode allowed .|. requiredPrefixBit b
-      Nothing -> allowedCode allowed
+    -- The required-prefix bit(s) are also legacy-prefix observations;
+    -- admit them in the effective allowed mask so 'containedIn' does not
+    -- reject the instruction.
+    effectiveAllowed = allowedCode allowed .|. requiredCode req
 
-    -- A def with a required prefix byte only validates when that byte
-    -- was actually observed.
-    requiredSeen = case mbReq of
-      Just b  -> seen .&. requiredPrefixBit b /= zeroBits
-      Nothing -> True
+    -- A def with a required prefix only validates when that bit was
+    -- actually observed.
+    requiredSeen =
+      let rc = requiredCode req
+      in rc == zeroBits || seen .&. rc /= zeroBits
 
     -- Having both REX and VEX prefixes is #UD.
     rexVexDisjoint = seen .&. rexSeenBit == zeroBits || case mbVex of
       Nothing -> True
       Just _  -> False
 {-# INLINE checkAllowed #-}
-
--- | The shared bit corresponding to a required-prefix byte. The only
--- bytes the optable uses for required prefixes are 0x66, 0xF2, and 0xF3;
--- any other value yields 'zeroBits' (which is a no-op when OR'd).
-requiredPrefixBit :: Word8 -> PrefixCode
-requiredPrefixBit b
-  | b == operandSizeOverrideByte = osoBit
-  | b == repNZPrefixByte = repNZBit
-  | b == repPrefixByte = repBit
-  | otherwise = zeroBits
-{-# INLINE requiredPrefixBit #-}
 
 -- | Reconstruct a 'Prefixes' value from the observed prefixes, the VEX
 -- prefix (if any), and the def's allowed prefix set plus required prefix
@@ -191,8 +179,8 @@ requiredPrefixBit b
 --  * Segment/notrack (0x3E): materializes as a notrack flag if the def's
 --    allowed set has @notrack@ semantics ('notrackSemanticBit') without
 --    allowing any segment override; otherwise it is a DS segment override.
-materializePrefixes :: Seen -> Maybe VEX -> Allowed -> Maybe Word8 -> Prefixes
-materializePrefixes (Seen seen) mbVex allowed mbReq = Prefixes
+materializePrefixes :: Seen -> Maybe VEX -> Allowed -> Required -> Prefixes
+materializePrefixes (Seen seen) mbVex allowed req = Prefixes
   { _prLockPrefix = lockPrefix
   , _prSP = SegmentPrefix segByte
   , _prREX = REX rexByte
@@ -204,11 +192,9 @@ materializePrefixes (Seen seen) mbVex allowed mbReq = Prefixes
   where
     allowedBits = allowedCode allowed
 
-    -- Clear the required-prefix bit (if any) so it doesn't register as a
-    -- legacy-prefix observation.
-    legacy = case mbReq of
-      Just b  -> seen .&. complement (requiredPrefixBit b)
-      Nothing -> seen
+    -- Clear the required-prefix bit(s) so they don't register as
+    -- legacy-prefix observations.
+    legacy = seen .&. complement (requiredCode req)
 
     lockPrefix
       | legacy .&. lockBit /= zeroBits = LockPrefix
