@@ -46,7 +46,9 @@ import           Flexdis86.Operand
 import           Flexdis86.OpTable
 import           Flexdis86.InstructionSet
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.REX ( REX(..), rexB, rexR, rexW )
 import           Flexdis86.Prefixes.Required ( Required, noRequired, requiredToByte )
+import qualified Flexdis86.VEX.Seen as VEX
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -96,7 +98,7 @@ findEncoding args def = do
   let oso = mkOSO def argTypes
   F.forM_ argTypes $ \at -> guard (matchOperandType oso at)
   let rex = mkREX argTypes
-  let vex = Nothing -- XXX: implement this
+  let vex = VEX.noVex -- XXX: implement this
   let notrack = False -- for now, not trying to use this feature
   return $ II { iiLockPrefix = NoLockPrefix
               -- ???: why is this always Size16? Can we do better
@@ -358,7 +360,7 @@ mkAssembledInstruction ::
   InstructionInstance ->
   m (AssembledInstruction B.Builder)
 mkAssembledInstruction ii = do
-  when (isJust (L.view prVEX pfxs)) $ do
+  when (VEX.hasVex (L.view prVEX pfxs)) $ do
     C.throwM VEXUnsupported
   mdisp <- encodeModRMDisp ii
   return $

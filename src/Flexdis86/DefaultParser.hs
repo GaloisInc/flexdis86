@@ -90,7 +90,7 @@ optableDefs = runGet getDefs (LBS.fromStrict optableBytes)
       if empty then return []
                else (:) <$> Bin.get <*> getDefs
 
-defaultX64Disassembler :: NextOpcodeTable
+defaultX64Disassembler :: Disassembler
 defaultX64Disassembler = p
   where p = case mkX64Disassembler optableDefs of
               Right v -> v

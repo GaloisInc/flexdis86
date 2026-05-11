@@ -24,14 +24,13 @@ import           Control.Monad.State ( MonadState(..)
                                      , execStateT
                                      , gets
                                      )
-import           Data.Bits ((.|.), shiftL, shiftR)
+import           Data.Bits (shiftR)
 import qualified Data.Binary as Bin
 import           Data.Binary.Put (Put, runPut)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as LBS
 import           Data.Char (isDigit, isSpace)
-import           Data.Containers.ListUtils (nubOrd)
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (fromMaybe)
@@ -54,6 +53,7 @@ import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 
 import           Flexdis86.OpTable
 import           Flexdis86.Prefixes.Allowed (allowedFromNames)
+import qualified Flexdis86.VEX.Allowed as VEX
 import           Flexdis86.Prefixes.Required (noRequired, orRequired, requiredFromByte)
 import           Flexdis86.Sizes ( SizeConstraint(..), ModConstraint(..)
                                  , asFin8, asFin64, maskFin8
@@ -254,131 +254,52 @@ parse_vendor v = do
       _       -> fail $ "Unknown vendor: " ++ show txt
 
 ------------------------------------------------------------------------
--- VEX prefix helpers (used only during parsing)
+-- VEX prefix spec parser
 
-data VexSpec = VexSpec
-  { vexUseVVVV    :: Maybe VexUseVVVV
-  , vexSize       :: VexSize
-  , vexImpSimd    :: Maybe VexImpSimd
-  , vexImpOpc     :: Maybe VexImpOpc
-  , vexW          :: Maybe VexW
-  , vexAllowShort :: Bool
-  } deriving (Eq, Show)
-
-data VexUseVVVV = VEX_NDS | VEX_NDD | VEX_DDS      deriving (Eq, Show)
-data VexSize    = Vex128 | Vex256                   deriving (Eq, Show)
-data VexImpSimd = Imp0x66 | Imp0xF3 | Imp0xF2       deriving (Eq, Show)
-data VexImpOpc  = Imp0x0F | Imp0x0F38 | Imp0x0F3A   deriving (Eq, Show)
-data VexW       = VexW0 | VexW1                     deriving (Eq, Show)
-
-parseVex :: String -> VexSpec
-parseVex inp =
-  VexSpec { vexUseVVVV    = vvvv
-          , vexSize       = size
-          , vexImpSimd    = impS
-          , vexImpOpc     = impO
-          , vexW          = w
-          , vexAllowShort = short
-          }
+-- | Parse a @\/vex=@ specification string (e.g. @\"NDS.128.66.0F.WIG\"@)
+-- directly into a packed 'VEX.Allowed' mask.
+parseVexAllowed :: String -> VEX.Allowed
+parseVexAllowed inp = case mmmm of
+  Nothing -> VEX.noVexAllowed
+  Just m  -> VEX.allowVex m pp l w vvvvFix15
   where
   ts0 = chunks inp
 
-  (vvvv, ts1) =
+  (vvvvFix15, ts1) =
     case ts0 of
-      f : fs | f == "NDS" -> (Just VEX_NDS, fs)
-             | f == "NDD" -> (Just VEX_NDD, fs)
-             | f == "DDS" -> (Just VEX_DDS, fs)
-      _                   -> (Nothing, ts0)
+      f : fs | f == "NDS" || f == "NDD" || f == "DDS" -> (False, fs)
+      _                                               -> (True,  ts0)
 
-  (size, ts2) =
+  (l, ts2) =
     case ts1 of
-      f : fs | f == "128" -> (Vex128, fs)
-             | f == "256" -> (Vex256, fs)
+      f : fs | f == "128" -> (VEX.L128, fs)
+             | f == "256" -> (VEX.L256, fs)
       _ -> error "VEX specification is missing its size field"
 
-  (impS, ts3) =
+  (pp, ts3) =
     case ts2 of
-      f : fs | f == "66" -> (Just Imp0x66, fs)
-             | f == "F2" -> (Just Imp0xF2, fs)
-             | f == "F3" -> (Just Imp0xF3, fs)
-      _                  -> (Nothing, ts2)
+      f : fs | f == "66" -> (VEX.Pp0x66, fs)
+             | f == "F2" -> (VEX.Pp0xF2, fs)
+             | f == "F3" -> (VEX.Pp0xF3, fs)
+      _                  -> (VEX.PpNone, ts2)
 
-  (impO, ts4) =
+  (mmmm, ts4) =
     case ts3 of
-      f : fs | f == "0F"   -> (Just Imp0x0F,   fs)
-             | f == "0F3A" -> (Just Imp0x0F3A, fs)
-             | f == "0F38" -> (Just Imp0x0F38, fs)
+      f : fs | f == "0F"   -> (Just VEX.M0x0F,   fs)
+             | f == "0F38" -> (Just VEX.M0x0F38, fs)
+             | f == "0F3A" -> (Just VEX.M0x0F3A, fs)
       _                    -> (Nothing, ts3)
 
-  (w, ts5) =
+  (w, _ts5) =
     case ts4 of
-      f : fs | f == "W0" -> (Just VexW0, fs)
-             | f == "W1" -> (Just VexW1, fs)
-      _                  -> (Nothing, ts4)
-
-  short =
-    case ts5 of
-      f : _ | f == "WIG" -> True
-      _                  -> False
+      f : fs | f == "W0" -> (VEX.W0,  fs)
+             | f == "W1" -> (VEX.W1,  fs)
+      _                  -> (VEX.WIG, ts4)
 
   chunks x = if null x then []
                        else case break (== '.') x of
                               (as, _:bs) -> as : chunks bs
                               _          -> [x]
-
-vexMayBeShort :: VexSpec -> Bool
-vexMayBeShort vp =
-  case vexImpOpc vp of
-    Just Imp0x0F38  -> False
-    Just Imp0x0F3A  -> False
-    _ -> case vexW vp of
-           Just VexW1 -> False
-           _          -> vexAllowShort vp
-
-vexToBytes :: VexSpec -> [[Word8]]
-vexToBytes vp = short ++ long
-  where
-  long  = [ [0xC4, b1, b2] | b1 <- longByte1, b2 <- longByte2 ]
-  short = if vexMayBeShort vp then [ [0xC5, b] | b <- shortByte ] else []
-
-  shortByte = nubOrd
-              [ field 7 r .|. field 3 vvvv .|. field 2 l .|. pp
-              | r <- [0, 1], vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
-  longByte1 = nubOrd
-              [ field 5 rxb .|. m
-              | rxb <- [0 .. 7], m <- mmmmVals ]
-  longByte2 = nubOrd
-              [ field 7 ww .|. field 3 vvvv .|. field 2 l .|. pp
-              | ww <- wVals, vvvv <- vvvvVals, l <- lVals, pp <- ppVals ]
-
-  field amt x = shiftL x amt
-
-  vvvvVals = case vexUseVVVV vp of
-               Nothing -> [15]
-               Just _  -> [0 .. 15]
-
-  wVals    = case vexW vp of
-               Nothing    -> [0, 1]
-               Just VexW0 -> [0]
-               Just VexW1 -> [1]
-
-  lVals    = case vexSize vp of
-               Vex128 -> [0]
-               Vex256 -> [1]
-
-  ppVals   = case vexImpSimd vp of
-               Nothing      -> [0]
-               Just Imp0x66 -> [1]
-               Just Imp0xF3 -> [2]
-               Just Imp0xF2 -> [3]
-
-  mmmmVals = case vexImpOpc vp of
-               Nothing  -> []
-               Just imp ->
-                 case imp of
-                   Imp0x0F   -> [1]
-                   Imp0x0F38 -> [2]
-                   Imp0x0F3A -> [3]
 
 ------------------------------------------------------------------------
 -- Opcode / mnemonic parsers
@@ -462,7 +383,7 @@ parse_opcode nm = do
       -> setRequiredPrefix b
     _ | Just r <- List.stripPrefix "/vex=" nm
       -> do setDefCPUReq AVX
-            vexPrefixes .= vexToBytes (parseVex r)
+            defAllowedVex .= parseVexAllowed r
     _ -> fail $ "Unexpected opcode: " ++ show nm
 
 isMnemonic :: String -> Bool
@@ -531,7 +452,7 @@ parse_def nm syns creq v = do
                  , _requiredReg        = NothingFin8
                  , _requiredRM         = NothingFin8
                  , _x87ModRM           = Nothing
-                 , _vexPrefixes        = []
+                 , _defAllowedVex      = VEX.noVexAllowed
                  , _defOperands        = oprnds
                  }
     d <- seq d0 $ flip execStateT d0 $ mapM_ parse_opcode (words opc_text)

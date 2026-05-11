@@ -50,9 +50,12 @@ library
     Flexdis86.OpTable.Parse
     Flexdis86.Prefixes.Allowed
     Flexdis86.Prefixes.Code
+    Flexdis86.Prefixes.REX
     Flexdis86.Prefixes.Required
     Flexdis86.Prefixes.Seen
     Flexdis86.Trie
+    Flexdis86.VEX.Allowed
+    Flexdis86.VEX.Seen
   ghc-options: -Wall -fno-ignore-asserts -O2 -Wno-trustworthy-safe
 
 executable DumpInstr

@@ -34,7 +34,7 @@ module Flexdis86.OpTable
   , x87ModRM
   , defOperands
   , x64Compatible
-  , vexPrefixes
+  , defAllowedVex
   , supportedCPUReqs
     -- * Operand lookup
   , lookupOperandType
@@ -57,6 +57,7 @@ import           Flexdis86.Prefixes.Required
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
+import qualified Flexdis86.VEX.Allowed as VEX
 
 ------------------------------------------------------------------------
 -- Mode
@@ -175,8 +176,10 @@ data Def = Def  { _defMnemonic         :: !BS.ByteString
                 , _requiredReg :: {-# UNPACK #-} !MaybeFin8
                 , _requiredRM  :: {-# UNPACK #-} !MaybeFin8
                 , _x87ModRM    :: Maybe Fin64
-                , _vexPrefixes  :: ![ [Word8] ]
-                  -- ^ Allowed VEX prefixes for this instruction.
+                , _defAllowedVex :: !VEX.Allowed
+                  -- ^ Allowed VEX encodings for this instruction. An
+                  -- empty ('VEX.noVexAllowed') mask means no VEX
+                  -- prefix is permitted; anything else requires one.
                 , _defOperands  :: ![OperandType]
                 } deriving (Eq, Generic, Show)
 
@@ -253,8 +256,8 @@ requiredRM = lens _requiredRM (\s v -> s { _requiredRM = v })
 x87ModRM :: Lens' Def (Maybe Fin64)
 x87ModRM = lens _x87ModRM (\s v -> s { _x87ModRM = v })
 
-vexPrefixes :: Lens' Def [[Word8]]
-vexPrefixes = lens _vexPrefixes (\s v -> s { _vexPrefixes = v })
+defAllowedVex :: Lens' Def VEX.Allowed
+defAllowedVex = lens _defAllowedVex (\s v -> s { _defAllowedVex = v })
 
 -- | Operand descriptions.
 defOperands :: Lens' Def [OperandType]
@@ -273,7 +276,7 @@ supportedCPUReqs =
 x64Compatible :: Def -> Bool
 x64Compatible d =
   case d^.defOpcodes of
-    [b] | null (d^.vexPrefixes) && (b .&. 0xF0 == 0x40) -> False
+    [b] | not (VEX.hasVexAllowed (d^.defAllowedVex)) && (b .&. 0xF0 == 0x40) -> False
     _   -> valid64 (d^.modeLimit)
 
 -- | Return true if this definition is one supported by flexdis86.
