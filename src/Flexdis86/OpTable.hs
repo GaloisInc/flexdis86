@@ -26,7 +26,7 @@ module Flexdis86.OpTable
   , OperandSizeConstraint(..)
   , reqOpSize
   , defPrefix
-  , requiredPrefix
+  , defRequiredPrefix
   , defOpcodes
   , requiredMod
   , requiredReg
@@ -53,6 +53,7 @@ import           Lens.Micro (Lens', lens, (^.))
 
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes.Allowed
+import           Flexdis86.Prefixes.Required
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -166,8 +167,7 @@ data Def = Def  { _defMnemonic         :: !BS.ByteString
                 , _reqAddrSize :: Maybe SizeConstraint
                 , _reqOpSize :: Maybe OperandSizeConstraint
                 , _defPrefix :: !Allowed
-                  -- ^ Set of allowed prefixes.
-                , _requiredPrefix :: Maybe Word8
+                , _defRequiredPrefix :: !Required
                 , _defOpcodes :: [Word8]
                   -- ^ List of opcodes, which should be nonempty for
                   -- a complete 'Def'.
@@ -222,13 +222,13 @@ reqAddrSize = lens _reqAddrSize (\s v -> s { _reqAddrSize = v })
 reqOpSize :: Lens' Def (Maybe OperandSizeConstraint)
 reqOpSize = lens _reqOpSize (\s v -> s { _reqOpSize = v })
 
--- | Prefixes allowed on instruction.
+-- | Effective allowed prefixes (allowed OR required-prefix bit).
 defPrefix :: Lens' Def Allowed
 defPrefix = lens _defPrefix (\s v -> s { _defPrefix = v })
 
--- | Prefixe required by an instruction, if any.
-requiredPrefix :: Lens' Def (Maybe Word8)
-requiredPrefix = lens _requiredPrefix (\s v -> s { _requiredPrefix = v })
+-- | Required-prefix mask for an instruction.
+defRequiredPrefix :: Lens' Def Required
+defRequiredPrefix = lens _defRequiredPrefix (\s v -> s { _defRequiredPrefix = v })
 
 -- | Opcodes on instruction. This should be nonempty for a complete 'Def'.
 defOpcodes :: Lens' Def [Word8]

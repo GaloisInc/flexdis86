@@ -46,6 +46,7 @@ import           Flexdis86.Operand
 import           Flexdis86.OpTable
 import           Flexdis86.InstructionSet
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.Required ( Required, noRequired, requiredToByte )
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -111,7 +112,7 @@ findEncoding args def = do
                                       , _prOSO = oso
                                       , _prNoTrack = notrack
                                       }
-              , iiRequiredPrefix = L.view requiredPrefix def
+              , iiRequiredPrefix = L.view defRequiredPrefix def
               , iiOpcode      = L.view defOpcodes  def
               , iiRequiredMod = L.view requiredMod def
               , iiRequiredReg = L.view requiredReg def
@@ -407,7 +408,7 @@ hasModRM :: InstructionInstance -> Bool
 hasModRM ii = or [ isJust (iiRequiredMod ii)
                  , iiRequiredReg ii /= NothingFin8
                  , iiRequiredRM  ii /= NothingFin8
-                 , isJust (iiRequiredPrefix ii)
+                 , iiRequiredPrefix ii /= noRequired
                  , any operandTypeRequiresModRM (map snd (iiArgs ii))
                  ]
 
@@ -803,8 +804,8 @@ modConstraintVal mc =
     OnlyReg -> 3
     OnlyMem -> 0
 
-encodeRequiredPrefix :: Maybe Word8 -> B.Builder
-encodeRequiredPrefix = maybe mempty B.word8
+encodeRequiredPrefix :: Required -> B.Builder
+encodeRequiredPrefix = maybe mempty B.word8 . requiredToByte
 
 encodeLockPrefix :: LockPrefix -> B.Builder
 encodeLockPrefix pfx =

@@ -61,6 +61,7 @@ import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.Required (noRequired, requiredToByte)
 import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, materializePrefixes, checkAllowed)
 import           Flexdis86.Register
 import           Flexdis86.Segment
@@ -645,7 +646,7 @@ parseReadTable pc modRM dfs = do
             iiOp = df^.defMnemonic,
             iiArgs = args,
             iiPrefixes = pfx,
-            iiRequiredPrefix = view requiredPrefix df,
+            iiRequiredPrefix = df ^. defRequiredPrefix,
             iiOpcode = view defOpcodes df,
             iiRequiredMod = view requiredMod df,
             iiRequiredReg = view requiredReg df,
@@ -696,7 +697,7 @@ validateSeen pc mbVex def
   = Left $ "Invalid prefix bytes for " ++ BSC.unpack (def ^. defMnemonic)
   where
     allowed = def ^. defPrefix
-    reqPfx = def ^. requiredPrefix
+    reqPfx = def ^. defRequiredPrefix
     rawPfx = materializePrefixes pc mbVex allowed reqPfx
     (pfx, def') = applyNopFamilyFixups rawPfx def
 
@@ -735,10 +736,10 @@ applyNopFamilyFixups pfx def
   -- endbr64 to avoid ambiguity with REP prefixes, so add the 0xf3
   -- bit back to the opcode post facto.
   | mnem `elem` ["endbr32", "endbr64"]
-  , Just reqPfx <- def ^. requiredPrefix
+  , Just reqByte <- requiredToByte (def ^. defRequiredPrefix)
   = ( pfx
-    , def & defOpcodes     %~ (reqPfx:)
-          & requiredPrefix .~ Nothing
+    , def & defOpcodes        %~ (reqByte:)
+          & defRequiredPrefix .~ noRequired
     )
 
   | otherwise = (pfx, def)
@@ -868,7 +869,7 @@ disassembleInstruction tr0 = loopPrefixBytes emptySeen
                  , iiOp   = df^.defMnemonic
                  , iiArgs = args
                  , iiPrefixes = pfx
-                 , iiRequiredPrefix = view requiredPrefix df
+                 , iiRequiredPrefix = df ^. defRequiredPrefix
                  , iiOpcode = view defOpcodes df
                  , iiRequiredMod = view requiredMod df
                  , iiRequiredReg = view requiredReg df
