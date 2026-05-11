@@ -24,6 +24,9 @@ This defines a disassembler based on optable definitions.
 {-# LANGUAGE TupleSections #-}
 module Flexdis86.Disassembler
   ( mkX64Disassembler
+  , Disassembler
+  , disLegacy
+  , disVex
   , NextOpcodeTable
   , nextOpcodeSize
   , disassembleInstruction
@@ -55,16 +58,19 @@ import           Lens.Micro.Extras (view)
 import           Prelude
 
 import           Flexdis86.ByteReader
-import qualified Flexdis86.Trie as Trie
 import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.REX (REX(..), rexW, unREX)
 import           Flexdis86.Prefixes.Required (noRequired, requiredToByte)
 import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, materializePrefixes, checkAllowed)
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
+import qualified Flexdis86.Trie as Trie
+import qualified Flexdis86.VEX.Allowed as VEXA
+import qualified Flexdis86.VEX.Seen as VEX
 
 {-
 Note [x86_64 disassembly]
@@ -143,8 +149,9 @@ assumption that the set of possible prefix bytes is disjoint from the set of
 bytes that appear as an instruction's first opcode byte, but this is not the
 case. Here are some examples of instructions that violate this assumption:
 
-* The lds and les instructions' opcodes begin with 0xc5 and 0xc4, respectively,
-  which clash with the two-byte and three-byte VEX prefixes, respectively.
+* The lds and les instructions' opcodes begin with 'VEX.vex2EscapeByte'
+  and 'VEX.vex3EscapeByte', respectively, which clash with the two-byte
+  and three-byte VEX prefixes, respectively.
 * The inc instruction can have opcodes beginning with 0x40 through 0x47, and
   the dec instruction can have opcodes beginning with 0x48 through 0x4f. All of
   these clash with possible REX prefixes.
@@ -182,28 +189,33 @@ are rather unique in that:
 * The VEX prefixes always appear at the very end of the prefix bytes, just
   before the instruction's opcode bytes.
 
-A useful consequence of these two properties is that VEX prefix bytes are a
-useful tool for disambiguating instructions with similar opcodes. And in fact,
-if you factor in VEX prefix bytes, then the vector instructions listed above
-aren't ambiguous at all, since the other instructions that share their opcodes
-do not accept VEX prefixes. As a result, we have decided to carve out a very
-special case in the lookup table and include VEX prefix bytes (but not any
-other forms of prefix bytes) in the paths. That is, we have:
+A useful consequence of these two properties is that "is a VEX prefix
+present?" is a clean binary disambiguator: the vector instructions listed
+above aren't ambiguous at all once you know VEX was or wasn't observed,
+since the other instructions that share their opcodes do not accept VEX
+prefixes.
 
-                                           Lookup table
-                                   --------------^---------------
-                                  /                              \
-                                 /                                \
-  ----------------------------------------------------------------------------------
-  | Prefix bytes (excluding VEX) | VEX prefix bytes | Opcode bytes | Operand bytes |
-  ----------------------------------------------------------------------------------
+We exploit this by splitting the lookup table into two disjoint tries: one
+for legacy-prefixed instructions, one for VEX-prefixed. See 'Disassembler'.
+During disassembly, the decoder reads bytes from the prefix stream; if it
+sees a 'VEX.vex3EscapeByte' or 'VEX.vex2EscapeByte' it reads the VEX payload
+bytes, packs them into a 'Flexdis86.VEX.Seen.VEX' value, and walks the
+VEX trie. Otherwise it walks the legacy trie. The two tries never
+interact, so there is no opcode-byte ambiguity between the two families
+at decode time.
 
-One downside to this special case is that we must increase the size of the
-lookup table slightly to accommodate VEX prefix bytes. Without VEX prefix
-bytes, the size of the table would be about 1,400 nodes, but with VEX prefix
-bytes, the size is about 13,000 nodes. That's still several orders of magnitude
-smaller than 5.8 million nodes, however, so we consider this an acceptable
-price to pay.
+The finer-grained VEX fields (m-mmmm, pp, L, W, vvvv) are validated at the
+leaf against the def's 'Flexdis86.VEX.Allowed.Allowed' mask via
+'Flexdis86.VEX.Allowed.vexContainedIn'. The def stores this mask as a
+packed 'Word32' (computed once at XML-parse time from the @/vex=@ spec);
+the leaf check is a handful of 'testBit's.
+
+With this structure the legacy trie holds ~1,341 def candidates at its
+leaves and the VEX trie holds 68 (see 'nextOpcodeSize'). An earlier
+version included the raw VEX prefix bytes in a single unified trie path,
+which worked but ballooned the combined count to ~13,000 - every @\/vex=@
+spec expanded into a cross product of ~R\/~X\/~B\/W\/vvvv\/L\/pp bytes
+along the trie path.
 
 The remaining challenges are the following instructions, which are all
 particular encodings of the nop instruction:
@@ -337,7 +349,7 @@ data RegTable a
 
 instance DS.NFData a => DS.NFData (RegTable a)
 
-type RMTable = RegTable [(Maybe VEX, Def)]
+type RMTable = RegTable [Def]
 
 data ModTable
      -- | @ModTable memTable regTable@
@@ -355,7 +367,7 @@ instance DS.NFData ModTable
 data OpcodeTableEntry
   = OpcodeTableEntry
       !(RegTable ModTable) -- Defs expecting a ModR/M byte
-      ![(Maybe VEX, Def)]  -- Defs not expecting a ModR/M byte
+      ![Def]        -- Defs not expecting a ModR/M byte
   deriving (Generic, Show)
 
 instance DS.NFData OpcodeTableEntry
@@ -369,7 +381,20 @@ newtype OpcodeTable = OpcodeTable (Trie.Trie8 OpcodeTableEntry)
 -- | A NextOpcodeTable describes a table of parsers to read based on the bytes.
 type NextOpcodeTable = Trie.Vec8 OpcodeTable
 
-type DefTableFn t = [(Maybe VEX, Def)] -> t
+-- | The pair of opcode tries used at runtime: one for legacy-prefixed
+-- instructions, one for VEX-prefixed. The decoder picks between them
+-- based on whether a 'VEX.vex3EscapeByte' or 'VEX.vex2EscapeByte' was observed
+-- in the prefix stream.
+data Disassembler = Disassembler
+  { disLegacy :: !NextOpcodeTable
+  , disVex    :: !NextOpcodeTable
+  }
+  deriving Show
+
+instance DS.NFData Disassembler where
+  rnf (Disassembler l v) = DS.rnf l `seq` DS.rnf v
+
+type DefTableFn t = [Def] -> t
 -- ^ Given a list of pairs of VEX prefixes and definitions, build a table of
 -- possible instructions.
 
@@ -490,40 +515,14 @@ nonVexPrefixBytes = HS.unions
       , notrackPrefixByte
       ]
 
--- | Given a 'Def', construct all possible combinations of bytes representing
--- valid VEX prefix and opcode bytes for that instruction. (See
--- @Note [x86_64 disassembly]@ for why we care about VEX prefix bytes in
--- particular.) Each element of the returned list consists of a pair where
--- the first part of the pair contains the raw bytes, and the second part of
--- the pair contains the corresponding 'VEX' (if one exists) and 'Def'.
-allVexPrefixesAndOpcodes :: Def -> [([Word8], (Maybe VEX, Def))]
-allVexPrefixesAndOpcodes def
-  | null (def ^. vexPrefixes)
-  = [ (def^.defOpcodes, (Nothing, def)) ]
-
-  | otherwise
-  = [ (vexBytes ++ def^.defOpcodes, (Just vex, def))
-    | (vexBytes, vex) <- mkVexPrefixes def ]
-  where
-    mkVexPrefixes :: Def -> [([Word8], VEX)]
-    mkVexPrefixes df = map cvt (df ^. vexPrefixes)
-      where
-      cvt pref =
-        case pref of
-          [ _, b ]      -> (pref, VEX2 b)
-          [ _, b1, b2 ] -> (pref, VEX3 b1 b2)
-          _             -> error "mkVexPrefixes: unexpected byte sequence"
-
--- | Given a list of instruction 'Def's, compute a lookup table for its VEX
--- prefix and opcode bytes. See @Note [x86_64 disassembly]@ for more details on
--- how this works.
+-- | Given a list of instruction 'Def's, compute a lookup table of opcode bytes.
 mkOpcodeTable :: [Def] -> OpcodeTable
 mkOpcodeTable defs =
-  OpcodeTable (Trie.mkTrie mkLeaf (concatMap allVexPrefixesAndOpcodes defs))
+  OpcodeTable (Trie.mkTrie mkLeaf [ (d ^. defOpcodes, d) | d <- defs ])
   where
-    mkLeaf :: [(Maybe VEX, Def)] -> OpcodeTableEntry
-    mkLeaf vexDefs =
-      let (defsWithModRM, defsWithoutModRM) = partition (expectsModRM . snd) vexDefs
+    mkLeaf :: [Def] -> OpcodeTableEntry
+    mkLeaf leafDefs =
+      let (defsWithModRM, defsWithoutModRM) = partition expectsModRM leafDefs
       in OpcodeTableEntry (checkRequiredReg defsWithModRM) defsWithoutModRM
 
 requireModCheck :: Def -> Bool
@@ -531,7 +530,7 @@ requireModCheck d = isJust (d^.requiredMod)
 
 mkModTable :: DefTableFn ModTable
 mkModTable defs
-  | any (requireModCheck . snd) defs =
+  | any requireModCheck defs =
     let memDef d =
           case d^.requiredMod of
             Just OnlyReg -> False
@@ -565,15 +564,15 @@ mkModTable defs
             RM_MMX  -> True
             RM_XMM {} -> True
             _       -> False
-        memTbl = checkRequiredRM (filter (memDef . snd) defs)
-        regTbl = checkRequiredRM (filter (regDef . snd) defs)
+        memTbl = checkRequiredRM (filter memDef defs)
+        regTbl = checkRequiredRM (filter regDef defs)
     in ModTable memTbl regTbl
   | otherwise = ModUnchecked (checkRequiredRM defs)
 
 checkRequiredReg :: DefTableFn (RegTable ModTable)
 checkRequiredReg defs
-  | any (\(_,d) -> d^.requiredReg /= NothingFin8) defs =
-    let p i (_,d) = i `matchesMaybeFin8` (d^.requiredReg)
+  | any (\d -> d^.requiredReg /= NothingFin8) defs =
+    let p i d = i `matchesMaybeFin8` (d^.requiredReg)
         eltFn i = mkModTable (filter (p i) defs)
     in RegTable (mkFin8Vector eltFn)
   | otherwise = RegUnchecked (mkModTable defs)
@@ -587,14 +586,14 @@ mkFin8Vector f = V.generate 8 g
             Nothing -> error $ "internal: Expected number between 0-7, received " ++ show i
 
 -- | Return true if the definition matches the Fin8 constraint
-matchRMConstraint :: Fin8 -> (Maybe VEX,Def) -> Bool
-matchRMConstraint i (_,d) = i `matchesMaybeFin8` (d^.requiredRM)
+matchRMConstraint :: Fin8 -> Def -> Bool
+matchRMConstraint i d = i `matchesMaybeFin8` (d^.requiredRM)
 
 -- | Check required RM if needed, then forward to final table.
 checkRequiredRM :: DefTableFn RMTable
 checkRequiredRM defs
     -- Split on the required RM value if any of the definitions depend on it
-  | any (\(_,d) -> d^.requiredRM /= NothingFin8) defs =
+  | any (\d -> d^.requiredRM /= NothingFin8) defs =
       RegTable (mkFin8Vector (\i -> filter (i `matchRMConstraint`) defs))
   | otherwise = RegUnchecked defs
 
@@ -619,11 +618,12 @@ read_disp8 = Disp8 <$> readSByte
 
 parseReadTable :: ByteReader m
                => Seen
+               -> VEX.VEX
                -> ModRM
-               -> [(Maybe VEX, Def)]
+               -> [Def]
                -> m InstructionInstance
-parseReadTable pc modRM dfs = do
-  (pfx, df) <- matchDefWithSeen pc dfs
+parseReadTable pc obsVex modRM dfs = do
+  (pfx, df) <- matchDefWithSeen pc obsVex dfs
   let osz = prefixOperandSizeConstraint pfx df
   let finish args =
         II
@@ -643,7 +643,7 @@ parseReadTable pc modRM dfs = do
 getReadTable ::
   ModRM ->
   RMTable ->
-  [(Maybe VEX, Def)]
+  [Def]
 getReadTable modRM (RegTable v) = v V.! fromIntegral (modRM_rm modRM)
 getReadTable _modRM (RegUnchecked m) = m
 
@@ -671,11 +671,13 @@ getRMTable modRM mtbl =
 -- with identical opcodes, and no more than that.
 validateSeen ::
   Seen ->
-  Maybe VEX ->
+  VEX.VEX ->
   Def ->
   Either String (Prefixes, Def)
-validateSeen pc mbVex def
-  | not (checkAllowed pc mbVex allowed reqPfx)
+validateSeen pc obsVex def
+  | not (VEXA.vexContainedIn obsVex (def ^. defAllowedVex))
+  = Left $ "Invalid VEX prefix for " ++ BSC.unpack (def ^. defMnemonic)
+  | not (checkAllowed pc obsVex allowed reqPfx)
   = Left $ "Invalid prefix bytes for " ++ BSC.unpack (def ^. defMnemonic)
   | validPrefix pfx def'
   = Right (pfx, def')
@@ -684,7 +686,7 @@ validateSeen pc mbVex def
   where
     allowed = def ^. defPrefix
     reqPfx = def ^. defRequiredPrefix
-    rawPfx = materializePrefixes pc mbVex allowed reqPfx
+    rawPfx = materializePrefixes pc obsVex allowed reqPfx
     (pfx, def') = applyNopFamilyFixups rawPfx def
 
 -- | Here is where we perform special cases of instructions that are similar
@@ -749,18 +751,19 @@ data DefSearchError
 -- encountered), return 'Left'.
 findDefWithSeen ::
   Seen ->
-  [(Maybe VEX, Def)] ->
+  VEX.VEX ->
+  [Def] ->
   Either DefSearchError (Prefixes, Def)
-findDefWithSeen pc defs =
+findDefWithSeen pc obsVex defs =
   case mapMaybe match defs of
     [pfxdef]    -> Right pfxdef
     []          -> Left NoDefFound
     res@(_:_:_) -> Left $ MultipleDefsFound
                         $ map (BSC.unpack . view defMnemonic . snd) res
   where
-    match :: (Maybe VEX, Def) -> Maybe (Prefixes, Def)
-    match (mbVex, def) =
-      case validateSeen pc mbVex def of
+    match :: Def -> Maybe (Prefixes, Def)
+    match def =
+      case validateSeen pc obsVex def of
         Left _err    -> Nothing
         Right pfxdef -> Just pfxdef
 
@@ -769,10 +772,11 @@ findDefWithSeen pc defs =
 matchDefWithSeen ::
   ByteReader m =>
   Seen ->
-  [(Maybe VEX, Def)] ->
+  VEX.VEX ->
+  [Def] ->
   m (Prefixes, Def)
-matchDefWithSeen pc defs =
-  case findDefWithSeen pc defs of
+matchDefWithSeen pc obsVex defs =
+  case findDefWithSeen pc obsVex defs of
     Right pfxdef -> pure pfxdef
     Left NoDefFound -> invalidInstruction
     Left (MultipleDefsFound defNms) -> error $ unlines $
@@ -781,32 +785,44 @@ matchDefWithSeen pc defs =
 -- | Parse instruction using byte reader.
 disassembleInstruction :: forall m
                         . ByteReader m
-                       => NextOpcodeTable
+                       => Disassembler
                        -> m InstructionInstance
-disassembleInstruction tr0 = loopPrefixBytes emptySeen
+disassembleInstruction dis = loopPrefixBytes emptySeen
   where
-    -- Parse as many bytes as possible that are known to be prefix bytes. Once
-    -- we encounter the first byte that isn't a prefix byte, move on to parsing
-    -- opcode bytes.
+    -- Parse as many bytes as possible that are known to be prefix bytes.
+    -- Once we encounter the first byte that isn't a prefix byte (or a VEX
+    -- escape), move on to parsing opcode bytes.
     loopPrefixBytes :: Seen -> m InstructionInstance
     loopPrefixBytes !acc = do
       b <- readByte
-      if |  HS.member b nonVexPrefixBytes
+      if |  b == VEX.vex2EscapeByte -> do
+             payload <- readByte
+             b0 <- readByte
+             loopOpcodes acc (VEX.fromVex2 payload) (disVex dis) b0
+
+         |  b == VEX.vex3EscapeByte -> do
+             b1 <- readByte
+             b2 <- readByte
+             b0 <- readByte
+             loopOpcodes acc (VEX.fromVex3 b1 b2) (disVex dis) b0
+
+         |  HS.member b nonVexPrefixBytes
          -> case addPrefix acc b of
               Just acc' -> loopPrefixBytes acc'
               Nothing   -> invalidInstruction
 
          |  otherwise
-         -> loopOpcodes acc tr0 b
+         -> loopOpcodes acc VEX.noVex (disLegacy dis) b
 
     -- Parse opcode byte and use them to navigate through the opcode table.
     -- Once we have parsed all of the opcode bytes in an instruction,
     -- disassemble the rest of the instruction.
     loopOpcodes :: Seen
+                -> VEX.VEX
                 -> NextOpcodeTable
                 -> Word8
                 -> m InstructionInstance
-    loopOpcodes !pc = go
+    loopOpcodes !pc !obsVex = go
       where
         go :: NextOpcodeTable -> Word8 -> m InstructionInstance
         go tr opcodeByte =
@@ -819,27 +835,27 @@ disassembleInstruction tr0 = loopPrefixBytes emptySeen
                  -- first. If one is found, there is an invariant that none
                  -- of the instruction candidates without a ModR/M byte
                  -- should validate with the set of parsed prefixes.
-                 Right (pfx, def) <- findDefWithSeen pc defsWithoutModRM
-              -> assert (all (\(mbVex, df) ->
-                               isLeft $ validateSeen pc mbVex df)
+                 Right (pfx, def) <- findDefWithSeen pc obsVex defsWithoutModRM
+              -> assert (all (\df -> isLeft $ validateSeen pc obsVex df)
                              (flattenRegTable defsWithModRM)) $
                  disassembleWithoutModRM def pfx
 
               |  otherwise
-              -> disassembleWithModRM pc defsWithModRM
+              -> disassembleWithModRM pc obsVex defsWithModRM
 
     -- Disassemble instruction candidates with a ModR/M byte.
     disassembleWithModRM :: Seen
+                         -> VEX.VEX
                          -> RegTable ModTable
                          -> m InstructionInstance
-    disassembleWithModRM pc tbl = do
+    disassembleWithModRM pc obsVex tbl = do
       modRM <- readModRM
       case tbl of
         RegTable v ->
           let mtbl = v V.! fromIntegral (modRM_reg modRM) in
-          parseReadTable pc modRM (getReadTable modRM (getRMTable modRM mtbl))
+          parseReadTable pc obsVex modRM (getReadTable modRM (getRMTable modRM mtbl))
         RegUnchecked mtbl ->
-          parseReadTable pc modRM (getReadTable modRM (getRMTable modRM mtbl))
+          parseReadTable pc obsVex modRM (getReadTable modRM (getRMTable modRM mtbl))
 
     -- Disassemble an instruction without a ModR/M byte.
     disassembleWithoutModRM :: Def
@@ -900,9 +916,10 @@ memSizeFn osz sz =
 
 
 getREX :: Prefixes -> REX
-getREX p = case p ^. prVEX of
-             Just vex -> vex ^. vexRex
-             _        -> p ^. prREX
+getREX p
+  | VEX.hasVex vex = VEX.vexRex vex
+  | otherwise  = p ^. prREX
+  where vex = p ^. prVEX
 
 readOffset :: ByteReader m => Segment -> Bool -> m AddrRef
 readOffset s aso
@@ -951,8 +968,9 @@ parseValue p osz mmrm tp = do
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
     OpType VVVV sz
-      | Just vx <- p ^. prVEX -> pure $ regSizeFn osz rex sz $ complement (vx ^. vexVVVV) .&. 0xF
+      | VEX.hasVex vx -> pure $ regSizeFn osz rex sz $ complement (VEX.vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
+      where vx = p ^. prVEX
     OpType ImmediateSource BSize ->
       ByteImm <$> readByte
     OpType ImmediateSource WSize ->
@@ -1002,15 +1020,17 @@ parseValue p osz mmrm tp = do
       | Just sz <- mb     -> error ("[RM_XMM] Unexpected size: " ++ show sz)
 
       | Nothing <- mb
-      , Just vx <- p ^. prVEX
-      , vx ^. vex256      -> Mem256 <$> addr
+      , let vx = p ^. prVEX
+      , VEX.hasVex vx
+      , VEX.vex256 vx         -> Mem256 <$> addr
 
       | otherwise         -> Mem128 <$> addr
 
     VVVV_XMM mb
-      | Just vx <- p ^. prVEX ->
-          return $ largeReg p mb $ complement (vx ^. vexVVVV) .&. 0xF
+      | VEX.hasVex vx ->
+          return $ largeReg p mb $ complement (VEX.vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
+      where vx = p ^. prVEX
 
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
@@ -1067,9 +1087,10 @@ largeReg :: Prefixes -> Maybe OperandSize -> Word8 -> Value
 largeReg p mb num =
   case mb of
 
-    Nothing | Just vx <- p ^. prVEX
-            , vx ^. vex256  -> useYMM
-            | otherwise     -> useXMM
+    Nothing | let vx = p ^. prVEX
+            , VEX.hasVex vx
+            , VEX.vex256 vx  -> useYMM
+            | otherwise  -> useXMM
 
     Just sz ->
       case sz of
@@ -1146,7 +1167,7 @@ data DisassembledAddr = DAddr { disOffset :: Int
                               deriving Show
 
 -- | Try disassemble returns the numbers of bytes read and an instruction instance.
-tryDisassemble :: NextOpcodeTable -> BS.ByteString -> (Int, Maybe InstructionInstance)
+tryDisassemble :: Disassembler -> BS.ByteString -> (Int, Maybe InstructionInstance)
 tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
   where bytesRead bs = BS.length bs0 - BS.length bs
 
@@ -1163,7 +1184,7 @@ tryDisassemble p bs0 = decode bs0 $ runGetIncremental (disassembleInstruction p)
 -- | Parse the buffer as a list of instructions.
 --
 -- Returns a list containing offsets,
-disassembleBuffer :: NextOpcodeTable
+disassembleBuffer :: Disassembler
                   -> BS.ByteString
                      -- ^ Buffer to decompose
                   -> [DisassembledAddr]
@@ -1195,15 +1216,15 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
 
 -- | Flatten all candidate defs stored in a 'RegTable' 'ModTable' into a
 -- list. Used by decoder assertions and for size accounting.
-flattenRegTable :: RegTable ModTable -> [(Maybe VEX, Def)]
+flattenRegTable :: RegTable ModTable -> [Def]
 flattenRegTable (RegUnchecked mt) = flattenModTable mt
 flattenRegTable (RegTable v) = concatMap flattenModTable (V.toList v)
 
-flattenModTable :: ModTable -> [(Maybe VEX, Def)]
+flattenModTable :: ModTable -> [Def]
 flattenModTable (ModUnchecked rm) = flattenRMTable rm
 flattenModTable (ModTable m r) = flattenRMTable m ++ flattenRMTable r
 
-flattenRMTable :: RMTable -> [(Maybe VEX, Def)]
+flattenRMTable :: RMTable -> [Def]
 flattenRMTable (RegUnchecked xs) = xs
 flattenRMTable (RegTable v) = concat (V.toList v)
 
@@ -1217,12 +1238,20 @@ nextOpcodeSize :: NextOpcodeTable -> Int
 nextOpcodeSize v = sum (opcodeTableSize <$> v)
 
 -- | Create an instruction parser from a list of pre-parsed 'Def's.
--- The caller is responsible for providing only supported defs (see
--- 'defSupported' in "Flexdis86.OpTable").
-mkX64Disassembler :: [Def] -> Either String NextOpcodeTable
-mkX64Disassembler defs =
-  case mOpTbl of
-    Trie.Branch v -> Right $! coerce v
-    Trie.Leaf{} -> Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+-- Defs are partitioned by whether they permit a VEX prefix; legacy
+-- and VEX defs end up in separate tries, dispatched between by the
+-- decoder based on the presence of a 'VEX.vex3EscapeByte' or
+-- 'VEX.vex2EscapeByte'.
+mkX64Disassembler :: [Def] -> Either String Disassembler
+mkX64Disassembler defs = do
+  legacy <- mkTop legacyDefs
+  vex    <- mkTop vexDefs
+  Right (Disassembler legacy vex)
   where
-    OpcodeTable mOpTbl = mkOpcodeTable defs
+    (vexDefs, legacyDefs) =
+      partition (VEXA.hasVexAllowed . view defAllowedVex) defs
+    mkTop ds = case mOpTbl of
+      Trie.Branch v -> Right $! coerce v
+      Trie.Leaf{} ->
+        Left "Unexpected OpcodeTableEntry as a top-level disassemble result"
+      where OpcodeTable mOpTbl = mkOpcodeTable ds
