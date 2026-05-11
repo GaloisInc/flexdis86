@@ -28,7 +28,9 @@ import           Data.Word (Word8, Word16, Word64)
 import           Flexdis86.Prefixes
 import           Flexdis86.Prefixes.Allowed
 import           Flexdis86.Prefixes.Code
+import           Flexdis86.Prefixes.REX (REX(..))
 import           Flexdis86.Prefixes.Required
+import           Flexdis86.Prefixes.VEX (VEX, hasVex)
 
 -- | What prefix bytes have been observed in the byte stream. Wraps a
 -- 'PrefixCode'; see "Flexdis86.Prefixes.Code" for the bit layout. The
@@ -140,8 +142,8 @@ lookupSegByte pc@(PrefixCode w_) =
 -- 'Flexdis86.OpTable.defPrefix', which already has the required-prefix
 -- bit OR'd in at parse time), so 'containedIn' can be a single bitwise
 -- test.
-checkAllowed :: Seen -> Maybe VEX -> Allowed -> Required -> Bool
-checkAllowed (Seen seen) mbVex allowed req =
+checkAllowed :: Seen -> VEX -> Allowed -> Required -> Bool
+checkAllowed (Seen seen) vex allowed req =
   seen `containedIn` allowedCode allowed && requiredSeen && rexVexDisjoint
   where
     -- A def with a required prefix only validates when that bit was
@@ -151,9 +153,7 @@ checkAllowed (Seen seen) mbVex allowed req =
       in rc == zeroBits || seen .&. rc /= zeroBits
 
     -- Having both REX and VEX prefixes is #UD.
-    rexVexDisjoint = seen .&. rexSeenBit == zeroBits || case mbVex of
-      Nothing -> True
-      Just _  -> False
+    rexVexDisjoint = seen .&. rexSeenBit == zeroBits || not (hasVex vex)
 {-# INLINE checkAllowed #-}
 
 -- | Reconstruct a 'Prefixes' value from the observed prefixes, the VEX
@@ -172,12 +172,12 @@ checkAllowed (Seen seen) mbVex allowed req =
 --  * Segment/notrack (0x3E): materializes as a notrack flag if the def's
 --    allowed set has @notrack@ semantics ('notrackSemanticBit') without
 --    allowing any segment override; otherwise it is a DS segment override.
-materializePrefixes :: Seen -> Maybe VEX -> Allowed -> Required -> Prefixes
-materializePrefixes (Seen seen) mbVex allowed req = Prefixes
+materializePrefixes :: Seen -> VEX -> Allowed -> Required -> Prefixes
+materializePrefixes (Seen seen) vex allowed req = Prefixes
   { _prLockPrefix = lockPrefix
   , _prSP = SegmentPrefix segByte
   , _prREX = REX rexByte
-  , _prVEX = mbVex
+  , _prVEX = vex
   , _prASO = legacy .&. asoBit /= zeroBits
   , _prOSO = legacy .&. osoBit /= zeroBits
   , _prNoTrack = asNotrack

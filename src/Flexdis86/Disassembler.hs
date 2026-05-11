@@ -60,8 +60,10 @@ import           Flexdis86.InstructionSet
 import           Flexdis86.OpTable
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.REX (REX(..), rexW, unREX)
 import           Flexdis86.Prefixes.Required (noRequired, requiredToByte)
 import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, materializePrefixes, checkAllowed)
+import           Flexdis86.Prefixes.VEX (VEX, noVex, hasVex, mkVEX2, mkVEX3, vex256, vexRex, vexVVVV)
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -337,7 +339,7 @@ data RegTable a
 
 instance DS.NFData a => DS.NFData (RegTable a)
 
-type RMTable = RegTable [(Maybe VEX, Def)]
+type RMTable = RegTable [(VEX, Def)]
 
 data ModTable
      -- | @ModTable memTable regTable@
@@ -355,7 +357,7 @@ instance DS.NFData ModTable
 data OpcodeTableEntry
   = OpcodeTableEntry
       !(RegTable ModTable) -- Defs expecting a ModR/M byte
-      ![(Maybe VEX, Def)]  -- Defs not expecting a ModR/M byte
+      ![(VEX, Def)]        -- Defs not expecting a ModR/M byte
   deriving (Generic, Show)
 
 instance DS.NFData OpcodeTableEntry
@@ -369,7 +371,7 @@ newtype OpcodeTable = OpcodeTable (Trie.Trie8 OpcodeTableEntry)
 -- | A NextOpcodeTable describes a table of parsers to read based on the bytes.
 type NextOpcodeTable = Trie.Vec8 OpcodeTable
 
-type DefTableFn t = [(Maybe VEX, Def)] -> t
+type DefTableFn t = [(VEX, Def)] -> t
 -- ^ Given a list of pairs of VEX prefixes and definitions, build a table of
 -- possible instructions.
 
@@ -496,13 +498,13 @@ nonVexPrefixBytes = HS.unions
 -- particular.) Each element of the returned list consists of a pair where
 -- the first part of the pair contains the raw bytes, and the second part of
 -- the pair contains the corresponding 'VEX' (if one exists) and 'Def'.
-allVexPrefixesAndOpcodes :: Def -> [([Word8], (Maybe VEX, Def))]
+allVexPrefixesAndOpcodes :: Def -> [([Word8], (VEX, Def))]
 allVexPrefixesAndOpcodes def
   | null (def ^. vexPrefixes)
-  = [ (def^.defOpcodes, (Nothing, def)) ]
+  = [ (def^.defOpcodes, (noVex, def)) ]
 
   | otherwise
-  = [ (vexBytes ++ def^.defOpcodes, (Just vex, def))
+  = [ (vexBytes ++ def^.defOpcodes, (vex, def))
     | (vexBytes, vex) <- mkVexPrefixes def ]
   where
     mkVexPrefixes :: Def -> [([Word8], VEX)]
@@ -510,8 +512,8 @@ allVexPrefixesAndOpcodes def
       where
       cvt pref =
         case pref of
-          [ _, b ]      -> (pref, VEX2 b)
-          [ _, b1, b2 ] -> (pref, VEX3 b1 b2)
+          [ _, b ]      -> (pref, mkVEX2 b)
+          [ _, b1, b2 ] -> (pref, mkVEX3 b1 b2)
           _             -> error "mkVexPrefixes: unexpected byte sequence"
 
 -- | Given a list of instruction 'Def's, compute a lookup table for its VEX
@@ -521,7 +523,7 @@ mkOpcodeTable :: [Def] -> OpcodeTable
 mkOpcodeTable defs =
   OpcodeTable (Trie.mkTrie mkLeaf (concatMap allVexPrefixesAndOpcodes defs))
   where
-    mkLeaf :: [(Maybe VEX, Def)] -> OpcodeTableEntry
+    mkLeaf :: [(VEX, Def)] -> OpcodeTableEntry
     mkLeaf vexDefs =
       let (defsWithModRM, defsWithoutModRM) = partition (expectsModRM . snd) vexDefs
       in OpcodeTableEntry (checkRequiredReg defsWithModRM) defsWithoutModRM
@@ -587,7 +589,7 @@ mkFin8Vector f = V.generate 8 g
             Nothing -> error $ "internal: Expected number between 0-7, received " ++ show i
 
 -- | Return true if the definition matches the Fin8 constraint
-matchRMConstraint :: Fin8 -> (Maybe VEX,Def) -> Bool
+matchRMConstraint :: Fin8 -> (VEX,Def) -> Bool
 matchRMConstraint i (_,d) = i `matchesMaybeFin8` (d^.requiredRM)
 
 -- | Check required RM if needed, then forward to final table.
@@ -620,7 +622,7 @@ read_disp8 = Disp8 <$> readSByte
 parseReadTable :: ByteReader m
                => Seen
                -> ModRM
-               -> [(Maybe VEX, Def)]
+               -> [(VEX, Def)]
                -> m InstructionInstance
 parseReadTable pc modRM dfs = do
   (pfx, df) <- matchDefWithSeen pc dfs
@@ -643,7 +645,7 @@ parseReadTable pc modRM dfs = do
 getReadTable ::
   ModRM ->
   RMTable ->
-  [(Maybe VEX, Def)]
+  [(VEX, Def)]
 getReadTable modRM (RegTable v) = v V.! fromIntegral (modRM_rm modRM)
 getReadTable _modRM (RegUnchecked m) = m
 
@@ -671,7 +673,7 @@ getRMTable modRM mtbl =
 -- with identical opcodes, and no more than that.
 validateSeen ::
   Seen ->
-  Maybe VEX ->
+  VEX ->
   Def ->
   Either String (Prefixes, Def)
 validateSeen pc mbVex def
@@ -749,7 +751,7 @@ data DefSearchError
 -- encountered), return 'Left'.
 findDefWithSeen ::
   Seen ->
-  [(Maybe VEX, Def)] ->
+  [(VEX, Def)] ->
   Either DefSearchError (Prefixes, Def)
 findDefWithSeen pc defs =
   case mapMaybe match defs of
@@ -758,7 +760,7 @@ findDefWithSeen pc defs =
     res@(_:_:_) -> Left $ MultipleDefsFound
                         $ map (BSC.unpack . view defMnemonic . snd) res
   where
-    match :: (Maybe VEX, Def) -> Maybe (Prefixes, Def)
+    match :: (VEX, Def) -> Maybe (Prefixes, Def)
     match (mbVex, def) =
       case validateSeen pc mbVex def of
         Left _err    -> Nothing
@@ -769,7 +771,7 @@ findDefWithSeen pc defs =
 matchDefWithSeen ::
   ByteReader m =>
   Seen ->
-  [(Maybe VEX, Def)] ->
+  [(VEX, Def)] ->
   m (Prefixes, Def)
 matchDefWithSeen pc defs =
   case findDefWithSeen pc defs of
@@ -900,9 +902,10 @@ memSizeFn osz sz =
 
 
 getREX :: Prefixes -> REX
-getREX p = case p ^. prVEX of
-             Just vex -> vex ^. vexRex
-             _        -> p ^. prREX
+getREX p
+  | hasVex vex = vexRex vex
+  | otherwise  = p ^. prREX
+  where vex = p ^. prVEX
 
 readOffset :: ByteReader m => Segment -> Bool -> m AddrRef
 readOffset s aso
@@ -951,8 +954,9 @@ parseValue p osz mmrm tp = do
     OpType (Opcode_reg r) sz -> pure $ regSizeFn osz rex sz (rex_b rex .|. r)
     OpType (Reg_fixed r) sz  -> pure $ regSizeFn osz rex sz r
     OpType VVVV sz
-      | Just vx <- p ^. prVEX -> pure $ regSizeFn osz rex sz $ complement (vx ^. vexVVVV) .&. 0xF
+      | hasVex vx -> pure $ regSizeFn osz rex sz $ complement (vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
+      where vx = p ^. prVEX
     OpType ImmediateSource BSize ->
       ByteImm <$> readByte
     OpType ImmediateSource WSize ->
@@ -1002,15 +1006,17 @@ parseValue p osz mmrm tp = do
       | Just sz <- mb     -> error ("[RM_XMM] Unexpected size: " ++ show sz)
 
       | Nothing <- mb
-      , Just vx <- p ^. prVEX
-      , vx ^. vex256      -> Mem256 <$> addr
+      , let vx = p ^. prVEX
+      , hasVex vx
+      , vex256 vx         -> Mem256 <$> addr
 
       | otherwise         -> Mem128 <$> addr
 
     VVVV_XMM mb
-      | Just vx <- p ^. prVEX ->
-          return $ largeReg p mb $ complement (vx ^. vexVVVV) .&. 0xF
+      | hasVex vx ->
+          return $ largeReg p mb $ complement (vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
+      where vx = p ^. prVEX
 
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
@@ -1067,9 +1073,10 @@ largeReg :: Prefixes -> Maybe OperandSize -> Word8 -> Value
 largeReg p mb num =
   case mb of
 
-    Nothing | Just vx <- p ^. prVEX
-            , vx ^. vex256  -> useYMM
-            | otherwise     -> useXMM
+    Nothing | let vx = p ^. prVEX
+            , hasVex vx
+            , vex256 vx  -> useYMM
+            | otherwise  -> useXMM
 
     Just sz ->
       case sz of
@@ -1195,15 +1202,15 @@ disassembleBuffer p bs0 = group 0 (decode bs0 decoder)
 
 -- | Flatten all candidate defs stored in a 'RegTable' 'ModTable' into a
 -- list. Used by decoder assertions and for size accounting.
-flattenRegTable :: RegTable ModTable -> [(Maybe VEX, Def)]
+flattenRegTable :: RegTable ModTable -> [(VEX, Def)]
 flattenRegTable (RegUnchecked mt) = flattenModTable mt
 flattenRegTable (RegTable v) = concatMap flattenModTable (V.toList v)
 
-flattenModTable :: ModTable -> [(Maybe VEX, Def)]
+flattenModTable :: ModTable -> [(VEX, Def)]
 flattenModTable (ModUnchecked rm) = flattenRMTable rm
 flattenModTable (ModTable m r) = flattenRMTable m ++ flattenRMTable r
 
-flattenRMTable :: RMTable -> [(Maybe VEX, Def)]
+flattenRMTable :: RMTable -> [(VEX, Def)]
 flattenRMTable (RegUnchecked xs) = xs
 flattenRMTable (RegTable v) = concat (V.toList v)
 
