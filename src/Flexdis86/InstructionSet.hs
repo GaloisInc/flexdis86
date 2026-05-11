@@ -34,6 +34,7 @@ import           Prelude
 
 import           Flexdis86.Operand
 import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.Required (Required)
 import           Flexdis86.Register
 import           Flexdis86.Relocation
 import           Flexdis86.Segment
@@ -252,7 +253,7 @@ data InstructionInstanceF a
         , iiOp   :: !BSC.ByteString
         , iiArgs :: ![a]
         , iiPrefixes :: !Prefixes
-        , iiRequiredPrefix :: Maybe Word8
+        , iiRequiredPrefix :: !Required
           -- | List of opcodes, which should always be nonempty.
         , iiOpcode :: [Word8]
         , iiRequiredMod :: Maybe ModConstraint

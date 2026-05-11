@@ -43,6 +43,7 @@ module Flexdis86.Prefixes.Allowed
   , pfxLock
   , pfxSeg
   , hasPfx
+  , allowedOrCode
   , allowedFromNames
     -- * Semantic bits used at materialization
   , repzSemanticBit
@@ -116,6 +117,13 @@ hasPfx :: Allowed -- ^ Flag to test (e.g. 'pfxRep')
        -> Bool
 hasPfx flag ps = ps .&. flag /= zeroBits
 {-# INLINE hasPfx #-}
+
+-- | OR a raw 'PrefixCode' into an 'Allowed'. Intended for
+-- "Flexdis86.Prefixes.Required" to fold the required-prefix bit into
+-- the effective-allowed mask without exposing the 'Allowed' constructor.
+allowedOrCode :: Allowed -> PrefixCode -> Allowed
+allowedOrCode (Allowed a) c = Allowed (a .|. c)
+{-# INLINE allowedOrCode #-}
 
 -- | Build an 'Allowed' set from the prefix name strings used in
 -- @optable.xml@.

@@ -54,6 +54,7 @@ import           Lens.Micro.Mtl ((%=), (.=), (?=), use)
 
 import           Flexdis86.OpTable
 import           Flexdis86.Prefixes.Allowed (allowedFromNames)
+import           Flexdis86.Prefixes.Required (noRequired, orRequired, requiredFromByte)
 import           Flexdis86.Sizes ( SizeConstraint(..), ModConstraint(..)
                                  , asFin8, asFin64, maskFin8
                                  , MaybeFin8(..)
@@ -385,6 +386,14 @@ vexToBytes vp = short ++ long
 addOpcode :: MonadState Def m => Word8 -> m ()
 addOpcode c = defOpcodes %= (++ [c])
 
+-- | Set the required-prefix byte, updating both '_defRequiredPrefix' and
+-- '_defPrefix' (the effective-allowed mask) atomically.
+setRequiredPrefix :: MonadState Def m => Word8 -> m ()
+setRequiredPrefix b = do
+  let req = requiredFromByte b
+  defRequiredPrefix .= req
+  defPrefix %= \allowed -> allowed `orRequired` req
+
 setDefCPUReq :: MonadState Def m => CPURequirement -> m ()
 setDefCPUReq r = do
   creq <- use defCPUReq
@@ -434,7 +443,7 @@ parse_opcode nm = do
     _ | Just r <- List.stripPrefix "/sse=" nm
       , [(b, "")] <- readHex r
       -> do setDefCPUReq SSE
-            requiredPrefix ?= b
+            setRequiredPrefix b
     _ | Just r <- List.stripPrefix "/x87=" nm
       , [(b, "")] <- readHex r
       , Just modRM <- asFin64 b
@@ -450,7 +459,7 @@ parse_opcode nm = do
     -- Note [x86_64 disassembly] in Flexdis86.Disassembler for more details.
     _ | Just r <- List.stripPrefix "/reqpfx=" nm
       , [(b, "")] <- readHex r
-      -> requiredPrefix ?= b
+      -> setRequiredPrefix b
     _ | Just r <- List.stripPrefix "/vex=" nm
       -> do setDefCPUReq AVX
             vexPrefixes .= vexToBytes (parseVex r)
@@ -516,7 +525,7 @@ parse_def nm syns creq v = do
                  , _reqAddrSize        = Nothing
                  , _reqOpSize          = Nothing
                  , _defPrefix          = prefix
-                 , _requiredPrefix     = Nothing
+                 , _defRequiredPrefix  = noRequired
                  , _defOpcodes         = []
                  , _requiredMod        = Nothing
                  , _requiredReg        = NothingFin8
