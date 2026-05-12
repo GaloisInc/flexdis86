@@ -68,6 +68,7 @@ dsPrefixByte = 0x3E
 fsPrefixByte = 0x64
 gsPrefixByte = 0x65
 
--- | Is the given byte a REX prefix (0x40..0x4F)?
+-- | Is the given byte a REX prefix (0x40..0x4F)? A REX byte has the
+-- form @0b0100WRXB@, so the high nibble is fixed at @0b0100@.
 isRexPrefixByte :: Word8 -> Bool
 isRexPrefixByte b = b B..&. 0xF0 == 0x40

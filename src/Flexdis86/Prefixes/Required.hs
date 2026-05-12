@@ -39,8 +39,7 @@ import           Data.Word (Word8)
 import           Numeric (showHex)
 
 import           Flexdis86.Prefixes.Allowed (Allowed, allowedOrCode)
-
-import           Flexdis86.Prefixes
+import           Flexdis86.Prefixes.Bytes
 import           Flexdis86.Prefixes.Code
 
 -- | The required-prefix bit mask for a 'Def'. Wraps a 'PrefixCode'; only

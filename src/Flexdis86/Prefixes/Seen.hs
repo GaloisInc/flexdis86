@@ -12,23 +12,21 @@ see "Flexdis86.Prefixes.Code" for the shared bit layout.
 {-# LANGUAGE TypeApplications #-}
 module Flexdis86.Prefixes.Seen
   ( Seen
+  , seenCode
   , emptySeen
   , addPrefix
-  , materializePrefixes
   , checkAllowed
   ) where
 
-import           Control.Exception (assert)
 import qualified Control.DeepSeq as DS
 import           Data.Binary (Binary)
-import           Data.Bits (Bits, (.&.), (.|.), shiftL, zeroBits, complement, unsafeShiftR)
+import           Data.Bits (Bits, (.&.), (.|.), zeroBits)
 import           Data.Coerce (coerce)
-import           Data.Word (Word8, Word16, Word64)
+import           Data.Word (Word8, Word16)
 
-import           Flexdis86.Prefixes
 import           Flexdis86.Prefixes.Allowed
+import           Flexdis86.Prefixes.Bytes
 import           Flexdis86.Prefixes.Code
-import           Flexdis86.Prefixes.REX (REX(..))
 import           Flexdis86.Prefixes.Required
 import qualified Flexdis86.VEX.Seen as VEX
 
@@ -94,49 +92,6 @@ segDs = segDsBit -- 0b100
 segFs = segBit0 .|. segDsBit -- 0b101
 segGs = segBit1 .|. segDsBit -- 0b110
 
--- | A branchless lookup table mapping the 3-bit segment code to the
--- corresponding prefix byte. Each byte slot of the 'Word64' is indexed by
--- the seg code (1..6). Slot 0 (no seg override) holds @0x00@; unused
--- slot 7 also holds @0x00@.
---
--- To materialize: take the segment-code field of a 'PrefixCode' (at bit
--- positions [10..12]), multiply by 8 to turn it into a bit offset, shift
--- the table down by that amount, and mask to a byte. The multiply-by-8
--- can be fused with the shift-from-bit-10: the raw shared bits already
--- encode @segCode << 10@, so shifting right by 7 yields @segCode << 3 =
--- segCode * 8@.
-segByteTable :: Word64
-segByteTable =
-      fromIntegral @Word8 @Word64 esPrefixByte `shiftL` 8
-  .|. fromIntegral @Word8 @Word64 csPrefixByte `shiftL` 16
-  .|. fromIntegral @Word8 @Word64 ssPrefixByte `shiftL` 24
-  .|. fromIntegral @Word8 @Word64 dsPrefixByte `shiftL` 32
-  .|. fromIntegral @Word8 @Word64 fsPrefixByte `shiftL` 40
-  .|. fromIntegral @Word8 @Word64 gsPrefixByte `shiftL` 48
-
--- | Recover the REX byte stored in the low byte of a 'PrefixCode'.
--- Returns 0 if no REX prefix was observed.
-seenRexByte :: PrefixCode -> Word8
-seenRexByte (PrefixCode w) = fromIntegral @Word16 @Word8 w .&. 0x4F
-{-# INLINE seenRexByte #-}
-
--- | Look up the prefix byte corresponding to a 3-bit segment code,
--- given the masked seg-code bits in their raw position (bits [10..12])
--- of a 'PrefixCode'. Shift-right-by-7 turns @code << 10@ into
--- @code * 8@.
---
--- Uses 'unsafeShiftR' to avoid a bounds check on the 'Word64' shift:
--- the seg code is always in [0, 7] so the shift amount is always in
--- [0, 56], well below the 64-bit limit.
-lookupSegByte :: PrefixCode -> Word8
-lookupSegByte pc@(PrefixCode w_) =
-  let w = assert (pc .&. complement segMask == zeroBits) w_
-      shiftAmt_ = fromIntegral @Word16 @Int (w `unsafeShiftR` 7)
-      shiftAmt = assert (shiftAmt_ >= 0 && shiftAmt_ < 64) shiftAmt_
-  in fromIntegral @Word64 @Word8
-       (segByteTable `unsafeShiftR` shiftAmt)
-{-# INLINE lookupSegByte #-}
-
 -- | Check whether an observed 'Seen' is compatible with a def's allowed
 -- prefix set. The caller passes the def's effective-allowed mask (i.e.
 -- 'Flexdis86.OpTable.defPrefix', which already has the required-prefix
@@ -155,61 +110,4 @@ checkAllowed (Seen seen) vex allowed req =
     -- Having both REX and VEX prefixes is #UD.
     rexVexDisjoint = seen .&. rexSeenBit == zeroBits || not (VEX.hasVex vex)
 {-# INLINE checkAllowed #-}
-
--- | Reconstruct a 'Prefixes' value from the observed prefixes, the VEX
--- prefix (if any), and the def's allowed prefix set plus required prefix
--- byte (if any).
---
--- A required-prefix observation (e.g. @0xF3@ for @endbr32@) does not
--- contribute to its legacy-prefix role: the corresponding bit is cleared
--- from the accumulator before reading off 'Prefixes' fields.
---
--- Other context-dependent cases:
---
---  * REP (0xF3): materializes as 'RepZPrefix' if the def's allowed set
---    includes @repz@ ('repzSemanticBit'), otherwise 'RepPrefix'.
---
---  * Segment/notrack (0x3E): materializes as a notrack flag if the def's
---    allowed set has @notrack@ semantics ('notrackSemanticBit') without
---    allowing any segment override; otherwise it is a DS segment override.
-materializePrefixes :: Seen -> VEX.VEX -> Allowed -> Required -> Prefixes
-materializePrefixes (Seen seen) vex allowed req = Prefixes
-  { _prLockPrefix = lockPrefix
-  , _prSP = SegmentPrefix segByte
-  , _prREX = REX rexByte
-  , _prVEX = vex
-  , _prASO = legacy .&. asoBit /= zeroBits
-  , _prOSO = legacy .&. osoBit /= zeroBits
-  , _prNoTrack = asNotrack
-  }
-  where
-    allowedBits = allowedCode allowed
-
-    -- Clear the required-prefix bit(s) so they don't register as
-    -- legacy-prefix observations.
-    legacy = seen .&. complement (requiredCode req)
-
-    lockPrefix
-      | legacy .&. lockBit /= zeroBits = LockPrefix
-      | legacy .&. repNZBit /= zeroBits = RepNZPrefix
-      | legacy .&. repBit /= zeroBits =
-          if allowedBits .&. allowedCode repzSemanticBit /= zeroBits
-            then RepZPrefix
-            else RepPrefix
-      | otherwise = NoLockPrefix
-
-    segBits = legacy .&. segMask
-    asNotrack =
-      segBits == segDs
-        && allowedBits .&. allowedCode notrackSemanticBit /= zeroBits
-        && allowedBits .&. (segBit0 .|. segBit1) == zeroBits
-    -- Branchless materialization via a byte-indexed Word64 lookup
-    -- table; see 'segByteTable'. Zero seg-code slots and the notrack
-    -- case both read 0x00 from the table.
-    segByte
-      | asNotrack = 0x00
-      | otherwise = lookupSegByte segBits
-
-    rexByte = seenRexByte legacy
-{-# INLINE materializePrefixes #-}
 
