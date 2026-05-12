@@ -97,23 +97,21 @@ findEncoding args def = do
   let aso = False
   let oso = mkOSO def argTypes
   F.forM_ argTypes $ \at -> guard (matchOperandType oso at)
-  let rex = mkREX argTypes
-  let vex = VEX.noVex -- XXX: implement this
-  let notrack = False -- for now, not trying to use this feature
-  return $ II { iiLockPrefix = NoLockPrefix
-              -- ???: why is this always Size16? Can we do better
-              -- based on args or def?
-              , iiAddrSize = Size16
-              , iiOp = L.view defMnemonic def
+  let pf = PrefixFields
+        { pfLockPrefix = NoLockPrefix
+        , pfSP = no_seg_prefix
+        , pfREX = mkREX argTypes
+        , pfVEX = VEX.noVex -- XXX: implement this
+        , pfASO = aso
+        , pfOSO = oso
+        , pfNoTrack = False -- for now, not trying to use this feature
+        }
+  pfxs <- case mkPrefixesFromFields pf of
+    Right p -> pure p
+    Left e -> error ("findEncoding: " ++ show e)
+  return $ II { iiOp = L.view defMnemonic def
               , iiArgs = argTypes
-              , iiPrefixes = Prefixes { _prLockPrefix = NoLockPrefix
-                                      , _prSP = no_seg_prefix
-                                      , _prREX = rex
-                                      , _prVEX = vex
-                                      , _prASO = aso
-                                      , _prOSO = oso
-                                      , _prNoTrack = notrack
-                                      }
+              , iiPrefixes = pfxs
               , iiRequiredPrefix = L.view defRequiredPrefix def
               , iiOpcode      = L.view defOpcodes  def
               , iiRequiredMod = L.view requiredMod def
@@ -360,7 +358,7 @@ mkAssembledInstruction ::
   InstructionInstance ->
   m (AssembledInstruction B.Builder)
 mkAssembledInstruction ii = do
-  when (VEX.hasVex (L.view prVEX pfxs)) $ do
+  when (VEX.hasVex (prVEX pfxs)) $ do
     C.throwM VEXUnsupported
   mdisp <- encodeModRMDisp ii
   return $
@@ -369,10 +367,10 @@ mkAssembledInstruction ii = do
           mconcat [ if spfx == no_seg_prefix
                     then mempty
                     else B.word8 (unwrapSegmentPrefix spfx)
-                  , if L.view prNoTrack pfxs then B.word8 notrackPrefixByte else mempty
-                  , if L.view prASO pfxs then B.word8 addrSizeOverrideByte else mempty
+                  , if prNoTrack pfxs then B.word8 notrackPrefixByte else mempty
+                  , if prASO pfxs then B.word8 addrSizeOverrideByte else mempty
                   , if oso then B.word8 operandSizeOverrideByte else mempty
-                  , encodeLockPrefix (L.view prLockPrefix pfxs)
+                  , encodeLockPrefix (prLockPrefix pfxs)
                   ]
       , assembledRequiredPrefix = encodeRequiredPrefix (iiRequiredPrefix ii)
       , rexPrefix = encodeREXPrefix rex
@@ -381,9 +379,9 @@ mkAssembledInstruction ii = do
       , immediates = map (encodeImmediate rex oso) (iiArgs ii)
       }
   where
-    rex = L.view prREX pfxs
-    oso = L.view prOSO pfxs
-    spfx = L.view prSP pfxs
+    rex = prREX pfxs
+    oso = prOSO pfxs
+    spfx = prSP pfxs
     pfxs = iiPrefixes ii
 
 {-

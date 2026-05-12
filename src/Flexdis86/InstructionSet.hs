@@ -242,17 +242,9 @@ type InstructionInstance = InstructionInstanceF (Value, OperandType)
 
 -- | Instruction instance with name and operands.
 data InstructionInstanceF a
-   = II { iiLockPrefix :: !LockPrefix
-          -- | Whether the address size is 16,32, or 64 bits.
-          -- Among other things, this is used to determine whether
-          -- to use ecx or rcx with the rep prefix.
-          --
-          -- This is a direct encoding of the @aso@ prefix (address
-          -- size override)
-        , iiAddrSize :: !SizeConstraint
-        , iiOp   :: !BSC.ByteString
+   = II { iiOp   :: !BSC.ByteString
         , iiArgs :: ![a]
-        , iiPrefixes :: !Prefixes
+        , iiPrefixes :: {-# UNPACK #-} !Prefixes
         , iiRequiredPrefix :: !Required
           -- | List of opcodes, which should always be nonempty.
         , iiOpcode :: [Word8]
@@ -272,7 +264,7 @@ nonHex1Instrs = ["sar","sal","shr","shl","rcl","rcr","rol","ror"]
 -- Jump offsets refer to PC rather than the relative address.
 ppInstruction :: InstructionInstance -> PP.Doc a
 ppInstruction i =
-  let sLockPrefix = ppLockPrefix (iiLockPrefix i)
+  let sLockPrefix = ppLockPrefix (prLockPrefix (iiPrefixes i))
       args = fst <$> iiArgs i
       op = BSC.unpack (iiOp i)
   in
@@ -284,7 +276,7 @@ ppInstruction i =
      -- objdump prints `xchg (e)ax,(e)ax` as nop
      ("xchg", [WordReg   AX, WordReg   AX]) -> "nop"
      ("xchg", [DWordReg EAX, DWordReg EAX]) -> "nop"
-     _ -> case (args, iiLockPrefix i) of
+     _ -> case (args, prLockPrefix (iiPrefixes i)) of
             ([], NoLockPrefix) -> fromString op
             (_,  NoLockPrefix) -> padToWidth 6 op PP.<+> ppPunctuate "," (ppValue <$> args)
             ([], _) -> sLockPrefix PP.<+> fromString op
@@ -296,11 +288,11 @@ ppInstructionWith :: (i -> PP.Doc a)
 ppInstructionWith ppv i =
   -- FIXME Too much copy-and-paste, but not clear how to abstract
   -- given the special cases
-  let sLockPrefix = ppLockPrefix (iiLockPrefix i)
+  let sLockPrefix = ppLockPrefix (prLockPrefix (iiPrefixes i))
       args = iiArgs i
       op = BSC.unpack (iiOp i)
   in
-  case (args, iiLockPrefix i) of
+  case (args, prLockPrefix (iiPrefixes i)) of
     ([], NoLockPrefix) -> fromString op
     (_,  NoLockPrefix) -> padToWidth 6 op PP.<+> ppPunctuate "," (ppv <$> args)
     ([], _) -> sLockPrefix PP.<+> fromString op

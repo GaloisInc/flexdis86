@@ -64,7 +64,7 @@ import           Flexdis86.Operand
 import           Flexdis86.Prefixes
 import           Flexdis86.Prefixes.REX (REX(..), rexW, unREX)
 import           Flexdis86.Prefixes.Required (noRequired, requiredToByte)
-import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, materializePrefixes, checkAllowed)
+import           Flexdis86.Prefixes.Seen (Seen, emptySeen, addPrefix, checkAllowed)
 import           Flexdis86.Register
 import           Flexdis86.Segment
 import           Flexdis86.Sizes
@@ -402,10 +402,10 @@ prefixOperandSizeConstraint :: Prefixes -> Def -> OperandSizeConstraint
 prefixOperandSizeConstraint pfx d
   -- if the instruction defaults to 64 bit or REX.W is set, then we get 64 bits
   | Just Default64 <- d^.defMode,
-    pfx^.prOSO == False = OpSize64
-  | (getREX pfx)^.rexW  = OpSize64
-  | pfx^.prOSO          = OpSize16
-  | otherwise           = OpSize32
+    not (prOSO pfx) = OpSize64
+  | (getREX pfx)^.rexW = OpSize64
+  | prOSO pfx = OpSize16
+  | otherwise = OpSize32
 
 -- | Returns true if this definition supports the given operand size constaint.
 matchRequiredOpSize :: Prefixes -> Def -> Bool
@@ -627,9 +627,7 @@ parseReadTable pc obsVex modRM dfs = do
   let osz = prefixOperandSizeConstraint pfx df
   let finish args =
         II
-          { iiLockPrefix = pfx ^. prLockPrefix,
-            iiAddrSize = prAddrSize pfx,
-            iiOp = df^.defMnemonic,
+          { iiOp = df^.defMnemonic,
             iiArgs = args,
             iiPrefixes = pfx,
             iiRequiredPrefix = df ^. defRequiredPrefix,
@@ -686,7 +684,7 @@ validateSeen pc obsVex def
   where
     allowed = def ^. defPrefix
     reqPfx = def ^. defRequiredPrefix
-    rawPfx = materializePrefixes pc obsVex allowed reqPfx
+    rawPfx = mkPrefixes pc obsVex allowed reqPfx
     (pfx, def') = applyNopFamilyFixups rawPfx def
 
 -- | Here is where we perform special cases of instructions that are similar
@@ -695,7 +693,7 @@ applyNopFamilyFixups :: Prefixes -> Def -> (Prefixes, Def)
 applyNopFamilyFixups pfx def
   -- If we have a nop with an OSO prefix, what we really have is an
   -- xchg instruction.
-  | def ^. defOpcodes == [0x90], pfx ^. prOSO
+  | def ^. defOpcodes == [0x90], prOSO pfx
   , let xchgMnemonic = "xchg"
         -- The operand types come from here:
         -- https://github.com/vmt/udis86/blob/56ff6c87c11de0ffa725b14339004820556e343d/docs/x86/optable.xml#L8447
@@ -705,7 +703,7 @@ applyNopFamilyFixups pfx def
           pure [opr1, opr2]
   = case xchgOperands of
       Just oprs ->
-        ( pfx & prOSO .~ False
+        ( clearPrOSO pfx
         , def & defMnemonic .~ xchgMnemonic
               & defOpcodes  %~ (operandSizeOverrideByte:)
               & defOperands .~ oprs
@@ -714,8 +712,8 @@ applyNopFamilyFixups pfx def
 
   -- If we have a nop with a REP prefix, what we really have is a
   -- pause instruction.
-  | def ^. defOpcodes == [0x90], pfx ^. prLockPrefix == RepPrefix
-  = ( pfx & prLockPrefix .~ NoLockPrefix
+  | def ^. defOpcodes == [0x90], prLockPrefix pfx == RepPrefix
+  = ( clearPrLockPrefix pfx
     , def & defMnemonic .~ "pause"
           & defOpcodes  %~ (repPrefixByte:)
     )
@@ -865,9 +863,7 @@ disassembleInstruction dis = loopPrefixBytes emptySeen
       let osz = prefixOperandSizeConstraint pfx df in
       finish <$> traverse (parseValueType pfx osz Nothing) (df^.defOperands)
       where finish args =
-              II { iiLockPrefix = pfx^.prLockPrefix
-                 , iiAddrSize = prAddrSize pfx
-                 , iiOp   = df^.defMnemonic
+              II { iiOp = df^.defMnemonic
                  , iiArgs = args
                  , iiPrefixes = pfx
                  , iiRequiredPrefix = df ^. defRequiredPrefix
@@ -918,8 +914,8 @@ memSizeFn osz sz =
 getREX :: Prefixes -> REX
 getREX p
   | VEX.hasVex vex = VEX.vexRex vex
-  | otherwise  = p ^. prREX
-  where vex = p ^. prVEX
+  | otherwise  = prREX p
+  where vex = prVEX p
 
 readOffset :: ByteReader m => Segment -> Bool -> m AddrRef
 readOffset s aso
@@ -933,9 +929,9 @@ parseValue :: (ByteReader m, HasCallStack)
            -> OperandType
            -> m Value
 parseValue p osz mmrm tp = do
-  let sp  = p^.prSP
+  let sp  = prSP p
       rex = getREX p
-      aso = p^.prASO
+      aso = prASO p
       msg = "internal: parseValue missing modRM with operand type: " ++ show tp
       modRM = fromMaybe (error msg) mmrm -- laziness is used here and below, this is not used for e.g. ImmediateSource
 
@@ -970,7 +966,7 @@ parseValue p osz mmrm tp = do
     OpType VVVV sz
       | VEX.hasVex vx -> pure $ regSizeFn osz rex sz $ complement (VEX.vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
-      where vx = p ^. prVEX
+      where vx = prVEX p
     OpType ImmediateSource BSize ->
       ByteImm <$> readByte
     OpType ImmediateSource WSize ->
@@ -1020,7 +1016,7 @@ parseValue p osz mmrm tp = do
       | Just sz <- mb     -> error ("[RM_XMM] Unexpected size: " ++ show sz)
 
       | Nothing <- mb
-      , let vx = p ^. prVEX
+      , let vx = prVEX p
       , VEX.hasVex vx
       , VEX.vex256 vx         -> Mem256 <$> addr
 
@@ -1030,7 +1026,7 @@ parseValue p osz mmrm tp = do
       | VEX.hasVex vx ->
           return $ largeReg p mb $ complement (VEX.vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
-      where vx = p ^. prVEX
+      where vx = prVEX p
 
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
@@ -1087,7 +1083,7 @@ largeReg :: Prefixes -> Maybe OperandSize -> Word8 -> Value
 largeReg p mb num =
   case mb of
 
-    Nothing | let vx = p ^. prVEX
+    Nothing | let vx = prVEX p
             , VEX.hasVex vx
             , VEX.vex256 vx  -> useYMM
             | otherwise  -> useXMM
@@ -1107,10 +1103,10 @@ readNoOffset :: ByteReader m
              -> ModRM
              -> m AddrRef
 readNoOffset p modRM = do
-  let aso = p^.prASO
+  let aso = prASO p
   let rm = modRM_rm modRM
   let rex = getREX p
-      sp = p^.prSP
+      sp = prSP p
   let base_reg  = (rex_b rex .|.)
       index_reg = (rex_x rex .|.)
   if rm == rsp_idx then do
@@ -1142,7 +1138,7 @@ readWithOffset :: ByteReader m
                -> ModRM
                -> m AddrRef
 readWithOffset readDisp aso p modRM = do
-  let sp = p^.prSP
+  let sp = prSP p
   let rex = getREX p
   let rm = modRM_rm modRM
   let base_reg  = (rex_b rex .|.)

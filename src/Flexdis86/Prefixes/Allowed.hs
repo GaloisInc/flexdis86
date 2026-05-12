@@ -126,9 +126,16 @@ allowedOrCode (Allowed a) c = Allowed (a .|. c)
 {-# INLINE allowedOrCode #-}
 
 -- | Build an 'Allowed' set from the prefix name strings used in
--- @optable.xml@.
+-- @optable.xml@. Errors if the @notrack@ flag is combined with @seg@
+-- (or any other segment-allowing flag) on the same def: the two assign
+-- different semantics to the same 0x3E byte.
 allowedFromNames :: [String] -> Allowed
-allowedFromNames = foldr (\n acc -> acc .|. nameToFlag n) noPrefixes
+allowedFromNames names
+  | "notrack" `elem` names && "seg" `elem` names = error $
+      "allowedFromNames: a def cannot allow both `notrack` and `seg`; \
+      \they assign conflicting meanings to the 0x3E byte. Names: "
+      ++ show names
+  | otherwise = foldr (\n acc -> acc .|. nameToFlag n) noPrefixes names
   where
     nameToFlag "aso"     = pfxAso
     nameToFlag "notrack" = pfxNotrack
