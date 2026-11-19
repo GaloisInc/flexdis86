@@ -372,6 +372,9 @@ operandHandlerMap = Map.fromList
   , (,) "N"    $ RG_MMX_rm
    -- Register operand stored in ModRM.rm (ModRM.mod must equal 3)
   , (,) "R"    $ OpType ModRM_rm_mod3 RDQSize
+   -- General-purpose register stored in ModRM.rm (ModRM.mod must equal 3)
+   -- whose size equals the operand size
+  , (,) "Rv"   $ OpType ModRM_rm_mod3 VSize
 
     -- RM fields are read from ModRM.rm
   , (,) "Eb"  $ OpType ModRM_rm BSize
