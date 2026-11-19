@@ -42,7 +42,8 @@ emptySeen = Seen emptyPrefixCode
 
 -- | Fold a legacy prefix byte into a 'Seen' value. Returns 'Nothing' if
 -- the byte is not a legacy prefix, or if its prefix group is already
--- occupied (duplicate prefixes within the same group are rejected).
+-- occupied by a different prefix. Repeating the same prefix is
+-- accepted.
 addPrefix :: Seen -> Word8 -> Maybe Seen
 addPrefix !(Seen seen) b = coerce (addPrefixCode seen b)
 {-# INLINE addPrefix #-}
@@ -65,12 +66,15 @@ addPrefixCode !seen b
   | otherwise = Nothing
   where
     lockRepMask = lockBit .|. repNZBit .|. repBit
-    -- Set the bits of @bits@ in the accumulator, but only if every bit
-    -- of the group mask is currently clear. Duplicate prefixes within a
-    -- group are rejected.
+    -- Set the bits of @bits@ in the accumulator, but only if the group
+    -- is currently empty or already holds this same prefix. Repeating a
+    -- prefix byte is redundant but legal (compilers pad with e.g.
+    -- @66 66 2e 0f 1f 84 ...@), so it is accepted. Two different
+    -- prefixes from the same group are rejected.
     group mask bits
-      | seen .&. mask == zeroBits = Just (seen .|. bits)
+      | prior == zeroBits || prior == bits = Just (seen .|. bits)
       | otherwise = Nothing
+      where prior = seen .&. mask
 
     -- The REX byte is stored verbatim in the low byte of the
     -- 'PrefixCode'. A valid REX byte has bits 3..0 = W,R,X,B and bit 6
