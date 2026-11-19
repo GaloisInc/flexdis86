@@ -71,7 +71,9 @@ appendDisplacement :: Displacement -> PP.Doc a
 appendDisplacement NoDisplacement = ""
 appendDisplacement (Disp32 x)
   | Imm32Concrete 0 <- x = ""
-  | otherwise = fromString (show x)
+  -- 'show' already prints the sign of a negative displacement.
+  | Imm32Concrete c <- x, c < 0 = fromString (show x)
+  | otherwise = "+" <> fromString (show x)
 appendDisplacement (Disp8 x)
   | x >  0    = fromString ("+0x" ++ showHex x "")
   | x == 0    = ""

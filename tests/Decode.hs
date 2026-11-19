@@ -24,6 +24,7 @@ decodeTests = T.testGroup "Decode Tests"
   , T.testGroup "AVX floating point, VAES and VPCLMULQDQ" (map mkDisasmTest avxFloatTests)
   , T.testGroup "BMI1, BMI2, LZCNT and RDRAND" (map mkDisasmTest bitManipulationTests)
   , T.testGroup "MOVD and MOVQ" (map mkDisasmTest movdMovqTests)
+  , T.testGroup "32-bit displacements" (map mkDisasmTest displacementTests)
   , T.testGroup "Invalid encodings" (map mkInvalidTest invalidTests)
   ]
 
@@ -249,6 +250,16 @@ movdMovqTests =
   , ([0xc4, 0xe1, 0xf9, 0x6e, 0xc1], "vmovq  xmm0,rcx")
   , ([0xc4, 0xe1, 0xf9, 0x7e, 0xc1], "vmovq  rcx,xmm0")
   , ([0xc5, 0xfa, 0x7e, 0x10], "vmovq  xmm2,QWORD PTR [rax]")
+  ]
+
+-- | A 32-bit displacement is printed with its sign, like an 8-bit one.
+displacementTests :: [([Word8], String)]
+displacementTests =
+  [ ([0xc5, 0xfd, 0xf9, 0x84, 0x24, 0x20, 0x02, 0x00, 0x00], "vpsubw ymm0,ymm0,YMMWORD PTR [rsp+0x220]")
+  , ([0x66, 0x0f, 0x7e, 0x84, 0x24, 0xfa, 0x00, 0x00, 0x00], "movd   DWORD PTR [rsp+0xfa],xmm0")
+  , ([0x66, 0x42, 0x0f, 0x7e, 0x94, 0x05, 0x10, 0xcf, 0xff, 0xff], "movd   DWORD PTR [rbp+r8*1-0x30f0],xmm2")
+  , ([0xf3, 0x0f, 0x7e, 0x05, 0xd0, 0xbc, 0x0d, 0x00], "movq   xmm0,QWORD PTR [rip+0xdbcd0]")
+  , ([0x48, 0x8b, 0x05, 0x10, 0xcf, 0xff, 0xff], "mov    rax,QWORD PTR [rip-0x30f0]")
   ]
 
 -- | Byte sequences that do not encode a valid instruction.
