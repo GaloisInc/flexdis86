@@ -372,6 +372,9 @@ operandHandlerMap = Map.fromList
   , (,) "N"    $ RG_MMX_rm
    -- Register operand stored in ModRM.rm (ModRM.mod must equal 3)
   , (,) "R"    $ OpType ModRM_rm_mod3 RDQSize
+   -- General-purpose register stored in ModRM.rm (ModRM.mod must equal 3)
+   -- whose size equals the operand size
+  , (,) "Rv"   $ OpType ModRM_rm_mod3 VSize
 
     -- RM fields are read from ModRM.rm
   , (,) "Eb"  $ OpType ModRM_rm BSize
@@ -420,7 +423,9 @@ operandHandlerMap = Map.fromList
   , (,) "Mv"  $ M_X VSize
   , (,) "Mw"  $ M_X WSize
   , (,) "Mo"  $ M_X OSize
+  , (,) "Mqq" $ M_X QQSize
 
+  , (,) "MbU"  $ M_U BSize
   , (,) "MdU"  $ M_U DSize
   , (,) "MqU"  $ M_U QSize
   , (,) "MwU"  $ M_U WSize
@@ -474,6 +479,9 @@ operandHandlerMap = Map.fromList
   , (,) "Hx"  $ VVVV_XMM Nothing
   , (,) "Hdq" $ VVVV_XMM (Just OSize)
   , (,) "Hqq" $ VVVV_XMM (Just QQSize)
+
+    -- XMM/YMM register in bits [7:4] of an 8-bit immediate
+  , (,) "Lx"  $ IS4_XMM Nothing
   ]
 
 lookupOperandType :: MF.MonadFail m => BS.ByteString -> String -> m OperandType

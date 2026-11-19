@@ -103,6 +103,10 @@ data OperandType
      -- | An XMM/YMM register from the VVVV field of the VEX prefix.
    | VVVV_XMM (Maybe OperandSize)
 
+     -- | An XMM/YMM register from bits [7:4] of an 8-bit immediate
+     -- (the @/is4@ operand of e.g. @vpblendvb@).
+   | IS4_XMM (Maybe OperandSize)
+
      -- | A specific segment
    | SEG !Segment
 

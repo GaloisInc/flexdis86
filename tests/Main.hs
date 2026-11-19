@@ -4,6 +4,7 @@ module Main ( main ) where
 import qualified Test.Tasty as T
 
 import Binaries ( binaryTests )
+import Decode ( decodeTests )
 
 #if defined(ARCH_ELF)
 import Assemble ( assembleTests )
@@ -26,4 +27,4 @@ main = T.defaultMain testCases
 
 testCases :: T.TestTree
 testCases = T.testGroup "FlexdisTests" $
-  binaryTests : elfCases
+  binaryTests : decodeTests : elfCases
