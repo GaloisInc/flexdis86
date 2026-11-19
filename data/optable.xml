@@ -4857,14 +4857,53 @@
         <opc>/vex=128.66.0F.WIG D6</opc>
         <opr>MqU V</opr>
       </def>
+      <def>
+        <opc>/vex=128.66.0F.W1 6E</opc>
+        <opr>Vdq Eq</opr>
+      </def>
+      <def>
+        <opc>/vex=128.66.0F.W1 7E</opc>
+        <opr>Eq Vdq</opr>
+      </def>
     </instruction>
 
+    <!--
+      MOVD and MOVQ share the opcodes 0f 6e and 0f 7e (and 66 0f 6e and
+      66 0f 7e); REX.W selects MOVQ. The /o= modifiers tell them apart.
+      With the mandatory 66 prefix the operand size is 16 bits unless
+      REX.W is set, so the MOVD forms list both /o=16 and /o=32.
+    -->
     <instruction>
         <mnemonic>movd</mnemonic>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
-            <opc>/sse=66 0f 6e</opc>
-            <opr>V Ey</opr>
+            <opc>/sse=66 0f 6e /o=16</opc>
+            <opr>V Ed</opr>
+        </def>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>/sse=66 0f 6e /o=32</opc>
+            <opr>V Ed</opr>
+        </def>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>/sse=66 0f 7e /o=16</opc>
+            <opr>Ed V</opr>
+        </def>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>/sse=66 0f 7e /o=32</opc>
+            <opr>Ed V</opr>
+        </def>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>0f 6e /o=32</opc>
+            <opr>P Ed</opr>
+        </def>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>0f 7e /o=32</opc>
+            <opr>Ed P</opr>
         </def>
     </instruction>
 
@@ -5050,12 +5089,12 @@
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=66 0f d6</opc>
-            <opr>W V</opr>
+            <opr>MqU V</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
             <opc>/sse=f3 0f 7e</opc>
-            <opr>V W</opr>
+            <opr>V MqU</opr>
         </def>
         <def>
             <pfx>aso rexr rexx rexb</pfx>
@@ -5064,18 +5103,23 @@
         </def>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
-            <opc>0f 6e</opc>
-            <opr>P Ey</opr>
+            <opc>0f 6e /o=64</opc>
+            <opr>P Eq</opr>
         </def>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
-            <opc>/sse=66 0f 7e</opc>
-            <opr>Ey V</opr>
+            <opc>0f 7e /o=64</opc>
+            <opr>Eq P</opr>
         </def>
         <def>
             <pfx>aso rexw rexr rexx rexb</pfx>
-            <opc>0f 7e</opc>
-            <opr>Ey P</opr>
+            <opc>/sse=66 0f 6e /o=64</opc>
+            <opr>V Eq</opr>
+        </def>
+        <def>
+            <pfx>aso rexw rexr rexx rexb</pfx>
+            <opc>/sse=66 0f 7e /o=64</opc>
+            <opr>Eq V</opr>
         </def>
     </instruction>
 

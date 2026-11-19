@@ -23,6 +23,7 @@ decodeTests = T.testGroup "Decode Tests"
   , T.testGroup "AVX2 integer" (map mkDisasmTest avx2IntegerTests)
   , T.testGroup "AVX floating point, VAES and VPCLMULQDQ" (map mkDisasmTest avxFloatTests)
   , T.testGroup "BMI1, BMI2, LZCNT and RDRAND" (map mkDisasmTest bitManipulationTests)
+  , T.testGroup "MOVD and MOVQ" (map mkDisasmTest movdMovqTests)
   , T.testGroup "Invalid encodings" (map mkInvalidTest invalidTests)
   ]
 
@@ -225,6 +226,29 @@ bitManipulationTests =
     -- The same opcodes without the F3 prefix, or with a memory operand
   , ([0x0f, 0xbd, 0xc1], "bsr    eax,ecx")
   , ([0x0f, 0xc7, 0x30], "vmptrld QWORD PTR [rax]")
+  ]
+
+-- | MOVD and MOVQ share opcodes; REX.W (or VEX.W) selects MOVQ. MOVQ
+-- from or to memory moves 64 bits, not 128.
+movdMovqTests :: [([Word8], String)]
+movdMovqTests =
+  [ ([0x66, 0x0f, 0x6e, 0xc6], "movd   xmm0,esi")
+  , ([0x66, 0x48, 0x0f, 0x6e, 0xca], "movq   xmm1,rdx")
+  , ([0x66, 0x0f, 0x7e, 0xd0], "movd   eax,xmm2")
+  , ([0x66, 0x48, 0x0f, 0x7e, 0xd8], "movq   rax,xmm3")
+  , ([0x66, 0x41, 0x0f, 0x6e, 0x03], "movd   xmm0,DWORD PTR [r11]")
+  , ([0xf3, 0x41, 0x0f, 0x7e, 0x03], "movq   xmm0,QWORD PTR [r11]")
+  , ([0x66, 0x0f, 0x7e, 0x08], "movd   DWORD PTR [rax],xmm1")
+  , ([0x0f, 0x6e, 0xc1], "movd   mm0,ecx")
+  , ([0x48, 0x0f, 0x6e, 0xc1], "movq   mm0,rcx")
+  , ([0x0f, 0x7e, 0xc1], "movd   ecx,mm0")
+  , ([0x48, 0x0f, 0x7e, 0xc1], "movq   rcx,mm0")
+  , ([0x66, 0x0f, 0xd6, 0x04, 0x73], "movq   QWORD PTR [rbx+rsi*2],xmm0")
+  , ([0xf3, 0x41, 0x0f, 0x7e, 0x04, 0x78], "movq   xmm0,QWORD PTR [r8+rdi*2]")
+  , ([0xf3, 0x0f, 0x7e, 0xc1], "movq   xmm0,xmm1")
+  , ([0xc4, 0xe1, 0xf9, 0x6e, 0xc1], "vmovq  xmm0,rcx")
+  , ([0xc4, 0xe1, 0xf9, 0x7e, 0xc1], "vmovq  rcx,xmm0")
+  , ([0xc5, 0xfa, 0x7e, 0x10], "vmovq  xmm2,QWORD PTR [rax]")
   ]
 
 -- | Byte sequences that do not encode a valid instruction.
