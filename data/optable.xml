@@ -7652,6 +7652,15 @@
     </instruction>
 
     <instruction>
+        <mnemonic>rdrand</mnemonic>
+        <def>
+            <pfx>oso rexw rexb</pfx>
+            <opc>0f c7 /reg=6 /mod=11</opc>
+            <opr>Rv</opr>
+        </def>
+    </instruction>
+
+    <instruction>
         <mnemonic>rdtscp</mnemonic>
         <vendor>amd</vendor>
         <def>
@@ -8549,6 +8558,15 @@
         <def>
             <pfx>aso oso rexr rexx rexb rexw seg</pfx>
             <opc>/sse=f3 0f bc</opc>
+            <opr>Gv Ev</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>lzcnt</mnemonic>
+        <def>
+            <pfx>aso oso rexr rexx rexb rexw seg</pfx>
+            <opc>/sse=f3 0f bd</opc>
             <opr>Gv Ev</opr>
         </def>
     </instruction>
@@ -10938,6 +10956,108 @@
         <def>
             <opc>/vex=NDS.256.66.0F38.W0 B8</opc>
             <opr>Vx Hx Wx</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>andn</mnemonic>
+        <def>
+            <opc>/vex=NDS.128.0F38.W0 F2</opc>
+            <opr>Gd Hd Ed</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.0F38.W1 F2</opc>
+            <opr>Gq Hq Eq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>bzhi</mnemonic>
+        <def>
+            <opc>/vex=NDS.128.0F38.W0 F5</opc>
+            <opr>Gd Ed Hd</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.0F38.W1 F5</opc>
+            <opr>Gq Eq Hq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>pdep</mnemonic>
+        <class>bmi2</class>
+        <def>
+            <opc>/vex=NDS.128.F2.0F38.W0 F5</opc>
+            <opr>Gd Hd Ed</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.F2.0F38.W1 F5</opc>
+            <opr>Gq Hq Eq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>pext</mnemonic>
+        <class>bmi2</class>
+        <def>
+            <opc>/vex=NDS.128.F3.0F38.W0 F5</opc>
+            <opr>Gd Hd Ed</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.F3.0F38.W1 F5</opc>
+            <opr>Gq Hq Eq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>shlx</mnemonic>
+        <class>bmi2</class>
+        <def>
+            <opc>/vex=NDS.128.66.0F38.W0 F7</opc>
+            <opr>Gd Ed Hd</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.66.0F38.W1 F7</opc>
+            <opr>Gq Eq Hq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>shrx</mnemonic>
+        <class>bmi2</class>
+        <def>
+            <opc>/vex=NDS.128.F2.0F38.W0 F7</opc>
+            <opr>Gd Ed Hd</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.F2.0F38.W1 F7</opc>
+            <opr>Gq Eq Hq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>sarx</mnemonic>
+        <class>bmi2</class>
+        <def>
+            <opc>/vex=NDS.128.F3.0F38.W0 F7</opc>
+            <opr>Gd Ed Hd</opr>
+        </def>
+        <def>
+            <opc>/vex=NDS.128.F3.0F38.W1 F7</opc>
+            <opr>Gq Eq Hq</opr>
+        </def>
+    </instruction>
+
+    <instruction>
+        <mnemonic>rorx</mnemonic>
+        <class>bmi2</class>
+        <def>
+            <opc>/vex=128.F2.0F3A.W0 F0</opc>
+            <opr>Gd Ed Ib</opr>
+        </def>
+        <def>
+            <opc>/vex=128.F2.0F3A.W1 F0</opc>
+            <opr>Gq Eq Ib</opr>
         </def>
     </instruction>
 
