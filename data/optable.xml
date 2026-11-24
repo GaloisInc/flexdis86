@@ -4857,6 +4857,14 @@
         <opc>/vex=128.66.0F.WIG D6</opc>
         <opr>MqU V</opr>
       </def>
+      <def>
+        <opc>/vex=128.66.0F.W1 6E</opc>
+        <opr>Vdq Eq</opr>
+      </def>
+      <def>
+        <opc>/vex=128.66.0F.W1 7E</opc>
+        <opr>Eq Vdq</opr>
+      </def>
     </instruction>
 
     <!--

@@ -26,6 +26,7 @@ decodeTests = T.testGroup "Decode Tests"
   , T.testGroup "AVX2 integer" (map mkDisasmTest avx2IntegerTests)
   , T.testGroup "AVX floating point, VAES and VPCLMULQDQ" (map mkDisasmTest avxFloatTests)
   , T.testGroup "BMI1, BMI2, LZCNT and RDRAND" (map mkDisasmTest bitManipulationTests)
+  , T.testGroup "VMOVQ" (map mkDisasmTest vmovqTests)
   , T.testGroup "Invalid encodings" (map mkInvalidTest invalidTests)
   ]
 
@@ -272,6 +273,14 @@ bitManipulationTests =
     -- The same opcodes without the F3 prefix, or with a memory operand
   , ([0x0f, 0xbd, 0xc1], "bsr    eax,ecx")
   , ([0x0f, 0xc7, 0x30], "vmptrld QWORD PTR [rax]")
+  ]
+
+-- | The VEX.W1 forms of VMOVQ move a general-purpose register.
+vmovqTests :: [([Word8], String)]
+vmovqTests =
+  [ ([0xc4, 0xe1, 0xf9, 0x6e, 0xc1], "vmovq  xmm0,rcx")
+  , ([0xc4, 0xe1, 0xf9, 0x7e, 0xc1], "vmovq  rcx,xmm0")
+  , ([0xc5, 0xfa, 0x7e, 0x10], "vmovq  xmm2,QWORD PTR [rax]")
   ]
 
 -- | Byte sequences that do not encode a valid instruction.
