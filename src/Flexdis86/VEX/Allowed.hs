@@ -23,7 +23,7 @@ Layout (mirrors the raw VEX 'Word16' in 'Flexdis86.VEX.Seen.VEX'):
 
   byte 1 - VEX3 byte 2
     [7]     W            fixed for W0\/W1, wildcard for WIG
-    [6:3]   ~vvvv        fixed to 0 when vvvv=15, wildcard otherwise
+    [6:3]   ~vvvv        fixed to 1111b when unused, wildcard otherwise
     [2]     L            always fixed
     [1:0]   pp           always fixed
 @
@@ -143,7 +143,8 @@ allowVex
   -> VexL
   -> VexW
   -> Bool
-     -- ^ @'True'@ iff @vvvv@ is fixed at 15 (i.e.\ @~vvvv = 0@);
+     -- ^ @'True'@ iff the instruction does not use @vvvv@, in which
+     --   case the encoded (inverted) @~vvvv@ field must be @1111b@;
      --   @'False'@ iff any @vvvv@ in @0..15@ is permitted
   -> Allowed
 allowVex m p l w vvvvFix15 = Allowed mask expected
@@ -156,11 +157,20 @@ allowVex m p l w vvvvFix15 = Allowed mask expected
     -- byte 1: pp in [1:0], L in [2], ~vvvv in [6:3], W in [7].
     mask1, exp1 :: Word8
     mask1 = 0b00000111                              -- pp + L always fixed
-        .|. (if vvvvFix15 then 0b01111000 else 0)   -- ~vvvv = 0
+        .|. vvvvMask                                -- ~vvvv
         .|. (case w of WIG -> 0; _ -> 0b10000000)   -- W
     exp1  = ppBits p
         .|. (lBits l `shiftL` 2)
+        .|. vvvvAllOnes                             -- ~vvvv = 1111b
         .|. (case w of W0 -> 0; W1 -> 1 `shiftL` 7; WIG -> 0)
+
+    -- An unused vvvv field is encoded as 1111b (Intel SDM Vol. 2,
+    -- 2.3.6), so the raw ~vvvv bits must all be set. The same value
+    -- works both as the mask that selects the ~vvvv bits and as the
+    -- expected value that sets all of them.
+    vvvvMask, vvvvAllOnes :: Word8
+    vvvvMask    = if vvvvFix15 then 0b01111000 else 0
+    vvvvAllOnes = vvvvMask
 
     mask     = pack mask0 mask1
     expected = pack exp0  exp1

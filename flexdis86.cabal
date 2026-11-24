@@ -95,6 +95,7 @@ test-suite flexdis86-tests
   other-modules:
     Assemble
     Binaries
+    Decode
     Roundtrip
     Util
 
