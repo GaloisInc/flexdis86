@@ -19,6 +19,7 @@ import qualified Flexdis86 as D
 decodeTests :: T.TestTree
 decodeTests = T.testGroup "Decode Tests"
   [ T.testGroup "VEX vvvv" (map mkTest vexVvvvTests)
+  , T.testGroup "Repeated prefixes" (map mkTest repeatedPrefixTests)
   , T.testGroup "Invalid encodings" (map mkInvalidTest invalidTests)
   ]
 
@@ -32,10 +33,23 @@ vexVvvvTests =
   , ("vzeroupper", [0xc5, 0xf8, 0x77], "vzeroupper")
   ]
 
+-- | A prefix byte may be repeated. GCC and Clang pad functions with
+-- multi-byte @nop@s such as @data16 cs nop WORD PTR [rax+rax*1+0x0]@.
+repeatedPrefixTests :: [(String, [Word8], String)]
+repeatedPrefixTests =
+  [ ("66 cs nop", 0x66 : csNopW, "nop    [rax+rax*1]")
+  , ("66 66 cs nop", 0x66 : 0x66 : csNopW, "nop    [rax+rax*1]")
+  , ("66 x5 cs nop", replicate 5 0x66 ++ csNopW, "nop    [rax+rax*1]")
+  , ("rep rep stosb", [0xf3, 0xf3, 0xaa], "rep stos BYTE PTR [rdi],al")
+  ]
+  where
+    csNopW = [0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00]
+
 -- | Byte sequences that do not encode a valid instruction.
 invalidTests :: [(String, [Word8])]
 invalidTests =
   [ ("vmovdqa with vvvv /= 1111b", [0xc5, 0xf5, 0x6f, 0x06])
+  , ("two different segment prefixes", [0x2e, 0x3e, 0x90])
   ]
 
 mkTest :: (String, [Word8], String) -> T.TestTree
