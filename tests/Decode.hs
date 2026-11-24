@@ -20,6 +20,7 @@ decodeTests :: T.TestTree
 decodeTests = T.testGroup "Decode Tests"
   [ T.testGroup "VEX vvvv" (map mkTest vexVvvvTests)
   , T.testGroup "Repeated prefixes" (map mkTest repeatedPrefixTests)
+  , T.testGroup "32-bit displacements" (map mkDisasmTest displacementTests)
   , T.testGroup "Invalid encodings" (map mkInvalidTest invalidTests)
   ]
 
@@ -45,6 +46,16 @@ repeatedPrefixTests =
   where
     csNopW = [0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00]
 
+-- | A 32-bit displacement is printed with its sign, like an 8-bit one.
+displacementTests :: [([Word8], String)]
+displacementTests =
+  [ ([0x8b, 0x84, 0x24, 0x20, 0x02, 0x00, 0x00], "mov    eax,DWORD PTR [rsp+0x220]")
+  , ([0x89, 0x84, 0x24, 0xfa, 0x00, 0x00, 0x00], "mov    DWORD PTR [rsp+0xfa],eax")
+  , ([0x42, 0x89, 0x94, 0x05, 0x10, 0xcf, 0xff, 0xff], "mov    DWORD PTR [rbp+r8*1-0x30f0],edx")
+  , ([0x48, 0x8b, 0x05, 0xd0, 0xbc, 0x0d, 0x00], "mov    rax,QWORD PTR [rip+0xdbcd0]")
+  , ([0x48, 0x8b, 0x05, 0x10, 0xcf, 0xff, 0xff], "mov    rax,QWORD PTR [rip-0x30f0]")
+  ]
+
 -- | Byte sequences that do not encode a valid instruction.
 invalidTests :: [(String, [Word8])]
 invalidTests =
@@ -59,6 +70,9 @@ mkTest (name, bytes, expected) = T.testCase name $
       T.assertEqual "Bytes consumed" (length bytes) len
       T.assertEqual "Disassembly" expected (show (D.ppInstruction ii))
     (_, Nothing) -> T.assertFailure ("Failed to disassemble " ++ show bytes)
+
+mkDisasmTest :: ([Word8], String) -> T.TestTree
+mkDisasmTest (bytes, expected) = mkTest (expected, bytes, expected)
 
 mkInvalidTest :: (String, [Word8]) -> T.TestTree
 mkInvalidTest (name, bytes) = T.testCase name $
