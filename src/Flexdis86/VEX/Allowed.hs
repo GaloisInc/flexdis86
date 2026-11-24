@@ -165,11 +165,12 @@ allowVex m p l w vvvvFix15 = Allowed mask expected
         .|. (case w of W0 -> 0; W1 -> 1 `shiftL` 7; WIG -> 0)
 
     -- An unused vvvv field is encoded as 1111b (Intel SDM Vol. 2,
-    -- 2.3.6), so the raw ~vvvv bits must all be set.
-    vvvvField, vvvvMask, vvvvAllOnes :: Word8
-    vvvvField   = 0b01111000
-    vvvvMask    = if vvvvFix15 then vvvvField else 0
-    vvvvAllOnes = if vvvvFix15 then vvvvField else 0
+    -- 2.3.6), so the raw ~vvvv bits must all be set. The same value
+    -- works both as the mask that selects the ~vvvv bits and as the
+    -- expected value that sets all of them.
+    vvvvMask, vvvvAllOnes :: Word8
+    vvvvMask    = if vvvvFix15 then 0b01111000 else 0
+    vvvvAllOnes = vvvvMask
 
     mask     = pack mask0 mask1
     expected = pack exp0  exp1
