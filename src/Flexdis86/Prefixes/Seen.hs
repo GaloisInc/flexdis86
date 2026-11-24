@@ -20,7 +20,7 @@ module Flexdis86.Prefixes.Seen
 
 import qualified Control.DeepSeq as DS
 import           Data.Binary (Binary)
-import           Data.Bits (Bits, (.&.), (.|.), zeroBits)
+import           Data.Bits (Bits, (.&.), (.|.), complement, zeroBits)
 import           Data.Coerce (coerce)
 import           Data.Word (Word8, Word16)
 
@@ -43,7 +43,7 @@ emptySeen = Seen emptyPrefixCode
 -- | Fold a legacy prefix byte into a 'Seen' value. Returns 'Nothing' if
 -- the byte is not a legacy prefix, or if its prefix group is already
 -- occupied by a different prefix. Repeating the same prefix is
--- accepted.
+-- accepted, and a later REX prefix replaces an earlier one.
 addPrefix :: Seen -> Word8 -> Maybe Seen
 addPrefix !(Seen seen) b = coerce (addPrefixCode seen b)
 {-# INLINE addPrefix #-}
@@ -78,10 +78,11 @@ addPrefixCode !seen b
 
     -- The REX byte is stored verbatim in the low byte of the
     -- 'PrefixCode'. A valid REX byte has bits 3..0 = W,R,X,B and bit 6
-    -- = 1, so this write sets the REX sub-bits plus 'rexSeenBit'.
-    addRex byte
-      | seen .&. rexMask /= zeroBits = Nothing
-      | otherwise = Just (seen .|. PrefixCode (fromIntegral @Word8 @Word16 byte))
+    -- = 1, so this write sets the REX sub-bits plus 'rexSeenBit'. Only
+    -- the REX prefix right before the opcode takes effect (Intel SDM
+    -- Vol. 2A, 2.2.1), so a later REX byte replaces an earlier one.
+    addRex byte =
+      Just ((seen .&. complement rexMask) .|. PrefixCode (fromIntegral @Word8 @Word16 byte))
 {-# INLINE addPrefixCode #-}
 
 -- Segment observation codes: three-bit values assigned so that every

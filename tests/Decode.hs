@@ -20,6 +20,7 @@ decodeTests :: T.TestTree
 decodeTests = T.testGroup "Decode Tests"
   [ T.testGroup "VEX vvvv" (map mkTest vexVvvvTests)
   , T.testGroup "Repeated prefixes" (map mkTest repeatedPrefixTests)
+  , T.testGroup "Repeated REX prefixes" (map mkSameAsTest repeatedRexTests)
   , T.testGroup "32-bit displacements" (map mkDisasmTest displacementTests)
   , T.testGroup "Invalid encodings" (map mkInvalidTest invalidTests)
   ]
@@ -45,6 +46,16 @@ repeatedPrefixTests =
   ]
   where
     csNopW = [0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00]
+
+-- | Only the REX prefix right before the opcode takes effect, so each
+-- sequence decodes like the second one, which keeps only the last REX.
+repeatedRexTests :: [(String, [Word8], [Word8])]
+repeatedRexTests =
+  [ ("rex.w rex.w mov", [0x48, 0x48, 0x89, 0xd8], [0x48, 0x89, 0xd8])
+  , ("rex rex.w mov", [0x40, 0x48, 0x89, 0xd8], [0x48, 0x89, 0xd8])
+  , ("rex.w rex mov", [0x48, 0x40, 0x89, 0xd8], [0x40, 0x89, 0xd8])
+  , ("rex.b rex.w mov", [0x41, 0x48, 0x89, 0xd8], [0x48, 0x89, 0xd8])
+  ]
 
 -- | A 32-bit displacement is printed with its sign, like an 8-bit one.
 displacementTests :: [([Word8], String)]
@@ -73,6 +84,15 @@ mkTest (name, bytes, expected) = T.testCase name $
 
 mkDisasmTest :: ([Word8], String) -> T.TestTree
 mkDisasmTest (bytes, expected) = mkTest (expected, bytes, expected)
+
+mkSameAsTest :: (String, [Word8], [Word8]) -> T.TestTree
+mkSameAsTest (name, bytes, reference) = T.testCase name $
+  case (D.tryDisassemble (BS.pack bytes), D.tryDisassemble (BS.pack reference)) of
+    ((len, Just ii), (_, Just expected)) -> do
+      T.assertEqual "Bytes consumed" (length bytes) len
+      T.assertEqual "Disassembly" (show (D.ppInstruction expected)) (show (D.ppInstruction ii))
+    ((_, Nothing), _) -> T.assertFailure ("Failed to disassemble " ++ show bytes)
+    (_, (_, Nothing)) -> T.assertFailure ("Failed to disassemble " ++ show reference)
 
 mkInvalidTest :: (String, [Word8]) -> T.TestTree
 mkInvalidTest (name, bytes) = T.testCase name $
