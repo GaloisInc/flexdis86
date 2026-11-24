@@ -461,6 +461,7 @@ modRMOperand nm =
     IM_SB -> False
     IM_SZ -> False
     VVVV_XMM {} -> False
+    IS4_XMM {} -> False
 
 -- | Some instructions have multiple interpretations depending on the
 -- size of the operands.  This is represented by multiple instructions
@@ -1027,6 +1028,10 @@ parseValue p osz mmrm tp = do
           return $ largeReg p mb $ complement (VEX.vexVVVV vx) .&. 0xF
       | otherwise -> error "[VVVV_XMM] Missing VEX prefix "
       where vx = prVEX p
+
+    IS4_XMM mb -> do
+      imm <- readByte
+      pure $ largeReg p mb (imm `shiftR` 4)
 
     SEG s -> return $ SegmentValue s
     M_FP -> FarPointer <$> addr
