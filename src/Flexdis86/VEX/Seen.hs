@@ -25,7 +25,7 @@ Bit layout (little-endian into the 'Word16'):
 
   byte 1 (high) - VEX3 byte 2
     [7]     W
-    [6:3]   ~vvvv
+    [6:3]   ~vvvv     (inverted; 1111b when the instruction does not use vvvv)
     [2]     L         (0 = 128-bit, 1 = 256-bit)
     [1:0]   pp        (implied SIMD prefix)
 @
