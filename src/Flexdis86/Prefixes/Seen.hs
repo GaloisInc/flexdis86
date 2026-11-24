@@ -68,8 +68,8 @@ addPrefixCode !seen b
     lockRepMask = lockBit .|. repNZBit .|. repBit
     -- Set the bits of @bits@ in the accumulator, but only if the group
     -- is currently empty or already holds this same prefix. Repeating a
-    -- prefix byte is redundant but legal (compilers pad with e.g.
-    -- @66 66 2e 0f 1f 84 ...@), so it is accepted. Two different
+    -- prefix byte is redundant but legal (compilers pad with NOPs,
+    -- e.g., @66 66 2e 0f 1f 84 ...@), so it is accepted. Two different
     -- prefixes from the same group are rejected.
     group mask bits
       | prior == zeroBits || prior == bits = Just (seen .|. bits)
